@@ -4,8 +4,10 @@ const {
   ButtonStyle,
   EmbedBuilder,
   PermissionFlagsBits,
+  MessageFlags,
 } = require('discord.js');
 const { getGuildSettings } = require('../store');
+const { baseEmbed, sendLog } = require('./logging');
 
 function verificationButton(customId = 'verification:verify:any') {
   return new ActionRowBuilder().addComponents(
@@ -34,7 +36,7 @@ async function postVerificationPanel(channel) {
 }
 
 async function verifyMember(member, actorTag = 'self-verification') {
-  const settings = getGuildSettings(member.guild.id);
+  const settings = await getGuildSettings(member.guild.id);
   if (!settings.verificationEnabled) {
     return { ok: false, message: 'Verification is disabled for this server.' };
   }
@@ -45,12 +47,15 @@ async function verifyMember(member, actorTag = 'self-verification') {
   }
 
   let changed = false;
+  const roleChanges = [];
+
   if (settings.verifiedRoleId) {
     const verifiedRole = member.guild.roles.cache.get(settings.verifiedRoleId);
     if (!verifiedRole) return { ok: false, message: 'The configured verified role no longer exists.' };
     if (!verifiedRole.editable) return { ok: false, message: 'My bot role must be above the configured verified role.' };
     if (!member.roles.cache.has(verifiedRole.id)) {
       await member.roles.add(verifiedRole, `Verified via MultiBot (${actorTag})`);
+      roleChanges.push(`Added **${verifiedRole.name}** (${verifiedRole.id})`);
       changed = true;
     }
   }
@@ -59,6 +64,7 @@ async function verifyMember(member, actorTag = 'self-verification') {
     const unverifiedRole = member.guild.roles.cache.get(settings.unverifiedRoleId);
     if (unverifiedRole && unverifiedRole.editable && member.roles.cache.has(unverifiedRole.id)) {
       await member.roles.remove(unverifiedRole, `Verified via MultiBot (${actorTag})`);
+      roleChanges.push(`Removed **${unverifiedRole.name}** (${unverifiedRole.id})`);
       changed = true;
     }
   }
@@ -67,14 +73,31 @@ async function verifyMember(member, actorTag = 'self-verification') {
     return { ok: false, message: 'Configure a verified role or unverified role in the dashboard first.' };
   }
 
+  const resultMessage = changed
+    ? 'Verification complete. You now have access.'
+    : 'You are already verified.';
+
+  await sendLog(
+    member.guild,
+    'verification',
+    baseEmbed(member.guild, changed ? '✅ Member Verified' : 'ℹ️ Verification Checked', changed ? 0x57f287 : 0x5865f2)
+      .setThumbnail(member.user.displayAvatarURL())
+      .addFields(
+        { name: 'Member', value: `${member.user.tag}\n<@${member.id}>\n${member.id}`, inline: true },
+        { name: 'Verification Performed By', value: String(actorTag || 'Unknown'), inline: true },
+        { name: 'Result', value: changed ? 'Verified / roles updated' : 'Already verified', inline: true },
+        { name: 'Role Changes', value: roleChanges.length ? roleChanges.join('\n') : 'No role changes were required.', inline: false },
+      ),
+  );
+
   return {
     ok: true,
-    message: changed ? 'Verification complete. You now have access.' : 'You are already verified.',
+    message: resultMessage,
   };
 }
 
 async function prepareNewMember(member) {
-  const settings = getGuildSettings(member.guild.id);
+  const settings = await getGuildSettings(member.guild.id);
   if (!settings.verificationEnabled || member.user.bot) return;
 
   if (settings.unverifiedRoleId) {
@@ -104,16 +127,16 @@ async function handleVerificationButton(interaction) {
   if (action !== 'verify') return;
 
   let guild = interaction.guild;
-  if (!guild) return interaction.reply({ content: 'Verification must be completed inside the server.', ephemeral: true });
+  if (!guild) return interaction.reply({ content: 'Verification must be completed inside the server.', flags: MessageFlags.Ephemeral });
 
   if (targetId && targetId !== 'any' && targetId !== interaction.user.id) {
-    return interaction.reply({ content: 'That verification button belongs to another member.', ephemeral: true });
+    return interaction.reply({ content: 'That verification button belongs to another member.', flags: MessageFlags.Ephemeral });
   }
 
   const member = await guild.members.fetch(interaction.user.id).catch(() => null);
-  if (!member) return interaction.reply({ content: 'I could not find your server membership.', ephemeral: true });
+  if (!member) return interaction.reply({ content: 'I could not find your server membership.', flags: MessageFlags.Ephemeral });
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const result = await verifyMember(member, interaction.user.tag);
   return interaction.editReply(result.message);
 }
