@@ -230,12 +230,61 @@ const schemaStatements = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
+async function tableColumnExists(connection, tableName, columnName) {
+  const [rows] = await connection.query(
+    `SELECT COUNT(*) AS count
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?`,
+    [tableName, columnName],
+  );
+  return Number(rows[0]?.count || 0) > 0;
+}
+
+async function ensureDashboardSecureRecordsSchema(connection) {
+  const requiredColumns = [
+    ['guild_id', "ALTER TABLE dashboard_secure_records ADD COLUMN guild_id VARCHAR(32) NOT NULL DEFAULT '' FIRST"],
+    ['namespace', "ALTER TABLE dashboard_secure_records ADD COLUMN namespace VARCHAR(64) NOT NULL DEFAULT '' AFTER guild_id"],
+    ['record_key', "ALTER TABLE dashboard_secure_records ADD COLUMN record_key VARCHAR(128) NOT NULL DEFAULT '' AFTER namespace"],
+    ['encrypted_json', 'ALTER TABLE dashboard_secure_records ADD COLUMN encrypted_json LONGTEXT NULL AFTER record_key'],
+    ['created_at', 'ALTER TABLE dashboard_secure_records ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER encrypted_json'],
+    ['updated_at', 'ALTER TABLE dashboard_secure_records ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at'],
+  ];
+
+  const added = [];
+  for (const [columnName, alterSql] of requiredColumns) {
+    if (await tableColumnExists(connection, 'dashboard_secure_records', columnName)) continue;
+    await connection.query(alterSql);
+    added.push(columnName);
+  }
+
+  if (added.length) {
+    console.log(`Repaired dashboard_secure_records schema; added: ${added.join(', ')}`);
+  }
+
+  const [indexes] = await connection.query(
+    `SELECT COUNT(*) AS count
+       FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'dashboard_secure_records'
+        AND INDEX_NAME = 'idx_dashboard_secure_namespace'`,
+  );
+
+  if (!Number(indexes[0]?.count || 0)) {
+    await connection.query(
+      'ALTER TABLE dashboard_secure_records ADD INDEX idx_dashboard_secure_namespace (namespace, guild_id)',
+    );
+  }
+}
+
 async function initDatabase() {
   const connection = await pool.getConnection();
   try {
     await connection.query('SELECT 1');
     if (envBool('MYSQL_AUTO_MIGRATE', true)) {
       for (const statement of schemaStatements) await connection.query(statement);
+      await ensureDashboardSecureRecordsSchema(connection);
 
       const loggingColumns = [
         ['verification_log_channel_id', "ALTER TABLE guild_settings ADD COLUMN verification_log_channel_id VARCHAR(32) NOT NULL DEFAULT '' AFTER logs_channel_id"],
