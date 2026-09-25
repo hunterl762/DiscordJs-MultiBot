@@ -96,7 +96,7 @@ function page(title, body, user) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-home-spacing-repair">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-oauth-repair">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -126,10 +126,23 @@ ${cookieNotice}
   const notice=document.getElementById('cookieNotice');
   const getConsent=()=>{const match=document.cookie.match(/(?:^|; )multibot_cookie_consent=([^;]+)/);return match?decodeURIComponent(match[1]):'';};
   const refreshConsent=()=>{const loginNeedsConsent=new URLSearchParams(location.search).get('cookie')==='required';if(loginNeedsConsent){notice?.classList.remove('is-hidden');return;}if(['essential','declined'].includes(getConsent()))notice?.classList.add('is-hidden');};
-  const setConsent=async(choice)=>{const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin'});if(r.ok)notice?.classList.add('is-hidden');};
+  let continueToLogin=new URLSearchParams(location.search).get('continue')==='login';
+  const setConsent=async(choice)=>{
+    const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin'});
+    if(!r.ok)return;
+    notice?.classList.add('is-hidden');
+    if(choice==='accept'&&continueToLogin){
+      location.assign('/login');
+    }
+  };
   document.getElementById('cookieAccept')?.addEventListener('click',()=>setConsent('accept'));
-  document.getElementById('cookieDecline')?.addEventListener('click',()=>setConsent('decline'));
-  document.querySelectorAll('a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{if(getConsent()==='essential')return;event.preventDefault();notice?.classList.remove('is-hidden');}));
+  document.getElementById('cookieDecline')?.addEventListener('click',()=>{continueToLogin=false;setConsent('decline');});
+  document.querySelectorAll('a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{
+    if(getConsent()==='essential')return;
+    event.preventDefault();
+    continueToLogin=true;
+    notice?.classList.remove('is-hidden');
+  }));
 
   const toast=document.getElementById('dashboardToast');let toastTimer;
   const showToast=(message,kind='success')=>{if(!toast)return;toast.textContent=message;toast.className='dashboard-toast is-visible '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.className='dashboard-toast',2300);};
@@ -244,15 +257,45 @@ function renderPrivacyPolicy(markdown) {
   return html.join('\n');
 }
 
-function oauthUrl(state) {
+function resolveOAuthRedirectUri(req) {
+  const configured = String(process.env.DISCORD_REDIRECT_URI || '').trim();
+  if (configured) return configured;
+
+  const baseUrl = String(process.env.BASE_URL || '').trim();
+  if (baseUrl) {
+    try {
+      return new URL('/auth/callback', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
+    } catch {
+      // Fall through to the current request URL.
+    }
+  }
+
+  const protocol = req.protocol || 'http';
+  const host = req.get('host');
+  return `${protocol}://${host}/auth/callback`;
+}
+
+function oauthUrl(state, redirectUri) {
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID,
-    redirect_uri: process.env.DISCORD_REDIRECT_URI,
+    redirect_uri: redirectUri,
     response_type: 'code',
     scope: 'identify guilds',
     state,
   });
   return `https://discord.com/oauth2/authorize?${params}`;
+}
+
+function saveSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save((error) => error ? reject(error) : resolve());
+  });
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => error ? reject(error) : resolve());
+  });
 }
 
 async function discordFetch(pathname, accessToken, { maxRetries = 3 } = {}) {
@@ -549,37 +592,129 @@ function startDashboard(client) {
     return finish();
   });
 
-  app.get('/login', (req, res) => {
-    const consent = parseCookies(req).multibot_cookie_consent;
-    if (consent !== 'essential') return res.redirect('/?cookie=required');
+  app.get('/login', async (req, res) => {
+    try {
+      const consent = parseCookies(req).multibot_cookie_consent;
+      if (consent !== 'essential') return res.redirect('/?cookie=required&continue=login');
 
-    req.session.oauthState = crypto.randomBytes(24).toString('hex');
-    res.redirect(oauthUrl(req.session.oauthState));
+      const redirectUri = resolveOAuthRedirectUri(req);
+      const state = crypto.randomBytes(32).toString('hex');
+
+      req.session.oauthState = state;
+      req.session.oauthRedirectUri = redirectUri;
+      req.session.oauthStartedAt = Date.now();
+
+      // The session is stored in MySQL. Persist the OAuth state before sending the
+      // browser to Discord so the callback cannot race the asynchronous store write.
+      await saveSession(req);
+
+      return res.redirect(oauthUrl(state, redirectUri));
+    } catch (error) {
+      console.error('[Dashboard OAuth] Unable to start Discord login:', error);
+      return res.status(500).send(page(
+        'Discord login error',
+        `<div class="empty"><strong>Unable to start Discord login.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn" href="/">Return Home</a></p></div>`,
+        req.session.user,
+      ));
+    }
   });
 
   app.get('/auth/callback', async (req, res) => {
     try {
-      if (!req.query.code || req.query.state !== req.session.oauthState) return res.status(400).send('Invalid OAuth state.');
+      if (req.query.error) {
+        const description = String(req.query.error_description || req.query.error || 'Discord authorization was cancelled.');
+        console.warn('[Dashboard OAuth] Discord returned an authorization error:', description);
+        return res.status(400).send(page(
+          'Discord login cancelled',
+          `<div class="empty"><strong>Discord login was not completed.</strong><p>${escapeHtml(description)}</p><p><a class="btn" href="/login">Try Again</a></p></div>`,
+          req.session.user,
+        ));
+      }
+
+      const expectedState = String(req.session.oauthState || '');
+      const receivedState = String(req.query.state || '');
+      const startedAt = Number(req.session.oauthStartedAt || 0);
+      const stateExpired = !startedAt || Date.now() - startedAt > 10 * 60 * 1000;
+
+      if (!req.query.code || !expectedState || stateExpired || receivedState !== expectedState) {
+        console.warn('[Dashboard OAuth] State validation failed.', {
+          hasCode: Boolean(req.query.code),
+          hasExpectedState: Boolean(expectedState),
+          stateExpired,
+          stateMatches: Boolean(expectedState) && receivedState === expectedState,
+        });
+        return res.status(400).send(page(
+          'Discord login expired',
+          '<div class="empty"><strong>Your Discord login session expired or could not be verified.</strong><p>Please start the login again. This can also happen if cookies are blocked for the dashboard domain.</p><p><a class="btn" href="/login">Try Discord Login Again</a></p></div>',
+          req.session.user,
+        ));
+      }
+
+      const redirectUri = String(req.session.oauthRedirectUri || resolveOAuthRedirectUri(req));
       const body = new URLSearchParams({
-        client_id: process.env.DISCORD_CLIENT_ID,
-        client_secret: process.env.DISCORD_CLIENT_SECRET,
+        client_id: String(process.env.DISCORD_CLIENT_ID || '').trim(),
+        client_secret: String(process.env.DISCORD_CLIENT_SECRET || '').trim(),
         grant_type: 'authorization_code',
         code: String(req.query.code),
-        redirect_uri: process.env.DISCORD_REDIRECT_URI,
+        redirect_uri: redirectUri,
       });
-      const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-      if (!tokenRes.ok) throw new Error(`OAuth token exchange failed: ${tokenRes.status}`);
+
+      const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+
+      if (!tokenRes.ok) {
+        let detail = '';
+        try {
+          const payload = await tokenRes.json();
+          detail = payload?.error_description || payload?.error || payload?.message || '';
+        } catch {
+          detail = await tokenRes.text().catch(() => '');
+        }
+
+        const message = [
+          `Discord OAuth token exchange failed with HTTP ${tokenRes.status}.`,
+          detail ? `Discord: ${detail}` : '',
+          `Redirect URI used: ${redirectUri}`,
+          'Make sure this exact URI is listed under OAuth2 > Redirects in the Discord Developer Portal and that DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET belong to the same bot application.',
+        ].filter(Boolean).join(' ');
+
+        throw new Error(message);
+      }
+
       const token = await tokenRes.json();
+      if (!token.access_token) throw new Error('Discord OAuth returned no access token.');
+
       const user = await discordFetch('/users/@me', token.access_token);
-      req.session.user = { id: user.id, username: user.global_name || user.username, avatar: user.avatar };
+      if (!user?.id) throw new Error('Discord did not return a valid user profile.');
+
+      // Regenerate the session after authentication to prevent session fixation.
+      await regenerateSession(req);
+      req.session.user = {
+        id: user.id,
+        username: user.global_name || user.username,
+        avatar: user.avatar,
+      };
       req.session.accessToken = token.access_token;
       req.session.csrf = crypto.randomBytes(24).toString('hex');
-      delete req.session.guildCache;
-      delete req.session.oauthState;
-      res.redirect('/dashboard');
+      req.session.guildCache = null;
+      req.session.authenticatedAt = Date.now();
+
+      // Persist authentication before redirecting to /dashboard. Without this,
+      // MySQL-backed sessions can race the redirect and appear logged out.
+      await saveSession(req);
+
+      console.log(`[Dashboard OAuth] Logged in Discord user ${req.session.user.username} (${user.id}).`);
+      return res.redirect('/dashboard');
     } catch (error) {
-      console.error(error);
-      res.status(500).send('Discord login failed.');
+      console.error('[Dashboard OAuth] Discord login failed:', error);
+      return res.status(500).send(page(
+        'Discord login failed',
+        `<div class="empty"><strong>Discord login failed.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn" href="/login">Try Again</a> <a class="btn secondary" href="/">Return Home</a></p></div>`,
+        req.session.user,
+      ));
     }
   });
 
