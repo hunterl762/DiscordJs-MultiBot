@@ -97,7 +97,7 @@ function page(title, body, user) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-oauth-state-repair">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-server-summary">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -793,25 +793,95 @@ function startDashboard(client) {
 
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
-      const guilds = await getManagedGuilds(req, client);
-      const connected = guilds.map((managed) => client.guilds.cache.get(managed.id)).filter(Boolean);
-      const totalMembers = connected.reduce((sum, guild) => sum + guild.memberCount, 0);
+      const managedGuilds = await getManagedGuilds(req, client);
 
-      const cards = guilds.length ? guilds.map((managed) => {
+      const dashboardStats = await Promise.all(managedGuilds.map(async (managed) => {
         const guild = client.guilds.cache.get(managed.id);
+        if (!guild) return null;
+
+        const [tickets, analytics] = await Promise.all([
+          listGuildTickets(guild.id),
+          getAnalytics(guild.id),
+        ]);
+
+        return {
+          id: managed.id,
+          name: managed.name,
+          icon: managed.icon || guild.icon || null,
+          members: guild.memberCount,
+          channels: guild.channels.cache.size,
+          roles: Math.max(0, guild.roles.cache.size - 1),
+          openTickets: tickets.filter((ticket) => ticket.status === 'open').length,
+          commandUses: Number(analytics.uses || 0),
+        };
+      }));
+
+      const rows = dashboardStats.filter(Boolean);
+      const totals = rows.reduce((sum, item) => ({
+        members: sum.members + item.members,
+        channels: sum.channels + item.channels,
+        roles: sum.roles + item.roles,
+        openTickets: sum.openTickets + item.openTickets,
+        commandUses: sum.commandUses + item.commandUses,
+      }), {
+        members: 0,
+        channels: 0,
+        roles: 0,
+        openTickets: 0,
+        commandUses: 0,
+      });
+
+      const rowById = new Map(rows.map((item) => [item.id, item]));
+      const cards = managedGuilds.length ? managedGuilds.map((managed) => {
+        const stats = rowById.get(managed.id);
         const icon = managed.icon
           ? `<img src="https://cdn.discordapp.com/icons/${managed.id}/${managed.icon}.png?size=128" alt="">`
           : escapeHtml(managed.name.slice(0, 2).toUpperCase());
+
         return `<article class="guild-card friendly-guild-card" data-guild-card data-guild-search="${escapeHtml((managed.name + ' ' + managed.id).toLowerCase())}">
-          <div class="guild-card-main"><div class="guild-icon">${icon}</div><div class="guild-card-copy"><strong>${escapeHtml(managed.name)}</strong><small>${(guild?.memberCount || 0).toLocaleString()} members • ${guild?.channels.cache.size || 0} channels</small></div></div>
-          <div class="guild-card-actions"><a class="btn" href="/dashboard/${managed.id}">Configure</a><a class="btn secondary" href="/dashboard/statistics#guild-${managed.id}">View Stats</a></div>
+          <div class="guild-card-main">
+            <div class="guild-icon">${icon}</div>
+            <div class="guild-card-copy">
+              <strong>${escapeHtml(managed.name)}</strong>
+              <small>${(stats?.members || 0).toLocaleString()} members • ${(stats?.channels || 0).toLocaleString()} channels</small>
+            </div>
+          </div>
+          <div class="guild-card-actions">
+            <a class="btn" href="/dashboard/${managed.id}">Configure</a>
+            <a class="btn secondary" href="/dashboard/statistics#guild-${managed.id}">View Stats</a>
+          </div>
         </article>`;
       }).join('') : '<div class="empty">No servers found where you have Manage Server and Kryndexa Bot is installed.</div>';
 
-      const body = `<section class="dashboard-home-hero"><div><span class="eyebrow">YOUR COMMAND CENTER</span><h1>Your Servers</h1><p>Choose a server to configure or compare activity across all servers you manage.</p></div><a class="btn secondary" href="/dashboard/statistics">Server Statistics</a></section>
-        <section class="dashboard-home-stats"><div><strong>${guilds.length}</strong><span>Managed Servers</span></div><div><strong>${totalMembers.toLocaleString()}</strong><span>Total Members</span></div><div><strong>${client.guilds.cache.size.toLocaleString()}</strong><span>Bot Servers</span></div></section>
-        <div class="dashboard-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Search servers by name or ID" data-filter-selector="[data-guild-card]" data-filter-attribute="data-guild-search" data-filter-empty="#dashboardSearchEmpty"></label><span>Select a server to configure.</span></div>
-        <div class="guild-grid friendly-guild-grid">${cards}</div><div id="dashboardSearchEmpty" class="search-empty-state" hidden>No servers match your search.</div>`;
+      const body = `<section class="dashboard-home-hero">
+          <div>
+            <span class="eyebrow">YOUR COMMAND CENTER</span>
+            <h1>Your Servers</h1>
+            <p>Choose a server to configure or compare activity across all servers you manage.</p>
+          </div>
+          <a class="btn secondary" href="/dashboard/statistics">Server Statistics</a>
+        </section>
+
+        <section class="server-stats-summary dashboard-server-summary" aria-label="Managed server totals">
+          <div><strong>${rows.length.toLocaleString()}</strong><span>Servers</span></div>
+          <div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div>
+          <div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div>
+          <div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div>
+          <div><strong>${totals.openTickets.toLocaleString()}</strong><span>Open Tickets</span></div>
+          <div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div>
+        </section>
+
+        <div class="dashboard-toolbar">
+          <label class="server-search">
+            <span>🔎</span>
+            <input type="search" placeholder="Search servers by name or ID" data-filter-selector="[data-guild-card]" data-filter-attribute="data-guild-search" data-filter-empty="#dashboardSearchEmpty">
+          </label>
+          <span>Select a server to configure.</span>
+        </div>
+
+        <div class="guild-grid friendly-guild-grid">${cards}</div>
+        <div id="dashboardSearchEmpty" class="search-empty-state" hidden>No servers match your search.</div>`;
+
       return res.send(page('Dashboard • Kryndexa Bot', body, req.session.user));
     } catch (error) {
       console.error(error);
