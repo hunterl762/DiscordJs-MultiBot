@@ -587,7 +587,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-light-buttons">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-owner-dashboard">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -1462,39 +1462,6 @@ function startDashboard(client) {
           </div>
         </section>
 
-        <section class="cloudflare-ssl-card" aria-label="Cloudflare SSL status">
-          <div class="cloudflare-ssl-head">
-            <div class="cloudflare-ssl-title">
-              <span class="cloudflare-logo" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M7.2 17h10.9a3.4 3.4 0 0 0 .4-6.8A5.4 5.4 0 0 0 8.2 8.8 4.2 4.2 0 0 0 7.2 17Z"/><path d="M4.8 17H4a2.5 2.5 0 1 1 .6-4.9"/></svg>
-              </span>
-              <div>
-                <span class="eyebrow">CLOUDFLARE SSL</span>
-                <h3>Certificate Packs</h3>
-                <p>Edge certificate status for the configured Cloudflare zone.</p>
-              </div>
-            </div>
-            <span class="cloudflare-status ${!cloudflareSsl.configured ? 'unconfigured' : cloudflareSsl.error ? 'error' : 'ok'}">
-              <i></i>
-              ${!cloudflareSsl.configured ? 'Not Configured' : cloudflareSsl.error ? 'API Error' : 'Connected'}
-            </span>
-          </div>
-          <div class="cloudflare-ssl-metrics">
-            <div><span>Packs</span><strong>${cloudflareSsl.packs.length.toLocaleString()}</strong></div>
-            <div><span>Active Certificates</span><strong>${cloudflareSsl.activeCertificates.toLocaleString()}</strong></div>
-            <div><span>Pending / Other</span><strong>${cloudflareSsl.pendingCertificates.toLocaleString()}</strong></div>
-            <div><span>Hosts</span><strong>${cloudflareSsl.hosts.length.toLocaleString()}</strong></div>
-          </div>
-          <div class="cloudflare-ssl-foot">
-            <span>${cloudflareSsl.error
-              ? escapeHtml(cloudflareSsl.error)
-              : cloudflareSsl.configured
-                ? `Zone ${escapeHtml(cloudflareSsl.zoneId)} • Full (strict) recommended`
-                : 'Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable certificate monitoring.'}</span>
-            <a class="btn secondary compact" href="/api/cloudflare/ssl" target="_blank" rel="noreferrer">View SSL JSON</a>
-          </div>
-        </section>
-
         <section class="dashboard-server-section">
           <div class="dashboard-server-section-head">
             <div>
@@ -1527,6 +1494,116 @@ function startDashboard(client) {
       if (error.status === 429) return res.status(503).send(page('Discord rate limit', '<div class="empty">Discord is temporarily rate limiting dashboard access. Refresh shortly.</div>', req.session.user));
       if (error.status === 401) return res.status(401).send(page('Session expired', '<div class="empty">Your Discord session expired. <a href="/login">Log in again</a>.</div>'));
       return res.status(500).send(page('Dashboard error', '<div class="empty">The dashboard could not load your server list.</div>', req.session.user));
+    }
+  });
+
+  const requireBotOwner = async (req, res, next) => {
+    if (!req.session.user) return res.redirect('/login');
+
+    try {
+      const allowed = await isBotOwner(client, req.session.user.id);
+      req.session.user.isBotOwner = allowed;
+
+      if (!allowed) {
+        return res.status(403).send(page(
+          'Access denied • Kryndexa Bot',
+          '<div class="empty"><strong>Bot owner access required.</strong><p>This dashboard area is restricted to configured Kryndexa Bot owners.</p><p><a class="btn secondary" href="/dashboard">Return to Dashboard</a></p></div>',
+          req.session.user,
+          { path: '/dashboard/owner', private: true },
+        ));
+      }
+
+      return next();
+    } catch (error) {
+      console.error('[Dashboard Owner] Unable to verify bot owner:', error);
+      return res.status(500).send(page(
+        'Owner verification failed • Kryndexa Bot',
+        '<div class="empty"><strong>Owner verification failed.</strong><p>Kryndexa could not verify owner access right now.</p><p><a class="btn secondary" href="/dashboard">Return to Dashboard</a></p></div>',
+        req.session.user,
+        { path: '/dashboard/owner', private: true },
+      ));
+    }
+  };
+
+  app.get('/dashboard/owner', requireAuth, requireBotOwner, async (req, res) => {
+    try {
+      const cloudflareSsl = await getCloudflareCertificatePacks();
+      const ownerIds = String(process.env.BOT_OWNER_IDS || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+      const body = `<section class="owner-dashboard-shell">
+        <section class="owner-dashboard-hero">
+          <div>
+            <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
+            <span class="eyebrow">BOT OWNERS</span>
+            <h1>Owner Control Center</h1>
+            <p>Private infrastructure, application and service controls for Kryndexa Bot owners.</p>
+          </div>
+          <div class="owner-dashboard-meta">
+            <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
+            <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
+          </div>
+        </section>
+
+        <section class="owner-section">
+          <div class="owner-section-heading">
+            <div>
+              <span class="eyebrow">INFRASTRUCTURE</span>
+              <h2>Cloudflare SSL</h2>
+              <p>Certificate monitoring is restricted to bot owners and is not included in regular administrator dashboards.</p>
+            </div>
+          </div>
+
+          <section class="cloudflare-ssl-card owner-cloudflare-card" aria-label="Cloudflare SSL status">
+            <div class="cloudflare-ssl-head">
+              <div class="cloudflare-ssl-title">
+                <span class="cloudflare-logo" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7.2 17h10.9a3.4 3.4 0 0 0 .4-6.8A5.4 5.4 0 0 0 8.2 8.8 4.2 4.2 0 0 0 7.2 17Z"/><path d="M4.8 17H4a2.5 2.5 0 1 1 .6-4.9"/></svg>
+                </span>
+                <div>
+                  <span class="eyebrow">CLOUDFLARE SSL</span>
+                  <h3>Certificate Packs</h3>
+                  <p>Edge certificate status for the configured Cloudflare zone.</p>
+                </div>
+              </div>
+              <span class="cloudflare-status ${!cloudflareSsl.configured ? 'unconfigured' : cloudflareSsl.error ? 'error' : 'ok'}">
+                <i></i>
+                ${!cloudflareSsl.configured ? 'Not Configured' : cloudflareSsl.error ? 'API Error' : 'Connected'}
+              </span>
+            </div>
+            <div class="cloudflare-ssl-metrics">
+              <div><span>Packs</span><strong>${cloudflareSsl.packs.length.toLocaleString()}</strong></div>
+              <div><span>Active Certificates</span><strong>${cloudflareSsl.activeCertificates.toLocaleString()}</strong></div>
+              <div><span>Pending / Other</span><strong>${cloudflareSsl.pendingCertificates.toLocaleString()}</strong></div>
+              <div><span>Hosts</span><strong>${cloudflareSsl.hosts.length.toLocaleString()}</strong></div>
+            </div>
+            <div class="cloudflare-ssl-foot">
+              <span>${cloudflareSsl.error
+                ? escapeHtml(cloudflareSsl.error)
+                : cloudflareSsl.configured
+                  ? `Zone ${escapeHtml(cloudflareSsl.zoneId)} • Full (strict) recommended`
+                  : 'Set CLOUDFLARE_ZONE_NAME / CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable certificate monitoring.'}</span>
+              <a class="btn secondary compact" href="/api/cloudflare/ssl" target="_blank" rel="noreferrer">View SSL JSON</a>
+            </div>
+          </section>
+        </section>
+      </section>`;
+
+      return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
+        path: '/dashboard/owner',
+        private: true,
+        description: 'Restricted Kryndexa Bot owner infrastructure dashboard.',
+      }));
+    } catch (error) {
+      console.error('[Dashboard Owner] Owner dashboard failed:', error);
+      return res.status(500).send(page(
+        'Owner dashboard error • Kryndexa Bot',
+        '<div class="empty"><strong>Owner dashboard unavailable.</strong><p>The private owner control center could not be loaded.</p></div>',
+        req.session.user,
+        { path: '/dashboard/owner', private: true },
+      ));
     }
   });
 
@@ -2383,7 +2460,7 @@ function startDashboard(client) {
     }
   });
 
-  app.get('/api/cloudflare/ssl', requireAuth, async (_req, res) => {
+  app.get('/api/cloudflare/ssl', requireAuth, requireBotOwner, async (_req, res) => {
     const status = await getCloudflareCertificatePacks();
 
     if (!status.configured) {
