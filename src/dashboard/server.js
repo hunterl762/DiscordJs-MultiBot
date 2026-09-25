@@ -412,8 +412,28 @@ function startDashboard(client) {
   });
 
   app.get('/', (req, res) => {
-    const body = `<section class="hero"><span class="pill">Discord.js v14</span><h1>MultiBot Control Panel</h1><p>Configure moderation, welcome/logging, ticket channels, staff roles, and HTML transcripts from the web.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : '<a class="btn" href="/login">Login with Discord</a>'}</div></section>`;
-    res.send(page('MultiBot', body, req.session.user));
+    const body = `<section class="landing-hero">
+      <div class="hero-copy">
+        <span class="pill">Discord.js v14 • Kryndexa Bot</span>
+        <h1>Your Discord server, under control.</h1>
+        <p class="hero-slogan"><strong>One Bot. Every Tool. Total Control. The Command Center for Your Discord Server.</strong></p>
+        <p class="hero-detail">Moderation, tickets, logging, streaming alerts, music, automation, analytics, embeds and server configuration from one responsive dashboard.</p>
+        <div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : '<a class="btn" href="/login">Login with Discord</a>'} ${addBotButton}</div>
+      </div>
+      <div class="hero-console"><span>COMMAND CENTER</span><strong>Kryndexa Bot</strong><div class="hero-console-grid"><i>Advanced Tickets</i><i>Server Analytics</i><i>Streaming Alerts</i><i>AutoMod</i><i>Music</i><i>Encrypted Settings</i></div></div>
+    </section>`;
+    res.send(page('Kryndexa Bot', body, req.session.user));
+  });
+
+  app.get('/features', (req, res) => {
+    const categoryOrder = [...new Set(FEATURE_CATALOG.map((feature) => feature.category))];
+    const cards = categoryOrder.map((category) => {
+      const features = FEATURE_CATALOG.filter((feature) => feature.category === category);
+      return `<section class="public-feature-section"><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${features.length} module${features.length === 1 ? '' : 's'}</span></div><div class="public-feature-grid">${features.map((feature) => `<article class="public-feature-card"><div class="public-feature-top"><div class="feature-icon">${escapeHtml(feature.icon)}</div><div><span class="mini-label">${escapeHtml(feature.priority)} priority</span><h3>${escapeHtml(feature.title)}</h3></div></div><p>${escapeHtml(feature.description)}</p><div class="public-feature-meta"><span>${feature.locked ? 'Always enabled' : feature.defaultEnabled ? 'Enabled by default' : 'Server configurable'}</span><small>${escapeHtml(feature.requirement || 'Configured directly from the server dashboard.')}</small></div></article>`).join('')}</div></section>`;
+    }).join('');
+
+    const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : '<a class="btn" href="/login">Login to Dashboard</a>'} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
+    return res.send(page('Features • Kryndexa Bot', body, req.session.user));
   });
 
   app.get('/privacy', (req, res) => {
@@ -553,17 +573,69 @@ function startDashboard(client) {
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
       const guilds = await getManagedGuilds(req, client);
-      const cards = guilds.length ? guilds.map((guild) => `<a class="guild-card" href="/dashboard/${guild.id}"><div class="guild-icon">${guild.icon ? `<img src="https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128" alt="">` : escapeHtml(guild.name.slice(0, 2).toUpperCase())}</div><div><strong>${escapeHtml(guild.name)}</strong><small>Configure server</small></div></a>`).join('') : '<div class="empty">No servers found where you have Manage Server and MultiBot is installed.</div>';
-      res.send(page('Dashboard', `<div class="section-title"><h1>Your Servers</h1><p>Select a server to configure MultiBot.</p></div><div class="guild-grid">${cards}</div>`, req.session.user));
+      const connected = guilds.map((managed) => client.guilds.cache.get(managed.id)).filter(Boolean);
+      const totalMembers = connected.reduce((sum, guild) => sum + guild.memberCount, 0);
+
+      const cards = guilds.length ? guilds.map((managed) => {
+        const guild = client.guilds.cache.get(managed.id);
+        const icon = managed.icon
+          ? `<img src="https://cdn.discordapp.com/icons/${managed.id}/${managed.icon}.png?size=128" alt="">`
+          : escapeHtml(managed.name.slice(0, 2).toUpperCase());
+        return `<article class="guild-card friendly-guild-card" data-guild-card data-guild-search="${escapeHtml((managed.name + ' ' + managed.id).toLowerCase())}">
+          <div class="guild-card-main"><div class="guild-icon">${icon}</div><div class="guild-card-copy"><strong>${escapeHtml(managed.name)}</strong><small>${(guild?.memberCount || 0).toLocaleString()} members • ${guild?.channels.cache.size || 0} channels</small></div></div>
+          <div class="guild-card-actions"><a class="btn" href="/dashboard/${managed.id}">Configure</a><a class="btn secondary" href="/dashboard/statistics#guild-${managed.id}">View Stats</a></div>
+        </article>`;
+      }).join('') : '<div class="empty">No servers found where you have Manage Server and Kryndexa Bot is installed.</div>';
+
+      const body = `<section class="dashboard-home-hero"><div><span class="eyebrow">YOUR COMMAND CENTER</span><h1>Your Servers</h1><p>Choose a server to configure or compare activity across all servers you manage.</p></div><a class="btn secondary" href="/dashboard/statistics">Server Statistics</a></section>
+        <section class="dashboard-home-stats"><div><strong>${guilds.length}</strong><span>Managed Servers</span></div><div><strong>${totalMembers.toLocaleString()}</strong><span>Total Members</span></div><div><strong>${client.guilds.cache.size.toLocaleString()}</strong><span>Bot Servers</span></div></section>
+        <div class="dashboard-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Search servers by name or ID" data-filter-selector="[data-guild-card]" data-filter-attribute="data-guild-search" data-filter-empty="#dashboardSearchEmpty"></label><span>Select a server to configure.</span></div>
+        <div class="guild-grid friendly-guild-grid">${cards}</div><div id="dashboardSearchEmpty" class="search-empty-state" hidden>No servers match your search.</div>`;
+      return res.send(page('Dashboard • Kryndexa Bot', body, req.session.user));
     } catch (error) {
       console.error(error);
-      if (error.status === 429) {
-        return res.status(503).send(page('Discord rate limit', '<div class="empty">Discord is temporarily rate limiting dashboard access. MultiBot will retry automatically; refresh this page shortly.</div>', req.session.user));
-      }
-      if (error.status === 401) {
-        return res.status(401).send(page('Session expired', '<div class="empty">Your Discord session expired. <a href="/login">Log in again</a>.</div>'));
-      }
+      if (error.status === 429) return res.status(503).send(page('Discord rate limit', '<div class="empty">Discord is temporarily rate limiting dashboard access. Refresh shortly.</div>', req.session.user));
+      if (error.status === 401) return res.status(401).send(page('Session expired', '<div class="empty">Your Discord session expired. <a href="/login">Log in again</a>.</div>'));
       return res.status(500).send(page('Dashboard error', '<div class="empty">The dashboard could not load your server list.</div>', req.session.user));
+    }
+  });
+
+  app.get('/dashboard/statistics', requireAuth, async (req, res) => {
+    try {
+      const managedGuilds = await getManagedGuilds(req, client);
+      const stats = await Promise.all(managedGuilds.map(async (managed) => {
+        const guild = client.guilds.cache.get(managed.id);
+        if (!guild) return null;
+        const [tickets, analytics] = await Promise.all([listGuildTickets(guild.id), getAnalytics(guild.id)]);
+        return {
+          id: guild.id, name: guild.name, icon: guild.icon, members: guild.memberCount,
+          channels: guild.channels.cache.size, roles: Math.max(0, guild.roles.cache.size - 1),
+          boosts: guild.premiumSubscriptionCount || 0,
+          openTickets: tickets.filter((ticket) => ticket.status === 'open').length,
+          closedTickets: tickets.filter((ticket) => ticket.status === 'closed').length,
+          commandUses: analytics.uses, commandUsers: analytics.users,
+        };
+      }));
+
+      const rows = stats.filter(Boolean).sort((a, b) => b.members - a.members || a.name.localeCompare(b.name));
+      const totals = rows.reduce((sum, item) => ({
+        members: sum.members + item.members, channels: sum.channels + item.channels,
+        roles: sum.roles + item.roles, openTickets: sum.openTickets + item.openTickets,
+        commandUses: sum.commandUses + item.commandUses,
+      }), { members: 0, channels: 0, roles: 0, openTickets: 0, commandUses: 0 });
+
+      const tableRows = rows.length ? rows.map((item) => {
+        const icon = item.icon ? `<img src="https://cdn.discordapp.com/icons/${item.id}/${item.icon}.png?size=64" alt="">` : `<span>${escapeHtml(item.name.slice(0,2).toUpperCase())}</span>`;
+        return `<tr id="guild-${item.id}" data-stat-row data-stat-search="${escapeHtml((item.name+' '+item.id).toLowerCase())}"><td><div class="stats-server-cell"><div class="stats-server-icon">${icon}</div><div><strong>${escapeHtml(item.name)}</strong><small>${item.id}</small></div></div></td><td>${item.members.toLocaleString()}</td><td>${item.channels}</td><td>${item.roles}</td><td>${item.boosts}</td><td><strong>${item.openTickets} open</strong><small>${item.closedTickets} closed</small></td><td><strong>${item.commandUses.toLocaleString()}</strong><small>${item.commandUsers.toLocaleString()} users / 30d</small></td><td><a class="btn compact" href="/dashboard/${item.id}">Configure</a></td></tr>`;
+      }).join('') : '<tr><td colspan="8">No manageable servers are connected.</td></tr>';
+
+      const body = `<section class="stats-page-hero"><div><span class="eyebrow">SERVER STATISTICS</span><h1>Server Overview</h1><p>Compare the servers you manage without opening each configuration page.</p></div><a class="btn secondary" href="/dashboard">← Your Servers</a></section>
+        <section class="server-stats-summary"><div><strong>${rows.length}</strong><span>Servers</span></div><div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div><div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div><div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div><div><strong>${totals.openTickets}</strong><span>Open Tickets</span></div><div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div></section>
+        <section class="panel statistics-panel"><div class="stats-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Filter server statistics" data-filter-selector="[data-stat-row]" data-filter-attribute="data-stat-search" data-filter-empty="#statisticsSearchEmpty"></label><span>Sorted by member count</span></div><div class="table-wrap"><table class="server-statistics-table"><thead><tr><th>Server</th><th>Members</th><th>Channels</th><th>Roles</th><th>Boosts</th><th>Tickets</th><th>Commands</th><th></th></tr></thead><tbody>${tableRows}</tbody></table></div><div id="statisticsSearchEmpty" class="search-empty-state" hidden>No server statistics match your search.</div></section>`;
+      return res.send(page('Server Statistics • Kryndexa Bot', body, req.session.user));
+    } catch (error) {
+      console.error(error);
+      return res.status(500).send(page('Statistics error', '<div class="empty">Unable to load server statistics.</div>', req.session.user));
     }
   });
 
