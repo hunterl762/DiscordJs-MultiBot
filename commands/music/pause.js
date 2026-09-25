@@ -1,0 +1,5 @@
+const { SlashCommandBuilder } = require('discord.js');
+const { musicContext, existingPlayer, sameVoiceChannel, replySlash, replyPrefix } = require('../../src/music/helpers');
+module.exports={name:'pause',category:'Music',data:new SlashCommandBuilder().setName('pause').setDescription('Pause the current track.'),guildOnly:true,
+async executeSlash(i){const c=await musicContext(i);if(c.error)return replySlash(i,c.error,true);const p=existingPlayer(c.manager,c.guild.id);if(!p?.queue?.current)return replySlash(i,'Nothing is playing.',true);if(!sameVoiceChannel(p,i.member))return replySlash(i,'Join the same voice channel as the bot.',true);p.pause(true);return replySlash(i,'⏸️ Paused.');},
+async executePrefix(m){const c=await musicContext(m);if(c.error)return replyPrefix(m,c.error);const p=existingPlayer(c.manager,c.guild.id);if(!p?.queue?.current)return replyPrefix(m,'Nothing is playing.');if(!sameVoiceChannel(p,m.member))return replyPrefix(m,'Join the same voice channel as the bot.');p.pause(true);return replyPrefix(m,'⏸️ Paused.');}};

@@ -58,7 +58,7 @@ async function findBroadcastChannel(guild) {
   const me = guild.members.me || await guild.members.fetchMe().catch(() => null);
   if (!me) return null;
 
-  const settings = getGuildSettings(guild.id);
+  const settings = await getGuildSettings(guild.id);
   const preferredIds = [settings.broadcastChannelId, guild.systemChannelId].filter(Boolean);
   for (const id of preferredIds) {
     const channel = guild.channels.cache.get(id);
@@ -77,34 +77,91 @@ async function findBroadcastChannel(guild) {
   return channels.find((channel) => !channel.name.toLowerCase().startsWith('ticket-')) || null;
 }
 
-function buildBroadcastPayload(channel, { title, message }) {
+function ownerDisplayName(owner) {
+  if (!owner) return 'MultiBot Owner';
+  return owner.displayName || owner.globalName || owner.username || owner.tag || 'MultiBot Owner';
+}
+
+function buildBroadcastPayload(channel, { title, message, owner }) {
   const me = channel.guild.members.me;
   const canEmbed = channel.permissionsFor(me)?.has(PermissionFlagsBits.EmbedLinks);
+  const canMentionEveryone = channel.permissionsFor(me)?.has(PermissionFlagsBits.MentionEveryone);
+  const sentAt = new Date();
+  const sentUnix = Math.floor(sentAt.getTime() / 1000);
+  const ownerName = ownerDisplayName(owner);
+  const ownerAvatar = owner?.displayAvatarURL?.({ size: 128 }) || null;
+
   if (!canEmbed) {
     return {
-      content: `**${title}**\n${message}`.slice(0, 2000),
-      allowedMentions: { parse: [] },
+      content: [
+        '@everyone',
+        '',
+        `📢 **${title}**`,
+        '',
+        message,
+        '',
+        `**Broadcast by:** ${ownerName}`,
+        `**Sent:** <t:${sentUnix}:F>`,
+        `©️ ${sentAt.getFullYear()} MultiBot`,
+      ].join('\n').slice(0, 2000),
+      allowedMentions: { parse: canMentionEveryone ? ['everyone'] : [] },
     };
   }
 
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setAuthor({
+      name: `Broadcast from ${ownerName}`,
+      ...(ownerAvatar ? { iconURL: ownerAvatar } : {}),
+    })
+    .setTitle(`📢 ${title}`)
+    .setDescription(message)
+    .addFields(
+      {
+        name: '👤 Bot Owner',
+        value: ownerName,
+        inline: true,
+      },
+      {
+        name: '🕒 Sent',
+        value: `<t:${sentUnix}:F>\n<t:${sentUnix}:R>`,
+        inline: true,
+      },
+      {
+        name: '🌐 Server',
+        value: channel.guild.name,
+        inline: true,
+      },
+    )
+    .setFooter({
+      text: `©️ ${sentAt.getFullYear()} MultiBot • Owner Broadcast`,
+      ...(me?.user?.displayAvatarURL?.({ size: 64 }) ? { iconURL: me.user.displayAvatarURL({ size: 64 }) } : {}),
+    })
+    .setTimestamp(sentAt);
+
+  if (ownerAvatar) embed.setThumbnail(ownerAvatar);
+
   return {
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle(title)
-        .setDescription(message)
-        .setFooter({ text: 'MultiBot Owner Broadcast' })
-        .setTimestamp(),
-    ],
-    allowedMentions: { parse: [] },
+    content: '@everyone',
+    embeds: [embed],
+    allowedMentions: { parse: canMentionEveryone ? ['everyone'] : [] },
   };
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function broadcastToGuilds(client, { title = 'MultiBot Announcement', message, dryRun = false } = {}) {
+async function broadcastToGuilds(client, { title = 'MultiBot Announcement', message, dryRun = false, owner = null } = {}) {
   if (!message?.trim()) throw new Error('Broadcast message is required.');
 
   const results = {
@@ -117,11 +174,14 @@ async function broadcastToGuilds(client, { title = 'MultiBot Announcement', mess
     channels: [],
   };
 
-  const delayMs = Math.max(100, Number(process.env.BROADCAST_DELAY_MS || 400));
+  const configuredDelay = Number(process.env.BROADCAST_DELAY_MS || 400);
+  const delayMs = Number.isFinite(configuredDelay) ? Math.max(100, configuredDelay) : 400;
+  const configuredTimeout = Number(process.env.BROADCAST_SERVER_TIMEOUT_MS || 8_000);
+  const serverTimeoutMs = Number.isFinite(configuredTimeout) ? Math.max(2_000, configuredTimeout) : 8_000;
 
   for (const guild of client.guilds.cache.values()) {
     try {
-      const channel = await findBroadcastChannel(guild);
+      const channel = await withTimeout(findBroadcastChannel(guild), serverTimeoutMs, `${guild.name} channel discovery`);
       if (!channel) {
         results.skipped += 1;
         results.failures.push(`${guild.name}: no sendable text channel`);
@@ -130,13 +190,14 @@ async function broadcastToGuilds(client, { title = 'MultiBot Announcement', mess
 
       results.channels.push(`${guild.name} → #${channel.name}`);
       if (!dryRun) {
-        await channel.send(buildBroadcastPayload(channel, { title, message }));
+        await withTimeout(channel.send(buildBroadcastPayload(channel, { title, message, owner })), serverTimeoutMs, `${guild.name} broadcast send`);
         await sleep(delayMs);
       }
       results.delivered += 1;
     } catch (error) {
       results.failed += 1;
       results.failures.push(`${guild.name}: ${error.message || 'unknown error'}`);
+      console.warn(`[Broadcast] Skipping ${guild.name}: ${error.message || 'unknown error'}`);
     }
   }
 

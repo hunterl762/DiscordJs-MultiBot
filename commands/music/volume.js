@@ -1,0 +1,5 @@
+const { SlashCommandBuilder } = require('discord.js');
+const { musicContext, existingPlayer, sameVoiceChannel, replySlash, replyPrefix } = require('../../src/music/helpers');
+async function set(source,value,slash){const c=await musicContext(source);const reply=slash?replySlash:replyPrefix;if(c.error)return reply(source,c.error,slash);const p=existingPlayer(c.manager,c.guild.id);if(!p)return reply(source,'No active music player.',slash);if(!sameVoiceChannel(p,source.member))return reply(source,'Join the same voice channel as the bot.',slash);const v=Math.max(1,Math.min(200,Number(value||100)));await p.setVolume(v);return reply(source,`🔊 Volume set to **${v}%**.`);}
+module.exports={name:'volume',aliases:['vol'],category:'Music',data:new SlashCommandBuilder().setName('volume').setDescription('Set music volume.').addIntegerOption(o=>o.setName('level').setDescription('1-200').setMinValue(1).setMaxValue(200).setRequired(true)),guildOnly:true,
+executeSlash(i){return set(i,i.options.getInteger('level',true),true);},executePrefix(m,args){const v=Number(args[0]);if(!Number.isFinite(v))return replyPrefix(m,'Usage: !volume <1-200>');return set(m,v,false);}};

@@ -2,147 +2,77 @@
 
 **Effective date: September 25, 2026**
 
-This Privacy Policy explains how MultiBot ("MultiBot," "the Bot," "we," "us," or "our") processes information when you use the Discord bot, its web dashboard, ticket system, verification system, moderation features, and related services.
+MultiBot processes Discord account, server, channel, role, permission, moderation, verification, and ticket information only as needed to provide configured bot features.
 
-By using MultiBot, you acknowledge the practices described in this policy. Server owners and administrators are responsible for configuring MultiBot appropriately for their communities and for informing members about server-specific uses of the Bot.
+## Dashboard and OAuth
 
-## 1. Information MultiBot Processes
+The dashboard uses Discord OAuth2 with the `identify` and `guilds` scopes. OAuth access tokens and dashboard session information are stored server-side in the MySQL `web_sessions` table. MultiBot does not request your Discord password.
 
-MultiBot processes only the information reasonably needed to provide its features.
+## Server configuration
 
-### Discord account and server information
+Per-server settings are stored in MySQL in the `guild_settings` table. This can include channel IDs, role IDs, ticket configuration, verification configuration, feature toggles, logging configuration, broadcast configuration, and the optional legacy command prefix.
 
-Depending on the feature being used, MultiBot may process:
+Advanced ticket department settings are stored in the MySQL `ticket_types` table. These settings can include each department's display name, description, emoji, enabled status, Discord category ID, and staff role ID.
 
-- Discord user IDs, usernames, display names, avatars, and account timestamps.
-- Discord server IDs, names, channel IDs, role IDs, member counts, and server configuration.
-- Membership and role information needed for permissions, moderation, verification, tickets, and dashboard access.
-- Discord permissions needed to determine whether a user can manage a server or use an administrative command.
+Per-server module settings and per-command enable/disable choices are also stored in MySQL so dashboard selections persist across restarts.
 
-### Dashboard authentication information
+## Tickets and transcripts
 
-When you sign in to the MultiBot dashboard with Discord OAuth2, MultiBot requests the `identify` and `guilds` scopes. The dashboard uses this information to identify you and display servers that you are authorized to manage.
+Ticket metadata is stored in the MySQL `tickets` table. When a ticket closes, MultiBot may read up to the most recent 5,000 messages available to the bot and generate an HTML transcript.
 
-The Discord OAuth access token is stored in the server-side web session so the dashboard can request your authorized server list. In the default included configuration, the session is held in application memory and is not written to MultiBot's JSON data files. Sessions are configured to expire after up to seven days and are destroyed when you log out or when the application process is restarted.
+A transcript can contain message content, author names, Discord tags, avatar URLs, timestamps, and attachment links or filenames. The generated HTML is stored in the `tickets.transcript_html` column. When transcript attachments are enabled, MultiBot may also upload the generated `.html` file to the configured Discord transcript channel and/or send it to the ticket opener.
 
-MultiBot does not request your Discord password.
+When **online transcripts** are enabled for a server, MultiBot creates a cryptographically random transcript URL token. Anyone who obtains that unguessable URL can view the corresponding transcript in a browser until the server disables online transcripts or the stored transcript/token is removed. Server administrators should treat transcript links as private links and only share them with appropriate people.
 
-### Server configuration data
+MultiBot does not use message content to train AI or machine-learning models.
 
-MultiBot stores server settings needed to operate configured features. These settings may include:
+## Logging, moderation, verification, and broadcasts
 
-- Command prefix and whether prefix commands are enabled.
-- Welcome, leave, logging, broadcast, verification, ticket, and transcript channel IDs.
-- Verified, unverified, and ticket staff role IDs.
-- Ticket category IDs.
-- Feature enabled/disabled settings.
+Configured logging may process message content for supported events such as message edits or deletions and send those logs to the configured Discord logging channel. Moderation features process information required to perform requested actions. Verification processes member IDs and role memberships. Owner broadcasts process server/channel information to select a permitted announcement destination.
 
-### Ticket data and message content
+## Data sharing
 
-When a user opens a ticket, MultiBot stores ticket metadata such as the ticket ID, server ID, channel ID, ticket opener's Discord user ID, ticket status, creation time, closure time, the user ID of the person who closed the ticket, and the transcript filename when one exists.
+MultiBot does not sell personal information. Information may be shared with Discord as required to operate the bot, with members or staff through configured server features, with authorized administrators downloading transcripts, with the ticket opener, with hosting/database providers selected by the operator, or when legally required.
 
-When a ticket is closed, MultiBot may read messages in that ticket channel and generate an HTML transcript. A transcript can include:
+## Retention
 
-- Message text.
-- Message author username, display name, Discord tag, avatar URL, and timestamp.
-- Links and filenames for attachments posted in the ticket.
-- Ticket and server information needed to identify the transcript.
+Guild settings, ticket metadata, transcripts, and sessions remain in MySQL according to the operator's retention and backup policies. Deleting a Discord ticket channel does not automatically delete its stored MySQL transcript.
 
-The default build limits transcript collection to the most recent 5,000 messages available to the Bot in the ticket channel.
+## Security
 
-MultiBot does not use message content to train artificial intelligence or machine-learning models.
+MultiBot includes Discord permission checks, OAuth state validation, CSRF protection, HTTP-only session cookies, protected transcript downloads, restricted ticket-channel permissions, and optional MySQL TLS support.
 
-### Logging and moderation data
+Operators should protect Discord tokens, OAuth secrets, session secrets, MySQL credentials, database backups, and hosting credentials and should use HTTPS for public dashboard deployments.
 
-If a server administrator enables logging, MultiBot may process recent message content and related metadata when supported logging events occur, such as a message being edited or deleted. This information is sent to the server's configured Discord logging channel and is not separately persisted by MultiBot's default local data store.
+## Cookies & Local Storage
 
-Moderation commands process the user, role, channel, reason, duration, and other information needed to carry out the requested Discord moderation action.
+The MultiBot web dashboard uses an essential HTTP-only session cookie named `multibot.sid`. This cookie is required to keep a signed-in dashboard session associated with the correct server-side MySQL session record and to support security controls such as OAuth state and CSRF validation.
 
-### Verification data
+The session cookie is configured with `SameSite=Lax`, is HTTP-only, and is marked `Secure` when the dashboard runs with `NODE_ENV=production`. Its configured maximum lifetime is seven days, although a session may end earlier when a user logs out, the session is deleted, or the operator clears stored sessions.
 
-If server verification is enabled, MultiBot processes a member's Discord user ID and role membership so it can assign or remove configured verification roles. MultiBot does not require members to submit government identification, biometric information, passwords, or other sensitive identity documents for the included button-based verification system.
+MultiBot does not use advertising or behavioral-tracking cookies in the included dashboard.
 
-### Owner broadcasts
+The dashboard presents a cookie-consent control before Discord OAuth sign-in. If you accept essential cookies, MultiBot stores a readable preference cookie named `multibot_cookie_consent` with the value `essential`. If you decline, the preference cookie is stored with the value `declined`, the active dashboard session is destroyed, and the `multibot.sid` session cookie is cleared.
 
-The owner broadcast feature processes server and channel information to locate a permitted destination for an announcement. Broadcast messages are sent to Discord channels but are not stored in a separate broadcast-history database by the default build.
+The `multibot_cookie_consent` preference cookie is used only to remember the cookie choice and can be retained for up to one year. Declining dashboard cookies does not prevent access to public pages such as the Privacy Policy and Terms of Service, but Discord OAuth dashboard sign-in requires acceptance of the essential session cookie.
 
-## 2. Why Information Is Processed
+## Requests and contact
 
-MultiBot processes information to:
-
-- Operate Discord slash commands and optional prefix-command fallbacks.
-- Authenticate dashboard users and determine which servers they are allowed to manage.
-- Save server configuration.
-- Create and manage support tickets.
-- Generate and deliver ticket transcripts.
-- Perform moderation and role-management actions requested by authorized users.
-- Provide member verification.
-- Send welcome, leave, logging, and owner broadcast messages when configured.
-- Maintain service security, troubleshoot errors, and prevent unauthorized dashboard actions.
-
-## 3. How Information Is Stored
-
-The included MultiBot build stores guild settings and ticket metadata in JSON files under the application's `data/` directory. Generated ticket transcripts are stored as HTML files under `data/transcripts/`.
-
-The `data/` directory is ignored by Git in the provided project so runtime data is not intended to be committed to the public source repository.
-
-Dashboard sessions use `express-session`. The default configuration uses its in-memory session store. Operators who replace the default session or data storage with Redis, SQL, cloud storage, or another service are responsible for updating this policy as needed to accurately describe their deployment.
-
-## 4. Data Sharing
-
-MultiBot does not sell personal information.
-
-Information may be shared in the following limited ways:
-
-- With Discord, as necessary to operate through Discord's APIs and services.
-- With users or staff in the same Discord server when a feature intentionally posts information to a server channel.
-- With authorized server administrators who download ticket transcripts through the dashboard.
-- With the ticket opener when MultiBot successfully sends that user a transcript by direct message.
-- With infrastructure or hosting providers used by the Bot operator, to the extent necessary to host the Bot and dashboard.
-- When required by applicable law, legal process, or a valid governmental request.
-
-## 5. Data Retention
-
-MultiBot retains server settings for as long as they remain in the Bot's data store or until they are deleted by the Bot operator.
-
-Ticket metadata and generated HTML transcripts remain in the default local data store until they are manually deleted, the deployment is reset, or a separate retention process is configured by the operator. Deleting a Discord ticket channel does not automatically delete the saved transcript file.
-
-Server administrators should establish a retention period appropriate for their community and legal obligations.
-
-## 6. Your Choices and Requests
-
-Depending on your role and the server's configuration, you can reduce or avoid certain processing by not using optional features such as tickets or the web dashboard.
-
-Server administrators can disable supported features, including legacy prefix commands, welcome messages, logging, tickets, and verification, through the available server configuration controls.
-
-For requests to access or delete information stored directly by a specific MultiBot deployment, contact the operator of that deployment. For the public source project, you may also open an issue at:
+For access or deletion requests, contact the operator of the MultiBot deployment. For the public source project, issues can be submitted at:
 
 https://github.com/hunterl762/DiscordJs-MultiBot/issues
 
-Because some information is posted directly into Discord, deletion from MultiBot's local files does not necessarily remove copies that already exist in Discord channels, direct messages, audit logs, backups, or other systems controlled by Discord or server administrators.
 
-## 7. Security
+## Server Backups
 
-MultiBot includes security controls such as Discord permission checks, OAuth state validation, CSRF protection for dashboard settings, HTTP-only session cookies, protected transcript downloads, and restricted ticket-channel permissions.
+Authorized server administrators can create configuration backups with MultiBot. Server backups are stored in MySQL and can include Discord channel structure, channel permission overwrites, roles, role permissions, role positions, and related server configuration metadata.
 
-No method of transmission or storage is completely secure. Bot operators should keep Discord bot tokens, OAuth client secrets, session secrets, and hosting credentials private and should use HTTPS for public dashboard deployments.
+The included backup command does not back up Discord message history, message attachments, passwords, tokens, or general member-profile data.
 
-## 8. Children's Privacy
+## Twitch Live Announcements
 
-MultiBot is intended to be used within Discord communities in accordance with Discord's own age requirements and applicable law. MultiBot does not intentionally collect information from children outside what is supplied through Discord and the configured server features. If an operator becomes aware that information was collected in violation of applicable requirements, the operator should delete it as appropriate.
+When a server administrator configures Twitch live alerts, MultiBot stores the Twitch username, selected Discord destination channel ID, optional custom announcement text, the Discord user ID of the administrator who configured the alert, and live-state metadata such as the most recently observed stream ID and announcement timestamp.
 
-## 9. Third-Party Services
+MultiBot uses Twitch's API to check whether configured public Twitch channels are live. It may process public stream information such as the stream title, category/game, viewer count, start time, username, and thumbnail URL in order to create the Discord announcement.
 
-MultiBot relies on Discord. Discord's handling of information is governed by Discord's own terms and privacy policy. MultiBot is not responsible for the privacy practices of Discord, server administrators, hosting providers, or other third parties.
-
-## 10. Changes to This Policy
-
-This policy may be updated when MultiBot's features, storage practices, or legal requirements change. The effective date at the top of this document will be updated when material revisions are made.
-
-## 11. Contact
-
-Questions about this policy or the open-source MultiBot project can be submitted through the repository's GitHub Issues page:
-
-https://github.com/hunterl762/DiscordJs-MultiBot/issues
-
-For a privately hosted MultiBot instance, contact the operator or administrators responsible for that deployment.
+Twitch API credentials are deployment secrets stored in environment variables and are not exposed through the web dashboard.

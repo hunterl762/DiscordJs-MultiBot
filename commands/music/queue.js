@@ -1,0 +1,6 @@
+const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
+const { musicContext, existingPlayer, replySlash, replyPrefix, trackLine } = require('../../src/music/helpers');
+function embed(p){const current=p.queue.current;const next=[...p.queue].slice(0,10);return new EmbedBuilder().setColor(0x6c5ce7).setTitle('🎶 Music Queue').setDescription([current?`**Now Playing**\n${trackLine(current)}`:'**Now Playing**\nNothing','','**Up Next**',next.length?next.map((t,i)=>trackLine(t,i+1)).join('\n'):'Queue is empty.'].join('\n').slice(0,4000)).setFooter({text:`${p.queue.length} waiting • Loop: ${p.loop||'none'}`});}
+module.exports={name:'queue',aliases:['q'],category:'Music',data:new SlashCommandBuilder().setName('queue').setDescription('Show the music queue.'),guildOnly:true,
+async executeSlash(i){const c=await musicContext(i);if(c.error)return replySlash(i,c.error,true);const p=existingPlayer(c.manager,c.guild.id);if(!p)return replySlash(i,'No active queue.',true);return replySlash(i,{embeds:[embed(p)]});},
+async executePrefix(m){const c=await musicContext(m);if(c.error)return replyPrefix(m,c.error);const p=existingPlayer(c.manager,c.guild.id);if(!p)return replyPrefix(m,'No active queue.');return replyPrefix(m,{embeds:[embed(p)]});}};
