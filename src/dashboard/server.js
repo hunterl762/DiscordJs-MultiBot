@@ -680,7 +680,7 @@ function startDashboard(client) {
             ? `<div class="feature-actions"><button class="btn" type="submit">Save Feature</button><a class="btn secondary feature-open" href="${feature.link}">Open Configuration</a></div>`
             : `<button class="btn" type="submit">Save Feature</button>`;
 
-          return `<form class="feature-card priority-${escapeHtml(feature.priority.toLowerCase().replace(/[^a-z]+/g, '-'))} ${state.enabled ? 'feature-enabled' : ''}" method="post" action="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}">
+          return `<form class="feature-card priority-${escapeHtml(feature.priority.toLowerCase().replace(/[^a-z]+/g, '-'))} ${state.enabled ? 'feature-enabled' : ''}" data-feature-card data-feature-search="${escapeHtml((feature.title + ' ' + feature.description + ' ' + feature.category + ' ' + feature.priority).toLowerCase())}" method="post" action="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}">
             <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
             <div class="feature-card-head">
               <div class="feature-icon">${escapeHtml(feature.icon)}</div>
@@ -817,7 +817,7 @@ function startDashboard(client) {
             ? `<span class="command-meta">Aliases: ${command.aliases.map((alias) => escapeHtml(alias)).join(', ')}</span>`
             : '';
 
-          return `<article class="command-card ${commandStates[command.name] !== false ? 'enabled' : 'disabled'}">
+          return `<article class="command-card ${commandStates[command.name] !== false ? 'enabled' : 'disabled'}" data-command-card data-command-search="${escapeHtml((command.name + ' ' + command.description + ' ' + category + ' ' + command.subcommands.join(' ')).toLowerCase())}">
             <div class="command-card-head">
               <code>/${escapeHtml(command.name)}</code>
               <div class="command-badges">
@@ -853,35 +853,92 @@ function startDashboard(client) {
           : '—';
         return `<tr><td>${escapeHtml(t.id.slice(0, 8))}</td><td>${escapeHtml(type?.label || t.ticketTypeKey || 'Support')}</td><td>${escapeHtml(t.status)}</td><td>${t.claimedBy ? `<@${t.claimedBy}>` : 'Unclaimed'}</td><td>${escapeHtml(t.closeReason || '—')}</td><td>${escapeHtml(new Date(t.createdAt).toLocaleString())}</td><td>${transcriptLinks}</td></tr>`;
       }).join('') : '<tr><td colspan="7">No tickets yet.</td></tr>';
-      const form = `<div class="section-title"><a href="/dashboard">← Servers</a><h1>${escapeHtml(guild.name)}</h1><p>Changes apply immediately; no bot restart is required.</p></div>
-      <nav class="dashboard-jump">
-        <a href="#configuration">Configuration</a>
-        <a href="#features">Feature Center</a>
-        <a href="#ticket-config">Ticket System</a>
-        <a href="#twitch">Twitch</a>
-        <a href="#commands">Commands</a>
-        <a href="#tickets">Tickets</a>
+      const form = `<section class="server-config-hero">
+        <div class="server-config-identity">
+          <div class="server-config-icon">${guild.icon ? `<img src="https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128" alt="">` : escapeHtml(guild.name.slice(0,2).toUpperCase())}</div>
+          <div>
+            <a class="back-link" href="/dashboard">← All Servers</a>
+            <span class="eyebrow">SERVER CONTROL CENTER</span>
+            <h1>${escapeHtml(guild.name)}</h1>
+            <p>Configure the server in one place. Toggle switches save automatically; form fields save when you press their button.</p>
+          </div>
+        </div>
+        <div class="server-config-actions">
+          <a class="btn secondary" href="/dashboard/statistics#guild-${guild.id}">View Statistics</a>
+        </div>
+      </section>
+
+      <section class="server-quick-stats" aria-label="Server overview">
+        <div><strong>${guild.memberCount.toLocaleString()}</strong><span>Members</span></div>
+        <div><strong>${guild.channels.cache.size.toLocaleString()}</strong><span>Channels</span></div>
+        <div><strong>${Math.max(0,guild.roles.cache.size-1).toLocaleString()}</strong><span>Roles</span></div>
+        <div><strong>${ticketStats.open.toLocaleString()}</strong><span>Open Tickets</span></div>
+      </section>
+
+      <nav class="dashboard-jump" aria-label="Server configuration sections">
+        <a href="#configuration"><span>⚙️</span>Settings</a>
+        <a href="#features"><span>🧩</span>Features</a>
+        <a href="#ticket-config"><span>🎫</span>Tickets</a>
+        <a href="#twitch"><span>📡</span>Streaming</a>
+        <a href="#commands"><span>⌘</span>Commands</a>
+        <a href="#tickets"><span>🕘</span>History</a>
       </nav>
-      <form id="configuration" class="panel" method="post" action="/dashboard/${guild.id}"><input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}"><div class="form-grid">
-      <label>Prefix<input name="prefix" maxlength="5" value="${escapeHtml(settings.prefix)}"></label>
-      <label>Welcome Channel<select name="welcomeChannelId">${selectOptions(textChannels, settings.welcomeChannelId)}</select></label>
-      <label>Leave Channel<select name="leaveChannelId">${selectOptions(textChannels, settings.leaveChannelId)}</select></label>
-      <label>General Logs Channel<select name="logsChannelId">${selectOptions(textChannels, settings.logsChannelId)}</select></label>
-      <label>Verification Log Channel<select name="verificationLogChannelId">${selectOptions(textChannels, settings.verificationLogChannelId, 'Use General Logs Channel')}</select></label>
-      <label>Role Change Log Channel<select name="roleLogChannelId">${selectOptions(textChannels, settings.roleLogChannelId, 'Use General Logs Channel')}</select></label>
-      <label>Owner Broadcast Channel<select name="broadcastChannelId">${selectOptions(broadcastChannels, settings.broadcastChannelId, 'Automatic channel selection')}</select></label>
-      <label>Verification Channel<select name="verificationChannelId">${selectOptions(textChannels, settings.verificationChannelId)}</select></label>
-      <label>Verified Role<select name="verifiedRoleId">${selectOptions(roles, settings.verifiedRoleId)}</select></label>
-      <label>Unverified Role<select name="unverifiedRoleId">${selectOptions(roles, settings.unverifiedRoleId)}</select></label>
-      <label>Ticket Category<select name="ticketsCategoryId">${selectOptions(categories, settings.ticketsCategoryId)}</select></label>
-      <label>Ticket Panel Channel<select name="ticketPanelChannelId">${selectOptions(textChannels, settings.ticketPanelChannelId)}</select></label>
-      <label>Ticket Staff Role<select name="ticketStaffRoleId">${selectOptions(roles, settings.ticketStaffRoleId)}</select></label>
-      </div><div class="checks">
-      <label><input class="autosave-toggle" type="checkbox" name="loggingEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="loggingEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.loggingEnabled ? 'checked' : ''}> Logging enabled</label>
-      <label><input class="autosave-toggle" type="checkbox" name="welcomeEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="welcomeEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.welcomeEnabled ? 'checked' : ''}> Welcome messages enabled</label>
-      <label><input class="autosave-toggle" type="checkbox" name="verificationEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="verificationEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.verificationEnabled ? 'checked' : ''}> Member verification enabled</label>
-      <label><input class="autosave-toggle" type="checkbox" name="prefixCommandsEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="prefixCommandsEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.prefixCommandsEnabled ? 'checked' : ''}> Legacy prefix commands enabled</label>
-      </div><button class="btn" type="submit">Save Settings</button></form>
+
+      <form id="configuration" class="panel settings-panel" method="post" action="/dashboard/${guild.id}">
+        <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+        <div class="panel-heading-row settings-heading">
+          <div>
+            <span class="eyebrow">CORE SETTINGS</span>
+            <h2>Server Configuration</h2>
+            <p>Common Discord channels and roles used by multiple Kryndexa modules.</p>
+          </div>
+          <span class="settings-save-note">Form fields save together</span>
+        </div>
+
+        <div class="settings-groups">
+          <section class="settings-group">
+            <div class="settings-group-heading"><div class="settings-group-icon">🏠</div><div><h3>General & Community</h3><p>Basic command and member messaging destinations.</p></div></div>
+            <div class="form-grid">
+              <label>Command Prefix<input name="prefix" maxlength="5" value="${escapeHtml(settings.prefix)}"></label>
+              <label>Owner Broadcast Channel<select name="broadcastChannelId">${selectOptions(broadcastChannels, settings.broadcastChannelId, 'Automatic channel selection')}</select></label>
+              <label>Welcome Channel<select name="welcomeChannelId">${selectOptions(textChannels, settings.welcomeChannelId)}</select></label>
+              <label>Leave Channel<select name="leaveChannelId">${selectOptions(textChannels, settings.leaveChannelId)}</select></label>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <div class="settings-group-heading"><div class="settings-group-icon">🛡️</div><div><h3>Logging & Verification</h3><p>Choose where moderation and member verification activity is sent.</p></div></div>
+            <div class="form-grid">
+              <label>General Logs Channel<select name="logsChannelId">${selectOptions(textChannels, settings.logsChannelId)}</select></label>
+              <label>Verification Log Channel<select name="verificationLogChannelId">${selectOptions(textChannels, settings.verificationLogChannelId, 'Use General Logs Channel')}</select></label>
+              <label>Role Change Log Channel<select name="roleLogChannelId">${selectOptions(textChannels, settings.roleLogChannelId, 'Use General Logs Channel')}</select></label>
+              <label>Verification Channel<select name="verificationChannelId">${selectOptions(textChannels, settings.verificationChannelId)}</select></label>
+              <label>Verified Role<select name="verifiedRoleId">${selectOptions(roles, settings.verifiedRoleId)}</select></label>
+              <label>Unverified Role<select name="unverifiedRoleId">${selectOptions(roles, settings.unverifiedRoleId)}</select></label>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <div class="settings-group-heading"><div class="settings-group-icon">🎫</div><div><h3>Ticket Defaults</h3><p>Fallback category, panel channel and staff role for the ticket system.</p></div></div>
+            <div class="form-grid">
+              <label>Ticket Category<select name="ticketsCategoryId">${selectOptions(categories, settings.ticketsCategoryId)}</select></label>
+              <label>Ticket Panel Channel<select name="ticketPanelChannelId">${selectOptions(textChannels, settings.ticketPanelChannelId)}</select></label>
+              <label>Ticket Staff Role<select name="ticketStaffRoleId">${selectOptions(roles, settings.ticketStaffRoleId)}</select></label>
+            </div>
+          </section>
+        </div>
+
+        <div class="settings-toggle-section">
+          <div class="settings-group-heading"><div class="settings-group-icon">✓</div><div><h3>Core Module Switches</h3><p>These switches autosave as soon as you change them.</p></div></div>
+          <div class="checks settings-checks">
+            <label><input class="autosave-toggle" type="checkbox" name="loggingEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="loggingEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.loggingEnabled ? 'checked' : ''}> <span><strong>Logging</strong><small>Record important server activity.</small></span></label>
+            <label><input class="autosave-toggle" type="checkbox" name="welcomeEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="welcomeEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.welcomeEnabled ? 'checked' : ''}> <span><strong>Welcome Messages</strong><small>Greet new members automatically.</small></span></label>
+            <label><input class="autosave-toggle" type="checkbox" name="verificationEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="verificationEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.verificationEnabled ? 'checked' : ''}> <span><strong>Member Verification</strong><small>Use the configured verification flow.</small></span></label>
+            <label><input class="autosave-toggle" type="checkbox" name="prefixCommandsEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="prefixCommandsEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.prefixCommandsEnabled ? 'checked' : ''}> <span><strong>Legacy Prefix Commands</strong><small>Allow non-slash command fallbacks.</small></span></label>
+          </div>
+        </div>
+        <div class="settings-footer"><span>Channel, role and prefix changes require this save button.</span><button class="btn" type="submit">Save Server Settings</button></div>
+      </form>
 
       <section id="features" class="panel feature-center-panel">
         <div class="panel-heading-row">
@@ -892,7 +949,12 @@ function startDashboard(client) {
           </div>
           <span class="command-total">${featureStates.filter((feature) => feature.enabled).length}/${featureStates.length} enabled</span>
         </div>
+        <div class="dashboard-filter-bar">
+          <label class="server-search"><span>🔎</span><input type="search" placeholder="Search features by name, category or purpose" data-filter-selector="[data-feature-card]" data-filter-attribute="data-feature-search" data-filter-empty="#featureSearchEmpty"></label>
+          <span>Use search to quickly find a module.</span>
+        </div>
         <div class="feature-grid">${featureCards}</div>
+        <div id="featureSearchEmpty" class="search-empty-state" hidden>No features match your search.</div>
 
         <div class="automation-builder">
           <div class="category-heading"><h3>⚡ Custom Automation Rules</h3><span>${automationRules.length} rule${automationRules.length === 1 ? '' : 's'}</span></div>
@@ -1015,7 +1077,12 @@ function startDashboard(client) {
           </div>
           <span class="command-total">${catalog.length} loaded</span>
         </div>
+        <div class="dashboard-filter-bar">
+          <label class="server-search"><span>🔎</span><input type="search" placeholder="Search commands, categories or subcommands" data-filter-selector="[data-command-card]" data-filter-attribute="data-command-search" data-filter-empty="#commandSearchEmpty"></label>
+          <span>${catalog.length} commands available</span>
+        </div>
         ${commandGroups}
+        <div id="commandSearchEmpty" class="search-empty-state" hidden>No commands match your search.</div>
       </section>
 
       <section id="tickets" class="panel"><h2>Recent Tickets</h2><div class="table-wrap"><table><thead><tr><th>Ticket</th><th>Type</th><th>Status</th><th>Claimed By</th><th>Close Reason</th><th>Created</th><th>Transcript</th></tr></thead><tbody>${transcriptRows}</tbody></table></div></section>`;
