@@ -159,7 +159,7 @@ function page(title, body, user) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-dashboard-icons">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-stat-icons-layout">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -968,12 +968,42 @@ function startDashboard(client) {
         </section>
 
         <section class="server-stats-summary dashboard-server-summary" aria-label="Managed server totals">
-          <div class="summary-card"><span class="summary-icon">◈</span><div><strong>${rows.length.toLocaleString()}</strong><span>Servers</span></div></div>
-          <div class="summary-card"><span class="summary-icon">👥</span><div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div></div>
-          <div class="summary-card"><span class="summary-icon">#</span><div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div></div>
-          <div class="summary-card"><span class="summary-icon">◆</span><div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div></div>
-          <div class="summary-card"><span class="summary-icon">🎫</span><div><strong>${totals.openTickets.toLocaleString()}</strong><span>Open Tickets</span></div></div>
-          <div class="summary-card"><span class="summary-icon">⌘</span><div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div></div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-servers" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01M12 7h5M12 17h5"/></svg>
+            </span>
+            <div><strong>${rows.length.toLocaleString()}</strong><span>Servers</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-members" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-channels" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 9h14M4 15h14M10 3 8 21M16 3l-2 18"/></svg>
+            </span>
+            <div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-roles" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
+            <div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-tickets" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 6h18v5a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4V6Z"/><path d="M13 9v6"/></svg>
+            </span>
+            <div><strong>${totals.openTickets.toLocaleString()}</strong><span>Open Tickets</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-commands" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+            </span>
+            <div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div>
+          </div>
         </section>
 
         <section class="dashboard-server-section">
