@@ -216,6 +216,86 @@ async function getCloudflareCertificatePacks() {
   }
 }
 
+function publicBaseUrl() {
+  const configured = String(process.env.BASE_URL || '').trim();
+
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      url.pathname = '/';
+      url.search = '';
+      url.hash = '';
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      // Fall through to production/local defaults.
+    }
+  }
+
+  if (process.env.NODE_ENV === 'production') return 'https://kryndexabot.xyz';
+
+  const port = Number(process.env.PORT || 3000);
+  return `http://localhost:${port}`;
+}
+
+function absoluteWebUrl(pathname = '/') {
+  const base = publicBaseUrl();
+  try {
+    return new URL(pathname || '/', `${base}/`).toString();
+  } catch {
+    return `${base}/`;
+  }
+}
+
+function canonicalHost() {
+  return String(process.env.WEB_CANONICAL_HOST || 'kryndexabot.xyz')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+}
+
+function metaDescriptionForTitle(title) {
+  const value = String(title || '').toLowerCase();
+
+  if (value.includes('features')) {
+    return 'Explore Kryndexa Bot features for moderation, tickets, logging, music, automations, streaming alerts, analytics and Discord server management.';
+  }
+  if (value.includes('privacy')) {
+    return 'Read the Kryndexa Bot privacy policy and learn how Discord data, dashboard sessions, tickets and essential cookies are handled.';
+  }
+  if (value.includes('terms')) {
+    return 'Read the Kryndexa Bot Terms of Service for the Discord bot, dashboard, commands, tickets, integrations and related services.';
+  }
+  if (value.includes('statistics')) {
+    return 'View Kryndexa Bot server statistics, members, channels, roles, tickets and command activity from the web dashboard.';
+  }
+  if (value.includes('dashboard') || value.includes('settings')) {
+    return 'Manage your Discord servers with the Kryndexa Bot dashboard, including settings, features, tickets, commands, integrations and analytics.';
+  }
+
+  return 'Kryndexa Bot is a Discord.js v14 command center for moderation, tickets, logging, music, streaming alerts, automations, analytics and server configuration.';
+}
+
+function pageMeta(title, meta = {}) {
+  const description = String(meta.description || metaDescriptionForTitle(title)).trim();
+  const canonical = absoluteWebUrl(meta.path || '/');
+  const image = String(
+    meta.image
+      || process.env.WEB_META_IMAGE_URL
+      || absoluteWebUrl('/favicon.ico'),
+  ).trim();
+  const robots = String(meta.robots || (meta.private ? 'noindex,nofollow,noarchive' : 'index,follow')).trim();
+  const fullTitle = String(title || 'Kryndexa Bot').trim();
+
+  return {
+    description,
+    canonical,
+    image,
+    robots,
+    title: fullTitle,
+  };
+}
+
 function httpsRedirectTarget(req) {
   const baseUrl = String(process.env.BASE_URL || '').trim();
 
@@ -263,7 +343,8 @@ function renderAddBotButton() {
   return `<a class="btn add-bot-button" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`;
 }
 
-function page(title, body, user) {
+function page(title, body, user, meta = {}) {
+  const seo = pageMeta(title, meta);
   const auth = user
     ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
     : '<a class="btn compact" href="/login">Login with Discord</a>';
@@ -284,9 +365,27 @@ function page(title, body, user) {
 
   return `<!doctype html><html lang="en" data-theme="dark"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)}</title>
+<title>${escapeHtml(seo.title)}</title>
+<meta name="description" content="${escapeHtml(seo.description)}">
+<meta name="robots" content="${escapeHtml(seo.robots)}">
+<meta name="application-name" content="Kryndexa Bot">
+<meta name="apple-mobile-web-app-title" content="Kryndexa Bot">
+<meta name="theme-color" content="#5865f2">
+<link rel="canonical" href="${escapeHtml(seo.canonical)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Kryndexa Bot">
+<meta property="og:title" content="${escapeHtml(seo.title)}">
+<meta property="og:description" content="${escapeHtml(seo.description)}">
+<meta property="og:url" content="${escapeHtml(seo.canonical)}">
+<meta property="og:image" content="${escapeHtml(seo.image)}">
+<meta property="og:image:alt" content="Kryndexa Bot Discord server control center">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escapeHtml(seo.title)}">
+<meta name="twitter:description" content="${escapeHtml(seo.description)}">
+<meta name="twitter:image" content="${escapeHtml(seo.image)}">
+<meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-cloudflare-ssl">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-kryndexa-domain-meta">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -678,6 +777,18 @@ function startDashboard(client) {
   }
 
   app.use((req, res, next) => {
+    if (!envFlag('WEB_CANONICAL_REDIRECT')) return next();
+
+    const expectedHost = canonicalHost();
+    const receivedHost = String(req.hostname || '').trim().toLowerCase();
+
+    if (!expectedHost || !receivedHost || receivedHost === expectedHost) return next();
+
+    const destination = new URL(req.originalUrl || req.url || '/', `https://${expectedHost}`);
+    return res.redirect(308, destination.toString());
+  });
+
+  app.use((req, res, next) => {
     const forwardedProto = String(req.get('x-forwarded-proto') || '')
       .split(',')[0]
       .trim()
@@ -766,7 +877,10 @@ function startDashboard(client) {
         </div>
       </aside>
     </section>`;
-    res.send(page('Kryndexa Bot', body, req.session.user));
+    res.send(page('Kryndexa Bot', body, req.session.user, {
+      path: '/',
+      description: 'Kryndexa Bot is your Discord server command center for moderation, advanced tickets, logging, music, streaming alerts, automations, analytics and server configuration.',
+    }));
   });
 
   app.get('/features', (req, res) => {
@@ -777,7 +891,10 @@ function startDashboard(client) {
     }).join('');
 
     const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : '<a class="btn" href="/login">Login to Dashboard</a>'} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
-    return res.send(page('Features • Kryndexa Bot', body, req.session.user));
+    return res.send(page('Features • Kryndexa Bot', body, req.session.user, {
+      path: '/features',
+      description: 'Explore Kryndexa Bot modules for moderation, tickets, logging, verification, music, automations, streaming alerts, analytics and Discord community management.',
+    }));
   });
 
   app.get('/privacy', (req, res) => {
@@ -811,7 +928,10 @@ function startDashboard(client) {
       </div>
     </div>`;
 
-    res.send(page('Privacy Policy • MultiBot', body, req.session.user));
+    res.send(page('Privacy Policy • Kryndexa Bot', body, req.session.user, {
+      path: '/privacy',
+      description: 'Kryndexa Bot privacy policy covering Discord data, dashboard sessions, tickets, integrations and essential cookies.',
+    }));
   });
 
   app.get('/terms', (req, res) => {
@@ -845,7 +965,10 @@ function startDashboard(client) {
       </div>
     </div>`;
 
-    res.send(page('Terms of Service • MultiBot', body, req.session.user));
+    res.send(page('Terms of Service • Kryndexa Bot', body, req.session.user, {
+      path: '/terms',
+      description: 'Kryndexa Bot Terms of Service covering the Discord bot, dashboard, commands, tickets, integrations and service usage.',
+    }));
   });
 
   app.post('/cookie-consent/accept', (req, res) => {
@@ -1190,7 +1313,10 @@ function startDashboard(client) {
         </section>
       </section>`;
 
-      return res.send(page('Dashboard • Kryndexa Bot', body, req.session.user));
+      return res.send(page('Dashboard • Kryndexa Bot', body, req.session.user, {
+        path: '/dashboard',
+        private: true,
+      }));
     } catch (error) {
       console.error(error);
       if (error.status === 429) return res.status(503).send(page('Discord rate limit', '<div class="empty">Discord is temporarily rate limiting dashboard access. Refresh shortly.</div>', req.session.user));
@@ -1231,7 +1357,10 @@ function startDashboard(client) {
       const body = `<section class="stats-page-hero"><div><span class="eyebrow">SERVER STATISTICS</span><h1>Server Overview</h1><p>Compare the servers you manage without opening each configuration page.</p></div><a class="btn secondary" href="/dashboard">← Your Servers</a></section>
         <section class="server-stats-summary"><div><strong>${rows.length}</strong><span>Servers</span></div><div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div><div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div><div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div><div><strong>${totals.openTickets}</strong><span>Open Tickets</span></div><div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div></section>
         <section class="panel statistics-panel"><div class="stats-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Filter server statistics" data-filter-selector="[data-stat-row]" data-filter-attribute="data-stat-search" data-filter-empty="#statisticsSearchEmpty"></label><span>Sorted by member count</span></div><div class="table-wrap"><table class="server-statistics-table"><thead><tr><th>Server</th><th>Members</th><th>Channels</th><th>Roles</th><th>Boosts</th><th>Tickets</th><th>Commands</th><th></th></tr></thead><tbody>${tableRows}</tbody></table></div><div id="statisticsSearchEmpty" class="search-empty-state" hidden>No server statistics match your search.</div></section>`;
-      return res.send(page('Server Statistics • Kryndexa Bot', body, req.session.user));
+      return res.send(page('Server Statistics • Kryndexa Bot', body, req.session.user, {
+        path: '/dashboard/statistics',
+        private: true,
+      }));
     } catch (error) {
       console.error(error);
       return res.status(500).send(page('Statistics error', '<div class="empty">Unable to load server statistics.</div>', req.session.user));
@@ -1616,7 +1745,11 @@ function startDashboard(client) {
       </section>
 
       <section id="tickets" class="panel"><h2>Recent Tickets</h2><div class="table-wrap"><table><thead><tr><th>Ticket</th><th>Type</th><th>Status</th><th>Claimed By</th><th>Close Reason</th><th>Created</th><th>Transcript</th></tr></thead><tbody>${transcriptRows}</tbody></table></div></section>`;
-      res.send(page(`${guild.name} Settings`, form, req.session.user));
+      res.send(page(`${guild.name} Settings • Kryndexa Bot`, form, req.session.user, {
+        path: `/dashboard/${guild.id}`,
+        private: true,
+        description: `Configure Kryndexa Bot settings and modules for ${guild.name}.`,
+      }));
     } catch (error) {
       console.error(error);
       res.status(500).send(page('Dashboard error', `<div class="empty"><strong>Unable to load server settings.</strong><p>${process.env.NODE_ENV === 'production' ? 'Check the MySQL connection and schema.' : escapeHtml(error.message || String(error))}</p></div>`, req.session.user));
