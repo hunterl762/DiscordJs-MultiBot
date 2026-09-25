@@ -172,7 +172,7 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   await initDatabase();
   await client.login(process.env.DISCORD_TOKEN);
   await waitForReady();
-  startDashboard(client);
+  await startDashboard(client);
 
   try {
     await registerSlashCommands();
