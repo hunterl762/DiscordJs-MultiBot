@@ -15,11 +15,12 @@
   "dependencies": {
     "discord.js": "^14.27.0",
     "dotenv": "^17.2.2",
+    "ejs": "^3.1.10",
     "express": "^5.1.0",
     "express-mysql-session": "^3.0.3",
     "express-session": "^1.19.0",
-    "mysql2": "^3.24.4",
     "kazagumo": "^3.4.2",
+    "mysql2": "^3.24.4",
     "shoukaku": "^4.3.0"
   },
   "devDependencies": {},

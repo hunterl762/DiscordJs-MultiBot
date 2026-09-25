@@ -1,0 +1,42 @@
+<%- include('../partials/shell-start') %>
+
+<section class="ddb-page-hero">
+  <div>
+    <span class="ddb-kicker">YOUR COMMAND CENTER</span>
+    <h1>Your Servers</h1>
+    <p>Choose a server to configure Kryndexa Bot or compare activity across the communities you manage.</p>
+  </div>
+  <a class="ddb-button" href="/dashboard/statistics">View Statistics</a>
+</section>
+
+<section class="ddb-metric-grid ddb-metric-grid-3">
+  <article class="ddb-metric-card"><span>Managed Servers</span><strong><%= guilds.length %></strong><small>Servers you can configure</small></article>
+  <article class="ddb-metric-card"><span>Total Members</span><strong><%= totalMembers.toLocaleString() %></strong><small>Across your managed servers</small></article>
+  <article class="ddb-metric-card"><span>Bot Servers</span><strong><%= totalBotServers.toLocaleString() %></strong><small>Connected to Kryndexa Bot</small></article>
+</section>
+
+<section class="ddb-card">
+  <div class="ddb-card-header ddb-card-header-row">
+    <div><span class="ddb-kicker">SERVER SELECT</span><h2>Manage a server</h2></div>
+    <label class="ddb-search"><span>⌕</span><input type="search" placeholder="Search by server name or ID" data-filter-selector="[data-server-card]" data-filter-attribute="data-search" data-filter-empty="#serverSearchEmpty"></label>
+  </div>
+  <div class="ddb-server-grid">
+    <% guilds.forEach((guild) => { %>
+      <article class="ddb-server-card" data-server-card data-search="<%= (guild.name + ' ' + guild.id).toLowerCase() %>">
+        <div class="ddb-server-card-top">
+          <span class="ddb-server-icon">
+            <% if (guild.icon) { %><img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png?size=128" alt=""><% } else { %><%= guild.name.slice(0,2).toUpperCase() %><% } %>
+          </span>
+          <div class="ddb-server-title"><strong><%= guild.name %></strong><small><%= guild.memberCount.toLocaleString() %> members • <%= guild.channelCount %> channels</small></div>
+        </div>
+        <div class="ddb-server-actions">
+          <a class="ddb-button ddb-button-primary" href="/dashboard/<%= guild.id %>">Configure</a>
+          <a class="ddb-button" href="/dashboard/statistics#guild-<%= guild.id %>">Stats</a>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+  <div id="serverSearchEmpty" class="ddb-empty" hidden>No servers match your search.</div>
+</section>
+
+<%- include('../partials/shell-end') %>

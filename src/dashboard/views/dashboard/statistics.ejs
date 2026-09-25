@@ -1,0 +1,41 @@
+<%- include('../partials/shell-start') %>
+
+<section class="ddb-page-hero">
+  <div><span class="ddb-kicker">SERVER STATISTICS</span><h1>Server Overview</h1><p>Compare the communities you manage from one dashboard.</p></div>
+  <a class="ddb-button" href="/dashboard">← Your Servers</a>
+</section>
+
+<section class="ddb-metric-grid">
+  <article class="ddb-metric-card"><span>Servers</span><strong><%= rows.length %></strong></article>
+  <article class="ddb-metric-card"><span>Members</span><strong><%= totals.members.toLocaleString() %></strong></article>
+  <article class="ddb-metric-card"><span>Channels</span><strong><%= totals.channels.toLocaleString() %></strong></article>
+  <article class="ddb-metric-card"><span>Roles</span><strong><%= totals.roles.toLocaleString() %></strong></article>
+  <article class="ddb-metric-card"><span>Open Tickets</span><strong><%= totals.openTickets.toLocaleString() %></strong></article>
+  <article class="ddb-metric-card"><span>Command Uses</span><strong><%= totals.commandUses.toLocaleString() %></strong><small>Last 30 days</small></article>
+</section>
+
+<section class="ddb-card">
+  <div class="ddb-card-header ddb-card-header-row">
+    <div><span class="ddb-kicker">MANAGED SERVERS</span><h2>Detailed statistics</h2></div>
+    <label class="ddb-search"><span>⌕</span><input type="search" placeholder="Filter server statistics" data-filter-selector="[data-stat-row]" data-filter-attribute="data-search" data-filter-empty="#statsSearchEmpty"></label>
+  </div>
+  <div class="ddb-table-wrap">
+    <table class="ddb-table">
+      <thead><tr><th>Server</th><th>Members</th><th>Channels</th><th>Roles</th><th>Boosts</th><th>Tickets</th><th>Commands</th><th></th></tr></thead>
+      <tbody>
+        <% rows.forEach((item) => { %>
+          <tr id="guild-<%= item.id %>" data-stat-row data-search="<%= (item.name + ' ' + item.id).toLowerCase() %>">
+            <td><div class="ddb-table-server"><span class="ddb-avatar"><% if (item.icon) { %><img src="https://cdn.discordapp.com/icons/<%= item.id %>/<%= item.icon %>.png?size=64" alt=""><% } else { %><%= item.name.slice(0,2).toUpperCase() %><% } %></span><div><strong><%= item.name %></strong><small><%= item.id %></small></div></div></td>
+            <td><%= item.members.toLocaleString() %></td><td><%= item.channels %></td><td><%= item.roles %></td><td><%= item.boosts %></td>
+            <td><strong><%= item.openTickets %> open</strong><small><%= item.closedTickets %> closed</small></td>
+            <td><strong><%= item.commandUses.toLocaleString() %></strong><small><%= item.commandUsers.toLocaleString() %> users</small></td>
+            <td><a class="ddb-button ddb-button-small" href="/dashboard/<%= item.id %>">Configure</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <div id="statsSearchEmpty" class="ddb-empty" hidden>No statistics match your search.</div>
+</section>
+
+<%- include('../partials/shell-end') %>

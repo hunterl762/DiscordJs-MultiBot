@@ -1,0 +1,70 @@
+<div class="ddb-brand-card">
+  <a href="/dashboard" class="ddb-brand-name">Kryndexa Bot</a>
+  <span>Server control center</span>
+</div>
+
+<nav class="ddb-nav" aria-label="Dashboard navigation">
+  <a class="<%= activePage === 'dashboard' ? 'active' : '' %>" href="/dashboard"><span>⌂</span> Dashboard</a>
+  <a class="<%= activePage === 'statistics' ? 'active' : '' %>" href="/dashboard/statistics"><span>▥</span> Server Statistics</a>
+  <a href="/features"><span>✦</span> Public Features</a>
+</nav>
+
+<% if (currentGuild) { %>
+  <div class="ddb-sidebar-section">
+    <span class="ddb-sidebar-label">CURRENT SERVER</span>
+    <div class="ddb-current-guild">
+      <% if (currentGuild.icon) { %>
+        <img src="https://cdn.discordapp.com/icons/<%= currentGuild.id %>/<%= currentGuild.icon %>.png?size=96" alt="">
+      <% } else { %>
+        <span><%= currentGuild.name.slice(0,2).toUpperCase() %></span>
+      <% } %>
+      <div><strong><%= currentGuild.name %></strong><small><%= currentGuild.memberCount.toLocaleString() %> members</small></div>
+    </div>
+    <nav class="ddb-nav ddb-guild-nav" aria-label="Server sections">
+      <a href="#overview"><span>◈</span> Overview</a>
+      <a href="#settings"><span>⚙</span> Settings</a>
+      <a href="#features"><span>✦</span> Features</a>
+      <a href="#tickets"><span>▤</span> Tickets</a>
+      <a href="#streaming"><span>◉</span> Streaming</a>
+      <a href="#commands"><span>⌘</span> Commands</a>
+      <a href="#history"><span>◷</span> History</a>
+    </nav>
+  </div>
+<% } %>
+
+<div class="ddb-sidebar-section ddb-server-list-section">
+  <div class="ddb-sidebar-row"><span class="ddb-sidebar-label">YOUR SERVERS</span><span><%= sidebarGuilds.length %></span></div>
+  <label class="ddb-sidebar-search">
+    <span>⌕</span>
+    <input type="search" placeholder="Search servers" data-filter-selector="[data-sidebar-guild]" data-filter-attribute="data-search">
+  </label>
+  <div class="ddb-sidebar-guilds">
+    <% sidebarGuilds.forEach((server) => { %>
+      <a class="ddb-sidebar-guild <%= currentGuild?.id === server.id ? 'active' : '' %>"
+         href="/dashboard/<%= server.id %>"
+         data-sidebar-guild
+         data-search="<%= (server.name + ' ' + server.id).toLowerCase() %>">
+        <span class="ddb-avatar">
+          <% if (server.icon) { %>
+            <img src="https://cdn.discordapp.com/icons/<%= server.id %>/<%= server.icon %>.png?size=64" alt="">
+          <% } else { %>
+            <%= server.name.slice(0,2).toUpperCase() %>
+          <% } %>
+        </span>
+        <span class="ddb-sidebar-guild-copy"><strong><%= server.name %></strong><small><%= server.memberCount.toLocaleString() %> members</small></span>
+      </a>
+    <% }) %>
+  </div>
+</div>
+
+<div class="ddb-user-card">
+  <span class="ddb-avatar ddb-user-avatar">
+    <% if (user?.avatar) { %>
+      <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png?size=64" alt="">
+    <% } else { %>
+      <%= (user?.username || 'U').slice(0,2).toUpperCase() %>
+    <% } %>
+  </span>
+  <span class="ddb-user-copy"><strong><%= user?.username || 'Discord User' %></strong><small>Administrator</small></span>
+  <a href="/logout" class="ddb-icon-button ddb-logout" title="Log out" aria-label="Log out">⇥</a>
+</div>

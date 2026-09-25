@@ -1,0 +1,185 @@
+<%- include('../partials/shell-start') %>
+
+<section id="overview" class="ddb-guild-hero">
+  <div class="ddb-guild-hero-main">
+    <span class="ddb-server-icon ddb-server-icon-large">
+      <% if (guild.icon) { %><img src="https://cdn.discordapp.com/icons/<%= guild.id %>/<%= guild.icon %>.png?size=128" alt=""><% } else { %><%= guild.name.slice(0,2).toUpperCase() %><% } %>
+    </span>
+    <div><span class="ddb-kicker">SERVER DASHBOARD</span><h1><%= guild.name %></h1><p>Changes made here are stored in MySQL and applied to Kryndexa Bot without a restart.</p></div>
+  </div>
+  <a class="ddb-button" href="/dashboard/statistics#guild-<%= guild.id %>">View Statistics</a>
+</section>
+
+<section class="ddb-metric-grid ddb-metric-grid-4">
+  <article class="ddb-metric-card"><span>Members</span><strong><%= currentGuild.memberCount.toLocaleString() %></strong></article>
+  <article class="ddb-metric-card"><span>Channels</span><strong><%= currentGuild.channelCount.toLocaleString() %></strong></article>
+  <article class="ddb-metric-card"><span>Roles</span><strong><%= currentGuild.roleCount.toLocaleString() %></strong></article>
+  <article class="ddb-metric-card"><span>Open Tickets</span><strong><%= ticketStats.open.toLocaleString() %></strong></article>
+</section>
+
+<form id="settings" class="ddb-card" method="post" action="/dashboard/<%= guild.id %>">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <div class="ddb-card-header ddb-card-header-row">
+    <div><span class="ddb-kicker">CORE SETTINGS</span><h2>Server Configuration</h2><p>Shared channels and roles used by Kryndexa modules.</p></div>
+    <button class="ddb-button ddb-button-primary" type="submit">Save Settings</button>
+  </div>
+  <div class="ddb-settings-grid">
+    <section class="ddb-subcard"><div class="ddb-subcard-title"><span>⌂</span><div><h3>General & Community</h3><p>Basic command and member messaging options.</p></div></div><div class="ddb-form-grid">
+      <label>Command Prefix<input name="prefix" maxlength="5" value="<%= settings.prefix %>"></label>
+      <label>Owner Broadcast Channel<select name="broadcastChannelId"><%- selectOptions(broadcastChannels, settings.broadcastChannelId, 'Automatic channel selection') %></select></label>
+      <label>Welcome Channel<select name="welcomeChannelId"><%- selectOptions(textChannels, settings.welcomeChannelId) %></select></label>
+      <label>Leave Channel<select name="leaveChannelId"><%- selectOptions(textChannels, settings.leaveChannelId) %></select></label>
+    </div></section>
+    <section class="ddb-subcard"><div class="ddb-subcard-title"><span>◆</span><div><h3>Logging & Verification</h3><p>Moderation, role and member-verification destinations.</p></div></div><div class="ddb-form-grid">
+      <label>General Logs Channel<select name="logsChannelId"><%- selectOptions(textChannels, settings.logsChannelId) %></select></label>
+      <label>Verification Log Channel<select name="verificationLogChannelId"><%- selectOptions(textChannels, settings.verificationLogChannelId, 'Use General Logs Channel') %></select></label>
+      <label>Role Change Log Channel<select name="roleLogChannelId"><%- selectOptions(textChannels, settings.roleLogChannelId, 'Use General Logs Channel') %></select></label>
+      <label>Verification Channel<select name="verificationChannelId"><%- selectOptions(textChannels, settings.verificationChannelId) %></select></label>
+      <label>Verified Role<select name="verifiedRoleId"><%- selectOptions(roles, settings.verifiedRoleId) %></select></label>
+      <label>Unverified Role<select name="unverifiedRoleId"><%- selectOptions(roles, settings.unverifiedRoleId) %></select></label>
+    </div></section>
+    <section class="ddb-subcard ddb-subcard-wide"><div class="ddb-subcard-title"><span>▤</span><div><h3>Ticket Defaults</h3><p>Fallback category, panel channel and staff role.</p></div></div><div class="ddb-form-grid ddb-form-grid-3">
+      <label>Ticket Category<select name="ticketsCategoryId"><%- selectOptions(categories, settings.ticketsCategoryId) %></select></label>
+      <label>Ticket Panel Channel<select name="ticketPanelChannelId"><%- selectOptions(textChannels, settings.ticketPanelChannelId) %></select></label>
+      <label>Ticket Staff Role<select name="ticketStaffRoleId"><%- selectOptions(roles, settings.ticketStaffRoleId) %></select></label>
+    </div></section>
+  </div>
+  <div class="ddb-toggle-grid">
+    <% [
+      ['loggingEnabled','Logging','Record important server activity.'],
+      ['welcomeEnabled','Welcome Messages','Greet new members automatically.'],
+      ['verificationEnabled','Member Verification','Use the configured verification flow.'],
+      ['prefixCommandsEnabled','Legacy Prefix Commands','Allow non-slash command fallbacks.']
+    ].forEach(([key,label,description]) => { %>
+      <label class="ddb-toggle-card"><input class="ddb-autosave" type="checkbox" name="<%= key %>" data-autosave-url="/dashboard/<%= guild.id %>/settings/toggle" data-setting="<%= key %>" data-csrf="<%= csrf %>" <%= settings[key] ? 'checked' : '' %>><span><strong><%= label %></strong><small><%= description %></small></span></label>
+    <% }) %>
+  </div>
+</form>
+
+<section id="features" class="ddb-card">
+  <div class="ddb-card-header ddb-card-header-row">
+    <div><span class="ddb-kicker">FEATURE CENTER</span><h2>Modules & Automations</h2><p>Enable and configure server features from one place.</p></div>
+    <label class="ddb-search"><span>⌕</span><input type="search" placeholder="Search features" data-filter-selector="[data-feature-card]" data-filter-attribute="data-search" data-filter-empty="#featureSearchEmpty"></label>
+  </div>
+  <div class="ddb-feature-grid">
+    <% sortedFeatures.forEach((state) => { const feature = state.definition; %>
+      <form class="ddb-feature-card <%= state.enabled ? 'enabled' : '' %>" data-feature-card data-search="<%= (feature.title + ' ' + feature.description + ' ' + feature.category + ' ' + feature.priority).toLowerCase() %>" method="post" action="/dashboard/<%= guild.id %>/features/<%= encodeURIComponent(feature.key) %>">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <div class="ddb-feature-head"><span class="ddb-feature-icon"><%= feature.icon %></span><div><strong><%= feature.title %></strong><small><%= feature.category %> • <%= feature.priority %></small></div>
+          <% if (feature.locked) { %><span class="ddb-badge">Always On</span><% } else { %><label class="ddb-inline-toggle"><input class="ddb-autosave" type="checkbox" name="enabled" data-autosave-url="/dashboard/<%= guild.id %>/features/<%= encodeURIComponent(feature.key) %>/toggle" data-csrf="<%= csrf %>" <%= state.enabled ? 'checked' : '' %>><span>Enabled</span></label><% } %>
+        </div>
+        <p><%= feature.description %></p>
+        <% if (feature.requirement) { %><div class="ddb-note"><%= feature.requirement %></div><% } %>
+        <% if ((feature.fields || []).length) { %><div class="ddb-feature-fields"><% feature.fields.forEach((field) => { %><%- featureFieldHtml(field, state.config[field.key], featureResources) %><% }) %></div><% } %>
+        <div class="ddb-card-actions"><button class="ddb-button ddb-button-primary" type="submit">Save Feature</button><% if (feature.link) { %><a class="ddb-button" href="<%= feature.link %>">Open Configuration</a><% } %></div>
+      </form>
+    <% }) %>
+  </div>
+  <div id="featureSearchEmpty" class="ddb-empty" hidden>No features match your search.</div>
+
+  <div class="ddb-divider"></div>
+  <div class="ddb-section-heading"><div><span class="ddb-kicker">AUTOMATIONS</span><h3>Custom Automation Rules</h3></div><span class="ddb-badge"><%= automationRules.length %> rules</span></div>
+  <form class="ddb-subcard" method="post" action="/dashboard/<%= guild.id %>/automations">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="ddb-form-grid ddb-form-grid-3">
+      <label>Rule Name<input name="name" maxlength="80" placeholder="Welcome helper" required></label>
+      <label>Trigger<select name="triggerType" required><option value="member_join">Member joins</option><option value="message_contains">Message contains text</option></select></label>
+      <label>Trigger Match<input name="triggerValue" maxlength="500" placeholder="Used for message_contains"></label>
+      <label>Action<select name="actionType" required><option value="send_message">Send message</option><option value="dm_user">DM user</option><option value="add_role">Add role</option></select></label>
+      <label>Action Channel<select name="actionChannelId"><%- selectOptions(featureChannels, '', 'Use event channel / none') %></select></label>
+      <label>Action Role<select name="actionRoleId"><%- selectOptions(roles, '', 'No role') %></select></label>
+      <label class="ddb-span-all">Action Message<input name="actionMessage" maxlength="1500" placeholder="Welcome {user} to {server}!"></label>
+    </div>
+    <button class="ddb-button ddb-button-primary" type="submit">＋ Create Automation</button>
+  </form>
+  <div class="ddb-rule-grid">
+    <% automationRules.forEach((rule) => { %><article class="ddb-rule-card"><div><strong><%= rule.name %></strong><small><%= rule.triggerType %> → <%= rule.actionType %></small></div><form method="post" action="/dashboard/<%= guild.id %>/automations/<%= rule.id %>/delete" data-confirm="Delete this automation rule?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="ddb-icon-button ddb-danger" type="submit">×</button></form></article><% }) %>
+    <% if (!automationRules.length) { %><div class="ddb-empty">No custom automation rules yet.</div><% } %>
+  </div>
+</section>
+
+<section id="tickets" class="ddb-card">
+  <div class="ddb-card-header"><span class="ddb-kicker">ADVANCED TICKETS</span><h2>Ticket System</h2><p>Configure ticket limits, transcripts and departments.</p></div>
+  <div class="ddb-metric-grid ddb-metric-grid-4 ddb-inline-metrics">
+    <article class="ddb-metric-card"><span>Tracked</span><strong><%= ticketStats.total %></strong></article><article class="ddb-metric-card"><span>Open</span><strong><%= ticketStats.open %></strong></article><article class="ddb-metric-card"><span>Claimed</span><strong><%= ticketStats.claimed %></strong></article><article class="ddb-metric-card"><span>Closed</span><strong><%= ticketStats.closed %></strong></article>
+  </div>
+  <form class="ddb-subcard" method="post" action="/dashboard/<%= guild.id %>/tickets/settings">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="ddb-form-grid">
+      <label>Max Open Tickets Per Person<input type="number" name="maxOpenTicketsPerUser" min="1" max="25" value="<%= settings.maxOpenTicketsPerUser %>" required></label>
+      <label>Transcript Channel<select name="transcriptChannelId"><%- selectOptions(textChannels, settings.transcriptChannelId, 'No transcript channel') %></select></label>
+    </div>
+    <div class="ddb-toggle-grid">
+      <% [['ticketsEnabled','Ticket System'],['onlineTranscriptsEnabled','Online Transcripts'],['transcriptAttachmentsEnabled','HTML Transcript Uploads']].forEach(([key,label]) => { %>
+        <label class="ddb-toggle-card"><input class="ddb-autosave" type="checkbox" data-autosave-url="/dashboard/<%= guild.id %>/settings/toggle" data-setting="<%= key %>" data-csrf="<%= csrf %>" <%= settings[key] ? 'checked' : '' %>><span><strong><%= label %></strong><small>Autosaves immediately.</small></span></label>
+      <% }) %>
+    </div>
+    <button class="ddb-button ddb-button-primary" type="submit">Save Ticket Settings</button>
+  </form>
+  <form class="ddb-subcard ddb-publish-row" method="post" action="/dashboard/<%= guild.id %>/tickets/panel">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>Ticket Panel Channel<select name="ticketPanelChannelId" required><%- selectOptions(textChannels, settings.ticketPanelChannelId, 'Choose panel channel') %></select></label>
+    <p>Posts a fresh ticket selector using all enabled departments.</p>
+    <button class="ddb-button ddb-button-primary" type="submit">Post Ticket Panel</button>
+  </form>
+  <div class="ddb-ticket-grid">
+    <% ticketTypes.forEach((type) => { %>
+      <form class="ddb-ticket-card <%= type.enabled ? 'enabled' : '' %>" method="post" action="/dashboard/<%= guild.id %>/tickets/types/<%= encodeURIComponent(type.key) %>">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <div class="ddb-ticket-head"><span class="ddb-feature-icon"><%= type.emoji || '🎫' %></span><div><small>Department</small><strong><%= type.label %></strong></div><label class="ddb-inline-toggle"><input class="ddb-autosave" type="checkbox" name="enabled" data-autosave-url="/dashboard/<%= guild.id %>/tickets/types/<%= encodeURIComponent(type.key) %>/toggle" data-csrf="<%= csrf %>" <%= type.enabled ? 'checked' : '' %>><span>Enabled</span></label></div>
+        <div class="ddb-form-grid">
+          <label>Display Name<input name="label" maxlength="80" value="<%= type.label %>" required></label>
+          <label>Emoji<input name="emoji" maxlength="32" value="<%= type.emoji %>" placeholder="🎫"></label>
+          <label class="ddb-span-all">Description<textarea name="description" maxlength="200" rows="3" required><%= type.description %></textarea></label>
+          <label>Discord Category<select name="categoryId"><%- selectOptions(categories, type.categoryId, 'Use default ticket category') %></select></label>
+          <label>Staff Role<select name="staffRoleId"><%- selectOptions(roles, type.staffRoleId, 'Use default ticket staff role') %></select></label>
+        </div>
+        <div class="ddb-card-actions"><small>Key: <code><%= type.key %></code></small><button class="ddb-button ddb-button-primary" type="submit">Save Department</button></div>
+      </form>
+    <% }) %>
+  </div>
+</section>
+
+<section id="streaming" class="ddb-card">
+  <div class="ddb-card-header"><span class="ddb-kicker">LIVE INTEGRATION</span><h2>Streaming Alerts</h2><p>Configure Twitch live announcements for this server.</p></div>
+  <form class="ddb-subcard" method="post" action="/dashboard/<%= guild.id %>/twitch">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="ddb-form-grid">
+      <label>Twitch Username<input name="twitchLogin" maxlength="25" placeholder="streamername" required></label>
+      <label>Discord Announcement Channel<select name="discordChannelId" required><%- selectOptions(broadcastChannels, '', 'Choose a channel') %></select></label>
+      <label class="ddb-span-all">Custom Embed Message<input name="customMessage" maxlength="500" placeholder="{user} is live playing {game}! {url}"></label>
+    </div>
+    <button class="ddb-button ddb-button-primary" type="submit">＋ Add / Update Streamer</button>
+  </form>
+  <div class="ddb-stream-grid">
+    <% twitchItems.forEach((item) => { %><article class="ddb-stream-card <%= item.isLive ? 'live' : '' %>"><div class="ddb-stream-head"><span class="ddb-feature-icon">T</span><div><strong><%= item.twitchLogin %></strong><small><%= item.isLive ? 'LIVE NOW' : 'Offline' %></small></div><form method="post" action="/dashboard/<%= guild.id %>/twitch/<%= item.id %>/delete" data-confirm="Remove this Twitch alert?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="ddb-icon-button ddb-danger" type="submit">×</button></form></div><div class="ddb-stream-meta"><span><small>Discord Channel</small><strong><%= item.channelName %></strong></span><span><small>Last Announced</small><strong><%= item.lastAnnouncedLabel %></strong></span></div></article><% }) %>
+    <% if (!twitchItems.length) { %><div class="ddb-empty">No live announcements configured yet.</div><% } %>
+  </div>
+</section>
+
+<section id="commands" class="ddb-card">
+  <div class="ddb-card-header ddb-card-header-row"><div><span class="ddb-kicker">COMMAND CENTER</span><h2>Commands</h2><p><%= catalogCount %> loaded command modules.</p></div><label class="ddb-search"><span>⌕</span><input type="search" placeholder="Search commands" data-filter-selector="[data-command-card]" data-filter-attribute="data-search" data-filter-empty="#commandSearchEmpty"></label></div>
+  <% commandGroups.forEach((group) => { %>
+    <section class="ddb-command-group"><div class="ddb-section-heading"><h3><%= group.category %></h3><span class="ddb-badge"><%= group.items.length %></span></div><div class="ddb-command-grid">
+      <% group.items.forEach((command) => { const enabled = commandStates[command.name] !== false; %>
+        <article class="ddb-command-card <%= enabled ? 'enabled' : 'disabled' %>" data-command-card data-search="<%= (command.name + ' ' + command.description + ' ' + group.category + ' ' + command.subcommands.join(' ')).toLowerCase() %>">
+          <div class="ddb-command-head"><code>/<%= command.name %></code><label class="ddb-inline-toggle"><input class="ddb-autosave" type="checkbox" data-autosave-url="/dashboard/<%= guild.id %>/commands/<%= encodeURIComponent(command.name) %>/toggle" data-csrf="<%= csrf %>" <%= enabled ? 'checked' : '' %>><span>Enabled</span></label></div>
+          <p><%= command.description %></p>
+          <div class="ddb-chip-row"><span><%= command.guildOnly ? 'Server' : 'Global capable' %></span><span><%= command.prefixBackup ? 'Prefix backup' : 'Slash only' %></span></div>
+          <% if (command.subcommands.length) { %><div class="ddb-chip-row"><% command.subcommands.forEach((sub) => { %><span>/<%= command.name %> <%= sub %></span><% }) %></div><% } %>
+        </article>
+      <% }) %>
+    </div></section>
+  <% }) %>
+  <div id="commandSearchEmpty" class="ddb-empty" hidden>No commands match your search.</div>
+</section>
+
+<section id="history" class="ddb-card">
+  <div class="ddb-card-header"><span class="ddb-kicker">RECENT ACTIVITY</span><h2>Recent Tickets</h2></div>
+  <div class="ddb-table-wrap"><table class="ddb-table"><thead><tr><th>Ticket</th><th>Type</th><th>Status</th><th>Claimed</th><th>Reason</th><th>Created</th><th>Transcript</th></tr></thead><tbody>
+    <% recentTickets.forEach((ticket) => { %><tr><td><code><%= ticket.id.slice(0,8) %></code></td><td><%= ticket.typeLabel %></td><td><%= ticket.status %></td><td><%= ticket.claimedBy || 'Unclaimed' %></td><td><%= ticket.closeReason || '—' %></td><td><%= new Date(ticket.createdAt).toLocaleString() %></td><td><% if (ticket.transcriptFile) { %><% if (settings.onlineTranscriptsEnabled) { %><a href="/transcripts/<%= ticket.id %>/view" target="_blank">View</a> • <% } %><a href="/transcripts/<%= ticket.id %>">Download</a><% } else { %>—<% } %></td></tr><% }) %>
+    <% if (!recentTickets.length) { %><tr><td colspan="7">No tickets yet.</td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<%- include('../partials/shell-end') %>
