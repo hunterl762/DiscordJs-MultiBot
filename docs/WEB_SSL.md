@@ -129,3 +129,46 @@ Cloudflare Origin CA certificates are intended for the **Cloudflare → origin s
 - Automatic HTTPS Rewrites: optional
 
 The Node HTTPS server also enforces a minimum of TLS 1.2.
+
+
+## Cloudflare certificate-pack dashboard status
+
+The dashboard can query Cloudflare's certificate-pack API:
+
+```
+GET https://api.cloudflare.com/client/v4/zones/{zone_id}/ssl/certificate_packs
+```
+
+Configure:
+
+```env
+CLOUDFLARE_ZONE_ID=a0bc666fd167fd1c5a390d516c9dacb7
+CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+```
+
+The API token should be scoped to the required zone and have **SSL and Certificates Read** permission.
+
+The token stays server-side and is never sent to the dashboard browser. The dashboard shows:
+
+- certificate-pack count
+- active certificate count
+- pending/other certificate count
+- hostname count
+- Cloudflare API connectivity/error state
+
+Authenticated administrators can also inspect:
+
+```
+GET /api/cloudflare/ssl
+```
+
+### Edge certificates vs Origin CA
+
+The Cloudflare `ssl/certificate_packs` endpoint reports certificates deployed at the **Cloudflare edge**. It does not provide the private key for your Cloudflare Origin CA certificate and does not replace:
+
+```env
+WEB_CLOUDFLARE_ORIGIN_KEY_FILE=
+WEB_CLOUDFLARE_ORIGIN_CERT_FILE=
+```
+
+Those local PEM files are still used for the encrypted **Cloudflare → Kryndexa origin** connection.
