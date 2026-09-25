@@ -2231,11 +2231,42 @@ function startDashboard(client) {
   const port = Number(process.env.PORT || 3000);
   const tlsConfig = loadDashboardTlsOptions();
 
-  if (tlsConfig) {
-    const httpsPort = Number(process.env.WEB_HTTPS_PORT || port || 3443);
-    const server = https.createServer(tlsConfig.options, app);
+  const startHttpApp = (listenPort, reason = '') => {
+    const httpServer = app.listen(listenPort);
 
-    server.listen(httpsPort, () => {
+    httpServer.once('listening', () => {
+      const advertisedUrl = process.env.BASE_URL || `http://localhost:${listenPort}`;
+      console.log(`Dashboard listening internally on http://127.0.0.1:${listenPort}`);
+
+      if (reason) console.warn(`[Dashboard SSL] ${reason}`);
+
+      if (envFlag('WEB_FORCE_HTTPS') || process.env.NODE_ENV === 'production') {
+        console.log(`[Dashboard SSL] Public URL remains ${advertisedUrl}.`);
+        console.log('[Dashboard SSL] The service currently owning port 443 must reverse-proxy HTTPS traffic to this internal dashboard port.');
+      }
+    });
+
+    httpServer.on('error', (error) => {
+      if (error?.code === 'EADDRINUSE') {
+        console.error(`[Dashboard] Cannot start internal web panel: port ${listenPort} is already in use.`);
+        console.error('[Dashboard] Change PORT / WEB_INTERNAL_PORT or stop the process using that port.');
+        return;
+      }
+
+      console.error('[Dashboard] HTTP server error:', error);
+    });
+
+    return httpServer;
+  };
+
+  if (tlsConfig) {
+    const httpsPort = Number(process.env.WEB_HTTPS_PORT || 443);
+    const internalPort = Number(process.env.WEB_INTERNAL_PORT || port || 3000);
+    const allowPortConflictFallback = envFlag('WEB_SSL_PORT_CONFLICT_FALLBACK', true);
+    const server = https.createServer(tlsConfig.options, app);
+    let fallbackStarted = false;
+
+    server.once('listening', () => {
       const advertisedUrl = process.env.BASE_URL || `https://localhost:${httpsPort}`;
 
       if (tlsConfig.provider === 'cloudflare-origin') {
@@ -2247,29 +2278,68 @@ function startDashboard(client) {
 
       console.log(`[Dashboard SSL] HTTPS enabled on port ${httpsPort}.`);
       console.log(`Dashboard listening securely on ${advertisedUrl}`);
+
+      const redirectPort = Number(process.env.WEB_HTTP_REDIRECT_PORT || 0);
+      if (redirectPort > 0 && redirectPort !== httpsPort) {
+        const redirectApp = express();
+        redirectApp.use((req, res) => res.redirect(308, httpsRedirectTarget(req)));
+
+        const redirectServer = redirectApp.listen(redirectPort, () => {
+          console.log(`[Dashboard SSL] HTTP port ${redirectPort} redirects to HTTPS.`);
+        });
+
+        redirectServer.on('error', (error) => {
+          if (error?.code === 'EADDRINUSE') {
+            console.warn(`[Dashboard SSL] HTTP redirect port ${redirectPort} is already in use; HTTPS will continue without the built-in redirect listener.`);
+            return;
+          }
+          console.error('[Dashboard SSL] HTTP redirect listener error:', error);
+        });
+      }
     });
 
-    const redirectPort = Number(process.env.WEB_HTTP_REDIRECT_PORT || 0);
-    if (redirectPort > 0 && redirectPort !== httpsPort) {
-      const redirectApp = express();
-      redirectApp.use((req, res) => res.redirect(308, httpsRedirectTarget(req)));
-      redirectApp.listen(redirectPort, () => {
-        console.log(`[Dashboard SSL] HTTP port ${redirectPort} redirects to HTTPS.`);
-      });
-    }
+    server.on('error', (error) => {
+      if (error?.code === 'EADDRINUSE') {
+        console.warn(`[Dashboard SSL] HTTPS port ${httpsPort} is already in use by another process.`);
 
+        if (!allowPortConflictFallback) {
+          console.error('[Dashboard SSL] Automatic fallback is disabled. Set WEB_SSL_PORT_CONFLICT_FALLBACK=true or free the HTTPS port.');
+          return;
+        }
+
+        if (fallbackStarted) return;
+        fallbackStarted = true;
+
+        if (internalPort === httpsPort) {
+          console.error(`[Dashboard SSL] WEB_INTERNAL_PORT/PORT is also ${httpsPort}; choose a different internal port such as 3000.`);
+          return;
+        }
+
+        startHttpApp(
+          internalPort,
+          `Port ${httpsPort} is occupied, so Kryndexa switched to reverse-proxy mode on internal port ${internalPort}.`,
+        );
+        return;
+      }
+
+      if (error?.code === 'EACCES') {
+        console.error(`[Dashboard SSL] Permission denied while binding HTTPS port ${httpsPort}. Use an elevated account, a higher port, or reverse-proxy mode.`);
+        return;
+      }
+
+      console.error('[Dashboard SSL] HTTPS server error:', error);
+    });
+
+    server.listen(httpsPort);
     return server;
   }
 
-  const server = app.listen(port, () => {
-    const advertisedUrl = process.env.BASE_URL || `http://localhost:${port}`;
-    console.log(`Dashboard listening on ${advertisedUrl}`);
-    if (envFlag('WEB_FORCE_HTTPS')) {
-      console.log('[Dashboard SSL] HTTPS is expected to terminate at the configured reverse proxy.');
-    }
-  });
-
-  return server;
+  return startHttpApp(
+    port,
+    envFlag('WEB_FORCE_HTTPS')
+      ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
+      : '',
+  );
 }
 
 module.exports = { startDashboard };
