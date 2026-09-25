@@ -39,6 +39,7 @@ const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedCo
 const { getAnalytics } = require('../features/dataStore');
 
 const DISCORD_API = 'https://discord.com/api/v10';
+const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 const GUILD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
@@ -114,6 +115,107 @@ function loadDashboardTlsOptions() {
   };
 }
 
+function cloudflareSslConfig() {
+  return {
+    zoneId: String(process.env.CLOUDFLARE_ZONE_ID || '').trim(),
+    apiToken: String(process.env.CLOUDFLARE_API_TOKEN || '').trim(),
+  };
+}
+
+async function getCloudflareCertificatePacks() {
+  const { zoneId, apiToken } = cloudflareSslConfig();
+
+  if (!zoneId || !apiToken) {
+    return {
+      configured: false,
+      zoneId,
+      endpoint: zoneId
+        ? `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`
+        : null,
+      packs: [],
+      activeCertificates: 0,
+      pendingCertificates: 0,
+      hosts: [],
+      error: null,
+    };
+  }
+
+  const endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok || !payload?.success) {
+      const detail = Array.isArray(payload?.errors)
+        ? payload.errors.map((item) => item?.message).filter(Boolean).join('; ')
+        : '';
+      throw new Error(
+        `Cloudflare certificate-pack request failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
+      );
+    }
+
+    const packs = Array.isArray(payload.result) ? payload.result : [];
+    const certificates = packs.flatMap((pack) =>
+      Array.isArray(pack?.certificates) ? pack.certificates : [],
+    );
+
+    const activeCertificates = certificates.filter((cert) =>
+      String(cert?.status || '').toLowerCase() === 'active',
+    ).length;
+
+    const pendingCertificates = certificates.filter((cert) => {
+      const status = String(cert?.status || '').toLowerCase();
+      return status && status !== 'active' && status !== 'deleted';
+    }).length;
+
+    const hosts = [...new Set(
+      packs.flatMap((pack) => {
+        const packHosts = Array.isArray(pack?.hosts) ? pack.hosts : [];
+        const certHosts = (Array.isArray(pack?.certificates) ? pack.certificates : [])
+          .flatMap((cert) => Array.isArray(cert?.hosts) ? cert.hosts : []);
+        return [...packHosts, ...certHosts].map(String);
+      }),
+    )].sort();
+
+    return {
+      configured: true,
+      zoneId,
+      endpoint,
+      packs,
+      activeCertificates,
+      pendingCertificates,
+      hosts,
+      error: null,
+    };
+  } catch (error) {
+    console.error('[Cloudflare SSL] Unable to list certificate packs:', error);
+    return {
+      configured: true,
+      zoneId,
+      endpoint,
+      packs: [],
+      activeCertificates: 0,
+      pendingCertificates: 0,
+      hosts: [],
+      error: error.message || String(error),
+    };
+  }
+}
+
 function httpsRedirectTarget(req) {
   const baseUrl = String(process.env.BASE_URL || '').trim();
 
@@ -184,7 +286,7 @@ function page(title, body, user) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-stat-icons-layout">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-cloudflare-ssl">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -908,6 +1010,7 @@ function startDashboard(client) {
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
       const managedGuilds = await getManagedGuilds(req, client);
+      const cloudflareSsl = await getCloudflareCertificatePacks();
 
       const dashboardStats = await Promise.all(managedGuilds.map(async (managed) => {
         const guild = client.guilds.cache.get(managed.id);
@@ -1028,6 +1131,39 @@ function startDashboard(client) {
               <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
             </span>
             <div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div>
+          </div>
+        </section>
+
+        <section class="cloudflare-ssl-card" aria-label="Cloudflare SSL status">
+          <div class="cloudflare-ssl-head">
+            <div class="cloudflare-ssl-title">
+              <span class="cloudflare-logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M7.2 17h10.9a3.4 3.4 0 0 0 .4-6.8A5.4 5.4 0 0 0 8.2 8.8 4.2 4.2 0 0 0 7.2 17Z"/><path d="M4.8 17H4a2.5 2.5 0 1 1 .6-4.9"/></svg>
+              </span>
+              <div>
+                <span class="eyebrow">CLOUDFLARE SSL</span>
+                <h3>Certificate Packs</h3>
+                <p>Edge certificate status for the configured Cloudflare zone.</p>
+              </div>
+            </div>
+            <span class="cloudflare-status ${!cloudflareSsl.configured ? 'unconfigured' : cloudflareSsl.error ? 'error' : 'ok'}">
+              <i></i>
+              ${!cloudflareSsl.configured ? 'Not Configured' : cloudflareSsl.error ? 'API Error' : 'Connected'}
+            </span>
+          </div>
+          <div class="cloudflare-ssl-metrics">
+            <div><span>Packs</span><strong>${cloudflareSsl.packs.length.toLocaleString()}</strong></div>
+            <div><span>Active Certificates</span><strong>${cloudflareSsl.activeCertificates.toLocaleString()}</strong></div>
+            <div><span>Pending / Other</span><strong>${cloudflareSsl.pendingCertificates.toLocaleString()}</strong></div>
+            <div><span>Hosts</span><strong>${cloudflareSsl.hosts.length.toLocaleString()}</strong></div>
+          </div>
+          <div class="cloudflare-ssl-foot">
+            <span>${cloudflareSsl.error
+              ? escapeHtml(cloudflareSsl.error)
+              : cloudflareSsl.configured
+                ? `Zone ${escapeHtml(cloudflareSsl.zoneId)} • Full (strict) recommended`
+                : 'Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable certificate monitoring.'}</span>
+            <a class="btn secondary compact" href="/api/cloudflare/ssl" target="_blank" rel="noreferrer">View SSL JSON</a>
           </div>
         </section>
 
@@ -1907,6 +2043,41 @@ function startDashboard(client) {
       console.error(error);
       res.status(500).send('Unable to download transcript.');
     }
+  });
+
+  app.get('/api/cloudflare/ssl', requireAuth, async (_req, res) => {
+    const status = await getCloudflareCertificatePacks();
+
+    if (!status.configured) {
+      return res.status(503).json({
+        ok: false,
+        configured: false,
+        message: 'Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable Cloudflare SSL monitoring.',
+        endpoint: status.endpoint,
+      });
+    }
+
+    if (status.error) {
+      return res.status(502).json({
+        ok: false,
+        configured: true,
+        zoneId: status.zoneId,
+        endpoint: status.endpoint,
+        error: status.error,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      configured: true,
+      zoneId: status.zoneId,
+      endpoint: status.endpoint,
+      packCount: status.packs.length,
+      activeCertificates: status.activeCertificates,
+      pendingCertificates: status.pendingCertificates,
+      hosts: status.hosts,
+      packs: status.packs,
+    });
   });
 
   app.get('/health', async (_req, res) => {
