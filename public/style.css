@@ -1572,3 +1572,283 @@ html[data-theme="light"] .cloudflare-ssl-metrics>div{
     width:100%;
   }
 }
+
+
+/* === Complete light-mode module cleanup ===
+   Make every dashboard module use white/light surfaces with dark readable text.
+*/
+html[data-theme="light"] body{
+  background:
+    radial-gradient(circle at top left,rgba(88,101,242,.07),transparent 34%),
+    linear-gradient(180deg,#f5f7fb 0,#f8faff 100%);
+  color:#172033;
+}
+
+html[data-theme="light"] main{
+  color:#172033;
+}
+
+/* Primary dashboard surfaces */
+html[data-theme="light"] .panel,
+html[data-theme="light"] .dashboard-home-hero,
+html[data-theme="light"] .dashboard-server-section,
+html[data-theme="light"] .statistics-panel,
+html[data-theme="light"] .cloudflare-ssl-card,
+html[data-theme="light"] .server-config-hero,
+html[data-theme="light"] .settings-panel,
+html[data-theme="light"] .feature-center-panel,
+html[data-theme="light"] .ticket-system-panel,
+html[data-theme="light"] .twitch-panel,
+html[data-theme="light"] .command-center-panel,
+html[data-theme="light"] .friendly-guild-card,
+html[data-theme="light"] .guild-card,
+html[data-theme="light"] .summary-card{
+  background:#ffffff !important;
+  color:#172033 !important;
+  border-color:#dfe5ef !important;
+  box-shadow:0 14px 34px rgba(31,51,89,.08) !important;
+}
+
+/* Nested module cards */
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .twitch-card,
+html[data-theme="light"] .settings-group,
+html[data-theme="light"] .settings-toggle-section,
+html[data-theme="light"] .automation-builder,
+html[data-theme="light"] .automation-form,
+html[data-theme="light"] .ticket-behavior-form,
+html[data-theme="light"] .ticket-behavior-grid,
+html[data-theme="light"] .ticket-behavior-switches,
+html[data-theme="light"] .twitch-config-form,
+html[data-theme="light"] .twitch-card-grid>div,
+html[data-theme="light"] .twitch-message-preview,
+html[data-theme="light"] .feature-fields,
+html[data-theme="light"] .feature-check,
+html[data-theme="light"] .checks label,
+html[data-theme="light"] .guild-mini-stats>div,
+html[data-theme="light"] .cloudflare-ssl-metrics>div,
+html[data-theme="light"] .dashboard-toolbar,
+html[data-theme="light"] .stats-toolbar,
+html[data-theme="light"] .managed-server-count,
+html[data-theme="light"] .dashboard-online-pill,
+html[data-theme="light"] .dashboard-jump,
+html[data-theme="light"] .settings-footer{
+  background:#f8fafc !important;
+  color:#172033 !important;
+  border-color:#dfe5ef !important;
+  box-shadow:none !important;
+}
+
+/* Cards that should stay pure white even when nested */
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .twitch-card,
+html[data-theme="light"] .settings-group{
+  background:#ffffff !important;
+}
+
+/* Text hierarchy */
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] h4,
+html[data-theme="light"] strong,
+html[data-theme="light"] .brand,
+html[data-theme="light"] .feature-label-row h3,
+html[data-theme="light"] .ticket-module-head h3,
+html[data-theme="light"] .twitch-name,
+html[data-theme="light"] .guild-title-row>strong,
+html[data-theme="light"] .command-card code{
+  color:#172033 !important;
+}
+
+html[data-theme="light"] p,
+html[data-theme="light"] small,
+html[data-theme="light"] .muted,
+html[data-theme="light"] .feature-description,
+html[data-theme="light"] .settings-group-heading p,
+html[data-theme="light"] .panel-heading-row p,
+html[data-theme="light"] .guild-card-copy>small,
+html[data-theme="light"] .dashboard-toolbar-hint,
+html[data-theme="light"] .cloudflare-ssl-title p,
+html[data-theme="light"] .cloudflare-ssl-foot>span{
+  color:#667085 !important;
+}
+
+html[data-theme="light"] .eyebrow,
+html[data-theme="light"] .mini-label{
+  color:#5967d9 !important;
+}
+
+/* Form controls */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .server-search{
+  background:#ffffff !important;
+  color:#172033 !important;
+  border-color:#d6deea !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder{
+  color:#98a2b3 !important;
+}
+
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus{
+  border-color:#7c87f5 !important;
+  box-shadow:0 0 0 3px rgba(88,101,242,.12) !important;
+}
+
+html[data-theme="light"] label{
+  color:#475467;
+}
+
+/* Tables */
+html[data-theme="light"] table,
+html[data-theme="light"] .server-statistics-table{
+  background:#ffffff !important;
+  color:#172033 !important;
+}
+
+html[data-theme="light"] th{
+  background:#f8fafc !important;
+  color:#667085 !important;
+  border-color:#e4e9f1 !important;
+}
+
+html[data-theme="light"] td{
+  background:#ffffff !important;
+  color:#344054 !important;
+  border-color:#e4e9f1 !important;
+}
+
+html[data-theme="light"] tbody tr:hover td{
+  background:#f8faff !important;
+}
+
+/* Navigation */
+html[data-theme="light"] .site-header,
+html[data-theme="light"] header{
+  background:rgba(255,255,255,.94) !important;
+  border-color:#dfe5ef !important;
+  box-shadow:0 6px 24px rgba(31,51,89,.06);
+}
+
+html[data-theme="light"] .site-nav a,
+html[data-theme="light"] .dashboard-jump a{
+  color:#475467 !important;
+}
+
+html[data-theme="light"] .site-nav a:hover,
+html[data-theme="light"] .dashboard-jump a:hover{
+  background:#eef2f7 !important;
+  color:#172033 !important;
+}
+
+/* Buttons */
+html[data-theme="light"] .btn{
+  background:#5865f2;
+  color:#ffffff !important;
+  border-color:#5865f2;
+}
+
+html[data-theme="light"] .btn:hover{
+  background:#4752d8;
+}
+
+html[data-theme="light"] .btn.secondary,
+html[data-theme="light"] .btn.compact.secondary{
+  background:#ffffff !important;
+  color:#344054 !important;
+  border-color:#d6deea !important;
+}
+
+html[data-theme="light"] .btn.secondary:hover{
+  background:#f4f6f9 !important;
+  color:#172033 !important;
+}
+
+html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .nav-toggle{
+  background:#ffffff !important;
+  color:#344054 !important;
+  border-color:#d6deea !important;
+}
+
+/* Status / utility pills */
+html[data-theme="light"] .dashboard-home-badge,
+html[data-theme="light"] .summary-icon{
+  background:#eef1ff !important;
+  color:#5865f2 !important;
+  border-color:#d8defd !important;
+}
+
+html[data-theme="light"] .guild-status{
+  background:#ecfdf3 !important;
+  color:#067647 !important;
+  border-color:#abefc6 !important;
+}
+
+html[data-theme="light"] .cloudflare-status{
+  background:#ecfdf3 !important;
+  color:#067647 !important;
+  border-color:#abefc6 !important;
+}
+
+html[data-theme="light"] .cloudflare-status.error{
+  background:#fef3f2 !important;
+  color:#b42318 !important;
+  border-color:#fecdca !important;
+}
+
+html[data-theme="light"] .cloudflare-status.unconfigured{
+  background:#f2f4f7 !important;
+  color:#667085 !important;
+  border-color:#d0d5dd !important;
+}
+
+/* Code/chips/badges */
+html[data-theme="light"] code,
+html[data-theme="light"] .command-card code{
+  background:#f2f4f7 !important;
+  color:#344054 !important;
+  border-color:#e4e7ec !important;
+}
+
+html[data-theme="light"] .chip,
+html[data-theme="light"] .badge,
+html[data-theme="light"] .priority-badge,
+html[data-theme="light"] .feature-priority,
+html[data-theme="light"] .status-pill{
+  background:#f2f4f7 !important;
+  color:#475467 !important;
+  border-color:#e4e7ec !important;
+}
+
+/* Light-mode shadows should be subtle */
+html[data-theme="light"] .friendly-guild-card:hover,
+html[data-theme="light"] .feature-card:hover,
+html[data-theme="light"] .command-card:hover{
+  border-color:#b8c1ff !important;
+  box-shadow:0 16px 36px rgba(88,101,242,.10) !important;
+}
+
+/* Make scrollbars visually compatible with light mode */
+html[data-theme="light"] *{
+  scrollbar-color:#cbd3df #f5f7fa;
+}
+
+@media(max-width:720px){
+  html[data-theme="light"] .settings-footer{
+    background:rgba(255,255,255,.97) !important;
+    box-shadow:0 12px 28px rgba(31,51,89,.10) !important;
+  }
+}
