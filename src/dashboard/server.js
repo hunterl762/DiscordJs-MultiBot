@@ -60,6 +60,41 @@ function resolveDashboardFile(filePath) {
   return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
 }
 
+function validateTlsKeyPair(keyPem, certPem, keyPath, certPath) {
+  try {
+    const certificate = new crypto.X509Certificate(certPem);
+    const privateKey = crypto.createPrivateKey(keyPem);
+    const certificatePublicKey = certificate.publicKey.export({
+      type: 'spki',
+      format: 'der',
+    });
+    const privateKeyPublicKey = crypto.createPublicKey(privateKey).export({
+      type: 'spki',
+      format: 'der',
+    });
+
+    const matches = certificatePublicKey.length === privateKeyPublicKey.length
+      && crypto.timingSafeEqual(certificatePublicKey, privateKeyPublicKey);
+
+    if (!matches) {
+      const error = new Error(
+        `Dashboard SSL certificate/private key mismatch. The certificate at "${certPath}" was not generated with the private key at "${keyPath}". Replace them with a matching pair from the same certificate issuance.`,
+      );
+      error.code = 'DASHBOARD_SSL_KEY_CERT_MISMATCH';
+      throw error;
+    }
+  } catch (error) {
+    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') throw error;
+
+    const wrapped = new Error(
+      `Dashboard SSL key/certificate validation failed: ${error.message || error}`,
+    );
+    wrapped.code = 'DASHBOARD_SSL_INVALID_CERTIFICATE';
+    wrapped.cause = error;
+    throw wrapped;
+  }
+}
+
 function loadDashboardTlsOptions() {
   if (!envFlag('WEB_SSL_ENABLED')) return null;
 
@@ -102,13 +137,17 @@ function loadDashboardTlsOptions() {
     throw new Error(`Dashboard SSL CA/chain file not found: ${caPath}`);
   }
 
+  const key = fs.readFileSync(keyPath);
+  const cert = fs.readFileSync(certPath);
+  validateTlsKeyPair(key, cert, keyPath, certPath);
+
   return {
     provider,
     keyPath,
     certPath,
     options: {
-      key: fs.readFileSync(keyPath),
-      cert: fs.readFileSync(certPath),
+      key,
+      cert,
       ...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
       minVersion: 'TLSv1.2',
     },
@@ -2228,7 +2267,25 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  const tlsConfig = loadDashboardTlsOptions();
+  let tlsConfig = null;
+  let tlsConfigError = null;
+
+  try {
+    tlsConfig = loadDashboardTlsOptions();
+  } catch (error) {
+    tlsConfigError = error;
+
+    console.error('[Dashboard SSL] TLS configuration is invalid:', error.message || error);
+
+    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') {
+      console.error('[Dashboard SSL] The private key and certificate are from different certificate issuances.');
+      console.error('[Dashboard SSL] For Cloudflare Origin CA, create/download a new Origin Certificate and save the private key generated with that same certificate.');
+    }
+
+    if (envFlag('WEB_SSL_STRICT_STARTUP')) throw error;
+
+    console.warn('[Dashboard SSL] Direct HTTPS is disabled for this run; Kryndexa will use the internal HTTP listener for reverse-proxy mode.');
+  }
 
   const startHttpApp = (listenPort, reason = '') => {
     const httpServer = app.listen(listenPort);
@@ -2335,9 +2392,11 @@ function startDashboard(client) {
 
   return startHttpApp(
     Number(process.env.WEB_INTERNAL_PORT || port),
-    envFlag('WEB_FORCE_HTTPS')
-      ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
-      : '',
+    tlsConfigError
+      ? `Direct SSL could not start: ${tlsConfigError.message || tlsConfigError}. Use a matching certificate/key pair or terminate HTTPS at the reverse proxy.`
+      : envFlag('WEB_FORCE_HTTPS')
+        ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
+        : '',
   );
 }
 
