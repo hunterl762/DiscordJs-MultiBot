@@ -18,10 +18,21 @@
     "express": "^5.1.0",
     "express-mysql-session": "^3.0.3",
     "express-session": "^1.19.0",
-    "mysql2": "^3.24.4"
+    "mysql2": "^3.24.4",
+    "kazagumo": "^3.4.2",
+    "shoukaku": "^4.3.0"
   },
   "devDependencies": {},
-  "keywords": ["discord","discord.js","dashboard","mysql","verification","tickets","transcripts","broadcast"],
+  "keywords": [
+    "discord",
+    "discord.js",
+    "dashboard",
+    "mysql",
+    "verification",
+    "tickets",
+    "transcripts",
+    "broadcast"
+  ],
   "author": "OwnerHunter",
   "license": "MIT"
 }
