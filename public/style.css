@@ -959,3 +959,438 @@ html[data-theme="dark"] .hero-category{
     gap:2px;
   }
 }
+
+
+/* === Advanced dashboard control center === */
+.dashboard-control-shell{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+.dashboard-home-hero{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+  padding:26px 28px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  background:
+    radial-gradient(circle at top right,rgba(88,101,242,.18),transparent 38%),
+    linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 20px 50px rgba(0,0,0,.14);
+}
+.dashboard-hero-copy{
+  min-width:0;
+}
+.dashboard-home-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  margin-bottom:9px;
+  padding:6px 9px;
+  border:1px solid rgba(88,101,242,.35);
+  border-radius:999px;
+  background:rgba(88,101,242,.10);
+  color:#aeb7ff;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.dashboard-home-badge i,
+.dashboard-online-pill i,
+.guild-status i{
+  width:7px;
+  height:7px;
+  flex:0 0 7px;
+  border-radius:50%;
+  background:#20d587;
+  box-shadow:0 0 0 4px rgba(32,213,135,.10);
+}
+.dashboard-home-hero h1{
+  margin:5px 0 8px;
+  font-size:clamp(38px,5vw,56px);
+  line-height:1;
+  letter-spacing:-.045em;
+}
+.dashboard-home-hero p{
+  max-width:700px;
+  margin:0;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.65;
+}
+.dashboard-hero-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:0 0 auto;
+}
+.dashboard-online-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:40px;
+  padding:8px 12px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:rgba(255,255,255,.025);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+/* six-card overview */
+.dashboard-server-summary{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:12px;
+  margin:0;
+}
+.dashboard-server-summary>div{
+  min-width:0;
+  padding:0;
+}
+.dashboard-server-summary .summary-card{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:96px;
+  padding:17px;
+  border:1px solid var(--line);
+  border-radius:17px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 14px 36px rgba(0,0,0,.10);
+}
+.summary-icon{
+  width:38px;
+  height:38px;
+  flex:0 0 38px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(88,101,242,.28);
+  border-radius:12px;
+  background:rgba(88,101,242,.10);
+  color:#aeb7ff;
+  font-size:14px;
+  font-weight:900;
+}
+.dashboard-server-summary .summary-card>div{
+  min-width:0;
+}
+.dashboard-server-summary strong{
+  display:block;
+  font-size:24px;
+  line-height:1;
+  letter-spacing:-.025em;
+  color:var(--text);
+}
+.dashboard-server-summary .summary-card>div>span{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+/* managed servers section */
+.dashboard-server-section{
+  padding:22px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 18px 46px rgba(0,0,0,.12);
+}
+.dashboard-server-section-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:16px;
+}
+.dashboard-server-section-head h2{
+  margin:4px 0 4px;
+  font-size:24px;
+  letter-spacing:-.025em;
+}
+.dashboard-server-section-head p{
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+}
+.managed-server-count{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--panel2);
+  color:var(--muted);
+  font-size:9px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  white-space:nowrap;
+}
+.dashboard-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 16px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(0,0,0,.08);
+}
+.dashboard-toolbar .server-search{
+  max-width:640px;
+}
+.dashboard-toolbar-hint{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+/* server cards */
+.friendly-guild-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+.friendly-guild-card{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:0;
+  min-width:0;
+  padding:17px;
+  border-radius:17px;
+  overflow:hidden;
+}
+.friendly-guild-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(88,101,242,.55);
+  box-shadow:0 16px 38px rgba(0,0,0,.14);
+}
+.guild-card-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.guild-card-main{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+  flex:1 1 auto;
+}
+.friendly-guild-card .guild-icon{
+  width:54px;
+  height:54px;
+  flex:0 0 54px;
+  border-radius:15px;
+}
+.guild-card-copy{
+  min-width:0;
+  flex:1 1 auto;
+}
+.guild-title-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.guild-title-row>strong{
+  min-width:0;
+  flex:1 1 auto;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:15px;
+}
+.guild-status{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  flex:0 0 auto;
+  padding:4px 7px;
+  border:1px solid rgba(32,213,135,.18);
+  border-radius:999px;
+  background:rgba(32,213,135,.08);
+  color:#5ee2a7;
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+.guild-card-copy>small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:9px;
+}
+.guild-mini-stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-top:15px;
+}
+.guild-mini-stats>div{
+  min-width:0;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:rgba(0,0,0,.07);
+}
+.guild-mini-stats span,
+.guild-mini-stats strong{
+  display:block;
+}
+.guild-mini-stats span{
+  color:var(--muted);
+  font-size:8px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.guild-mini-stats strong{
+  margin-top:4px;
+  color:var(--text);
+  font-size:15px;
+}
+.guild-card-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:14px;
+}
+.guild-card-actions .btn{
+  flex:1 1 0;
+  min-width:0;
+}
+.guild-configure-btn{
+  box-shadow:0 10px 24px rgba(88,101,242,.18);
+}
+
+/* theme tuning */
+html[data-theme="light"] .dashboard-home-hero,
+html[data-theme="light"] .dashboard-server-section,
+html[data-theme="light"] .dashboard-server-summary .summary-card{
+  background:#fff;
+  border-color:#dfe5ef;
+  box-shadow:0 18px 45px rgba(44,62,100,.08);
+}
+html[data-theme="light"] .dashboard-home-badge{
+  color:#5865f2;
+}
+html[data-theme="light"] .summary-icon{
+  background:#eef1ff;
+  color:#5865f2;
+  border-color:#d8defd;
+}
+html[data-theme="light"] .dashboard-toolbar,
+html[data-theme="light"] .guild-mini-stats>div,
+html[data-theme="light"] .dashboard-online-pill,
+html[data-theme="light"] .managed-server-count{
+  background:#f7f9fd;
+}
+html[data-theme="light"] .guild-status{
+  color:#0b9f61;
+}
+html[data-theme="dark"] .dashboard-server-section{
+  background:linear-gradient(180deg,#171c27,#131720);
+}
+html[data-theme="dark"] .friendly-guild-card{
+  background:linear-gradient(180deg,#1c2230,#171b24);
+}
+
+/* dashboard responsive layout */
+@media(max-width:1180px){
+  .dashboard-server-summary{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+@media(max-width:900px){
+  .dashboard-home-hero{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .dashboard-hero-actions{
+    width:100%;
+    flex-wrap:wrap;
+  }
+  .friendly-guild-grid{
+    grid-template-columns:1fr;
+  }
+}
+@media(max-width:720px){
+  .dashboard-home-hero,
+  .dashboard-server-section{
+    padding:16px;
+    border-radius:16px;
+  }
+  .dashboard-server-summary{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .dashboard-server-summary .summary-card{
+    min-height:82px;
+    padding:13px;
+  }
+  .summary-icon{
+    width:32px;
+    height:32px;
+    flex-basis:32px;
+  }
+  .dashboard-server-summary strong{
+    font-size:20px;
+  }
+  .dashboard-server-section-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .dashboard-toolbar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .dashboard-toolbar .server-search{
+    width:100%;
+    max-width:none;
+  }
+  .dashboard-toolbar-hint{
+    white-space:normal;
+  }
+  .guild-mini-stats{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:480px){
+  .dashboard-server-summary{
+    grid-template-columns:1fr;
+  }
+  .dashboard-hero-actions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .dashboard-hero-actions .btn,
+  .dashboard-online-pill{
+    width:100%;
+    justify-content:center;
+  }
+  .guild-title-row{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .guild-card-actions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+}
