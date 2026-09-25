@@ -1,115 +1,181 @@
+const crypto = require('node:crypto');
 const { getPool } = require('./database');
+const {
+  listSecureRecords,
+  listSecureNamespace,
+  putSecureRecord,
+  deleteSecureRecord,
+} = require('./dashboardSecureStore');
 
-function normalizeLogin(value) {
-  return String(value || '')
-    .trim()
-    .replace(/^https?:\/\/(www\.)?twitch\.tv\//i, '')
-    .replace(/^@/, '')
-    .split(/[/?#]/)[0]
-    .toLowerCase();
+const PLATFORMS = new Set(['twitch', 'youtube', 'kick']);
+const NS = 'stream_announcement';
+
+function normalizePlatform(value) {
+  const platform = String(value || 'twitch').trim().toLowerCase();
+  if (!PLATFORMS.has(platform)) throw new Error('Unsupported streaming platform.');
+  return platform;
 }
 
-async function listTwitchAnnouncements(guildId) {
-  const [rows] = await getPool().execute(
-    `SELECT id,guild_id,twitch_login,discord_channel_id,custom_message,enabled,created_by,
-            is_live,last_stream_id,last_started_at,last_announced_at,created_at,updated_at
-       FROM twitch_announcements
-      WHERE guild_id = ?
-      ORDER BY twitch_login ASC`,
-    [guildId],
-  );
-  return rows.map((row) => ({
-    id: String(row.id),
-    guildId: row.guild_id,
-    twitchLogin: row.twitch_login,
-    discordChannelId: row.discord_channel_id,
-    customMessage: row.custom_message || '',
-    enabled: Boolean(row.enabled),
-    createdBy: row.created_by,
-    isLive: Boolean(row.is_live),
-    lastStreamId: row.last_stream_id || null,
-    lastStartedAt: row.last_started_at ? new Date(row.last_started_at).toISOString() : null,
-    lastAnnouncedAt: row.last_announced_at ? new Date(row.last_announced_at).toISOString() : null,
-  }));
-}
+function normalizeIdentifier(platform, value) {
+  const raw = String(value || '').trim();
+  if (!raw) throw new Error('Streamer/channel identifier is required.');
 
-async function listEnabledTwitchAnnouncements() {
-  const [rows] = await getPool().query(
-    `SELECT id,guild_id,twitch_login,discord_channel_id,custom_message,enabled,created_by,
-            is_live,last_stream_id,last_started_at,last_announced_at
-       FROM twitch_announcements
-      WHERE enabled = 1
-      ORDER BY id ASC`,
-  );
-  return rows.map((row) => ({
-    id: String(row.id),
-    guildId: row.guild_id,
-    twitchLogin: row.twitch_login,
-    discordChannelId: row.discord_channel_id,
-    customMessage: row.custom_message || '',
-    enabled: Boolean(row.enabled),
-    createdBy: row.created_by,
-    isLive: Boolean(row.is_live),
-    lastStreamId: row.last_stream_id || null,
-    lastStartedAt: row.last_started_at ? new Date(row.last_started_at).toISOString() : null,
-    lastAnnouncedAt: row.last_announced_at ? new Date(row.last_announced_at).toISOString() : null,
-  }));
-}
-
-async function upsertTwitchAnnouncement({ guildId, twitchLogin, discordChannelId, customMessage = '', createdBy }) {
-  const login = normalizeLogin(twitchLogin);
-  if (!/^[a-z0-9_]{3,25}$/.test(login)) {
-    throw new Error('Enter a valid Twitch username.');
+  if (platform === 'twitch') {
+    const login = raw.replace(/^https?:\/\/(www\.)?twitch\.tv\//i, '').replace(/^@/, '').split(/[/?#]/)[0].toLowerCase();
+    if (!/^[a-z0-9_]{3,25}$/.test(login)) throw new Error('Enter a valid Twitch username.');
+    return login;
   }
 
-  await getPool().execute(
-    `INSERT INTO twitch_announcements (
-       guild_id,twitch_login,discord_channel_id,custom_message,enabled,created_by
-     ) VALUES (?,?,?,?,1,?)
-     ON DUPLICATE KEY UPDATE
-       discord_channel_id = VALUES(discord_channel_id),
-       custom_message = VALUES(custom_message),
-       enabled = 1,
-       created_by = VALUES(created_by),
-       updated_at = CURRENT_TIMESTAMP`,
-    [guildId, login, discordChannelId, String(customMessage || '').trim().slice(0, 500), createdBy],
-  );
-
-  const [rows] = await getPool().execute(
-    'SELECT id FROM twitch_announcements WHERE guild_id=? AND twitch_login=? LIMIT 1',
-    [guildId, login],
-  );
-  return { id: String(rows[0].id), twitchLogin: login };
-}
-
-async function deleteTwitchAnnouncement(guildId, id) {
-  const [result] = await getPool().execute(
-    'DELETE FROM twitch_announcements WHERE guild_id=? AND id=?',
-    [guildId, id],
-  );
-  return result.affectedRows > 0;
-}
-
-async function markTwitchLiveState(id, { isLive, streamId = null, startedAt = null, announced = false }) {
-  const fields = ['is_live=?', 'last_stream_id=?', 'last_started_at=?'];
-  const values = [isLive ? 1 : 0, streamId, startedAt ? new Date(startedAt) : null];
-
-  if (announced) {
-    fields.push('last_announced_at=CURRENT_TIMESTAMP');
+  if (platform === 'youtube') {
+    const channelId = raw.replace(/^https?:\/\/(www\.)?youtube\.com\/channel\//i, '').split(/[/?#]/)[0];
+    if (!/^[A-Za-z0-9_-]{10,64}$/.test(channelId)) throw new Error('Enter a valid YouTube channel ID.');
+    return channelId;
   }
 
-  values.push(id);
-  await getPool().execute(
-    `UPDATE twitch_announcements SET ${fields.join(', ')} WHERE id=?`,
-    values,
-  );
+  const kickId = raw.replace(/^https?:\/\/(www\.)?kick\.com\//i, '').split(/[/?#]/)[0];
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(kickId)) throw new Error('Enter a valid Kick broadcaster ID or channel slug.');
+  return kickId;
 }
+
+function normalizeRecord(guildId, id, payload, createdAt = null, updatedAt = null) {
+  const platform = normalizePlatform(payload.platform || 'twitch');
+  const identifier = String(payload.streamerIdentifier || payload.twitchLogin || '');
+  return {
+    id: String(id),
+    guildId,
+    platform,
+    streamerIdentifier: identifier,
+    twitchLogin: platform === 'twitch' ? identifier : '',
+    discordChannelId: payload.discordChannelId || '',
+    customMessage: payload.customMessage || '',
+    discordUserId: payload.discordUserId || '',
+    liveRoleId: payload.liveRoleId || '',
+    roleGrantedByBot: Boolean(payload.roleGrantedByBot),
+    enabled: payload.enabled !== false,
+    createdBy: payload.createdBy || '',
+    isLive: Boolean(payload.isLive),
+    lastStreamId: payload.lastStreamId || null,
+    lastStartedAt: payload.lastStartedAt || null,
+    lastAnnouncedAt: payload.lastAnnouncedAt || null,
+    createdAt,
+    updatedAt,
+  };
+}
+
+async function migrateLegacyGuild(guildId) {
+  const secure = await listSecureRecords(guildId, NS);
+  if (secure.length) return;
+
+  const [rows] = await getPool().execute('SELECT * FROM twitch_announcements WHERE guild_id=?', [guildId]);
+  for (const row of rows) {
+    const id = crypto.randomUUID();
+    await putSecureRecord(guildId, NS, id, {
+      platform: 'twitch',
+      streamerIdentifier: row.twitch_login,
+      discordChannelId: row.discord_channel_id,
+      customMessage: row.custom_message || '',
+      discordUserId: '',
+      liveRoleId: '',
+      roleGrantedByBot: false,
+      enabled: Boolean(row.enabled),
+      createdBy: row.created_by,
+      isLive: Boolean(row.is_live),
+      lastStreamId: row.last_stream_id || null,
+      lastStartedAt: row.last_started_at ? new Date(row.last_started_at).toISOString() : null,
+      lastAnnouncedAt: row.last_announced_at ? new Date(row.last_announced_at).toISOString() : null,
+    });
+  }
+  if (rows.length) await getPool().execute('DELETE FROM twitch_announcements WHERE guild_id=?', [guildId]);
+}
+
+async function listStreamAnnouncements(guildId) {
+  await migrateLegacyGuild(guildId);
+  const rows = await listSecureRecords(guildId, NS);
+  return rows.map((row) => normalizeRecord(guildId, row.recordKey, row.payload, row.createdAt, row.updatedAt))
+    .sort((a, b) => a.platform.localeCompare(b.platform) || a.streamerIdentifier.localeCompare(b.streamerIdentifier));
+}
+
+async function listEnabledStreamAnnouncements() {
+  const rows = await listSecureNamespace(NS);
+  return rows.map((row) => normalizeRecord(row.guildId, row.recordKey, row.payload, row.createdAt, row.updatedAt))
+    .filter((item) => item.enabled);
+}
+
+async function upsertStreamAnnouncement({
+  guildId,
+  platform = 'twitch',
+  streamerIdentifier,
+  twitchLogin,
+  discordChannelId,
+  customMessage = '',
+  discordUserId = '',
+  liveRoleId = '',
+  createdBy,
+}) {
+  const normalizedPlatform = normalizePlatform(platform);
+  const identifier = normalizeIdentifier(normalizedPlatform, streamerIdentifier || twitchLogin);
+  const existing = (await listStreamAnnouncements(guildId))
+    .find((item) => item.platform === normalizedPlatform && item.streamerIdentifier === identifier);
+
+  const id = existing?.id || crypto.randomUUID();
+  const userId = String(discordUserId || '').trim().slice(0, 32);
+  const roleId = String(liveRoleId || '').trim().slice(0, 32);
+  const bindingChanged = Boolean(existing && (existing.discordUserId !== userId || existing.liveRoleId !== roleId));
+
+  await putSecureRecord(guildId, NS, id, {
+    platform: normalizedPlatform,
+    streamerIdentifier: identifier,
+    discordChannelId: String(discordChannelId || '').trim().slice(0, 32),
+    customMessage: String(customMessage || '').trim().slice(0, 1000),
+    discordUserId: userId,
+    liveRoleId: roleId,
+    roleGrantedByBot: bindingChanged ? false : Boolean(existing?.roleGrantedByBot),
+    enabled: true,
+    createdBy: String(createdBy || ''),
+    isLive: Boolean(existing?.isLive),
+    lastStreamId: existing?.lastStreamId || null,
+    lastStartedAt: existing?.lastStartedAt || null,
+    lastAnnouncedAt: existing?.lastAnnouncedAt || null,
+  });
+
+  return { id, platform: normalizedPlatform, streamerIdentifier: identifier };
+}
+
+async function deleteStreamAnnouncement(guildId, id) {
+  return deleteSecureRecord(guildId, NS, id);
+}
+
+async function markStreamLiveState(id, { isLive, streamId = null, startedAt = null, announced = false, roleGrantedByBot }) {
+  const rows = await listSecureNamespace(NS);
+  const record = rows.find((row) => row.recordKey === String(id));
+  if (!record) return false;
+
+  await putSecureRecord(record.guildId, NS, record.recordKey, {
+    ...record.payload,
+    isLive: Boolean(isLive),
+    lastStreamId: streamId,
+    lastStartedAt: startedAt ? new Date(startedAt).toISOString() : null,
+    lastAnnouncedAt: announced ? new Date().toISOString() : record.payload.lastAnnouncedAt || null,
+    roleGrantedByBot: roleGrantedByBot == null ? Boolean(record.payload.roleGrantedByBot) : Boolean(roleGrantedByBot),
+  });
+  return true;
+}
+
+function normalizeLogin(value) { return normalizeIdentifier('twitch', value); }
 
 module.exports = {
+  PLATFORMS,
+  normalizePlatform,
+  normalizeIdentifier,
   normalizeLogin,
-  listTwitchAnnouncements,
-  listEnabledTwitchAnnouncements,
-  upsertTwitchAnnouncement,
-  deleteTwitchAnnouncement,
-  markTwitchLiveState,
+  listStreamAnnouncements,
+  listEnabledStreamAnnouncements,
+  upsertStreamAnnouncement,
+  deleteStreamAnnouncement,
+  markStreamLiveState,
+  listTwitchAnnouncements: listStreamAnnouncements,
+  listEnabledTwitchAnnouncements: listEnabledStreamAnnouncements,
+  upsertTwitchAnnouncement: (options) => upsertStreamAnnouncement({ ...options, platform: options.platform || 'twitch', streamerIdentifier: options.streamerIdentifier || options.twitchLogin }),
+  deleteTwitchAnnouncement: deleteStreamAnnouncement,
+  markTwitchLiveState: markStreamLiveState,
 };
