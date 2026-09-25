@@ -14,6 +14,7 @@ const { startDashboard } = require('./dashboard/server');
 const { initDatabase } = require('./database');
 const { startTwitchMonitor, stopTwitchMonitor } = require('./services/twitchMonitor');
 const { registerFeatureRuntime, stopFeatureRuntime } = require('./features/runtime');
+const { initMusic, stopMusic } = require('./music/manager');
 
 const required = [
   'DISCORD_TOKEN',
@@ -38,6 +39,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildModeration,
@@ -121,6 +123,7 @@ async function shutdown(signal) {
   try {
     stopTwitchMonitor();
     stopFeatureRuntime();
+    stopMusic();
     client.destroy();
   } catch (error) {
     console.error('Error while closing Discord client:', error);
@@ -138,11 +141,13 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   await registerSlashCommands();
   startDashboard(client);
   startTwitchMonitor(client);
+  await initMusic(client);
 })().catch((error) => {
   console.error('MultiBot startup failed:', error);
   try {
     stopTwitchMonitor();
     stopFeatureRuntime();
+    stopMusic();
     client.destroy();
   } catch {
     // Ignore cleanup failures while handling a startup error.
