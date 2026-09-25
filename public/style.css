@@ -574,3 +574,189 @@ html[data-theme="light"] .btn.secondary{
   .site-nav.open{grid-template-columns:1fr}
   .server-stats-summary{grid-template-columns:1fr}
 }
+
+
+/* === Complete dashboard theme consistency ===
+   The theme switch now changes the entire dashboard instead of only individual cards.
+*/
+html[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f4f7fe;
+  --panel:#ffffff;
+  --panel2:#f8f9fd;
+  --text:#1b2559;
+  --muted:#707eae;
+  --accent:#5865f2;
+  --line:#e1e7f0;
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111318;
+  --panel:#1b1e25;
+  --panel2:#242832;
+  --text:#f5f7fb;
+  --muted:#9aa3b2;
+  --accent:#5865f2;
+  --line:#303644;
+}
+html[data-theme="light"] body{
+  background:linear-gradient(180deg,#eef2ff 0,#f7f9fc 270px,#f4f7fe 100%);
+  color:var(--text);
+}
+html[data-theme="dark"] body{
+  background:radial-gradient(circle at top,#202743 0,#111318 45%);
+  color:var(--text);
+}
+html[data-theme="light"] header,
+html[data-theme="light"] .site-header{
+  background:rgba(255,255,255,.92);
+  border-color:var(--line);
+}
+html[data-theme="dark"] header,
+html[data-theme="dark"] .site-header{
+  background:rgba(17,19,24,.92);
+  border-color:#252a35;
+}
+html[data-theme="light"] .brand{color:#1b2559}
+html[data-theme="dark"] .brand{color:#fff}
+html[data-theme="light"] a{color:#5865f2}
+html[data-theme="dark"] a{color:#aeb7ff}
+
+/* Generic dashboard surfaces */
+html[data-theme="light"] .panel,
+html[data-theme="light"] .guild-card,
+html[data-theme="light"] .empty,
+html[data-theme="light"] .statistics-panel,
+html[data-theme="light"] .server-stats-summary>div,
+html[data-theme="light"] .dashboard-home-stats>div,
+html[data-theme="light"] .dashboard-toolbar,
+html[data-theme="light"] .stats-toolbar,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .twitch-card,
+html[data-theme="light"] .settings-group,
+html[data-theme="light"] .settings-toggle-section{
+  background:#fff;
+  border-color:var(--line);
+  color:var(--text);
+}
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .guild-card,
+html[data-theme="dark"] .empty,
+html[data-theme="dark"] .statistics-panel,
+html[data-theme="dark"] .server-stats-summary>div,
+html[data-theme="dark"] .dashboard-home-stats>div,
+html[data-theme="dark"] .dashboard-toolbar,
+html[data-theme="dark"] .stats-toolbar{
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  border-color:var(--line);
+  color:var(--text);
+}
+html[data-theme="dark"] .command-card,
+html[data-theme="dark"] .feature-card,
+html[data-theme="dark"] .ticket-module-card,
+html[data-theme="dark"] .automation-rule-card,
+html[data-theme="dark"] .twitch-card,
+html[data-theme="dark"] .settings-group,
+html[data-theme="dark"] .settings-toggle-section{
+  background:#151922;
+  border-color:var(--line);
+  color:var(--text);
+}
+
+/* Statistics table follows the active theme */
+html[data-theme="light"] .statistics-panel table,
+html[data-theme="light"] .server-statistics-table{
+  background:#fff;
+  color:#1b2559;
+}
+html[data-theme="dark"] .statistics-panel table,
+html[data-theme="dark"] .server-statistics-table{
+  background:#1b1e25;
+  color:#f5f7fb;
+}
+html[data-theme="light"] .statistics-panel th,
+html[data-theme="light"] .statistics-panel td{
+  border-color:#e1e7f0;
+}
+html[data-theme="dark"] .statistics-panel th,
+html[data-theme="dark"] .statistics-panel td{
+  border-color:#303644;
+}
+html[data-theme="light"] .statistics-panel th{color:#707eae}
+html[data-theme="dark"] .statistics-panel th{color:#b8c0cf}
+
+/* Inputs and search fields */
+html[data-theme="light"] .server-search,
+html[data-theme="light"] .form-grid input,
+html[data-theme="light"] .form-grid select,
+html[data-theme="light"] .ticket-module-fields input,
+html[data-theme="light"] .ticket-module-fields select,
+html[data-theme="light"] .ticket-module-fields textarea,
+html[data-theme="light"] .feature-fields input,
+html[data-theme="light"] .feature-fields select,
+html[data-theme="light"] .automation-form input,
+html[data-theme="light"] .automation-form select{
+  background:#fff;
+  color:#1b2559;
+  border-color:#d7deea;
+}
+html[data-theme="dark"] .server-search,
+html[data-theme="dark"] .form-grid input,
+html[data-theme="dark"] .form-grid select,
+html[data-theme="dark"] .ticket-module-fields input,
+html[data-theme="dark"] .ticket-module-fields select,
+html[data-theme="dark"] .ticket-module-fields textarea,
+html[data-theme="dark"] .feature-fields input,
+html[data-theme="dark"] .feature-fields select,
+html[data-theme="dark"] .automation-form input,
+html[data-theme="dark"] .automation-form select{
+  background:#11151d;
+  color:#fff;
+  border-color:#343b49;
+}
+
+/* Buttons must keep readable contrast in either theme */
+html[data-theme="light"] .btn{
+  color:#fff;
+}
+html[data-theme="light"] .btn.secondary{
+  background:#eef2f7;
+  color:#29344a;
+}
+html[data-theme="dark"] .btn{
+  color:#fff;
+}
+html[data-theme="dark"] .btn.secondary{
+  background:#262b36;
+  color:#f5f7fb;
+}
+html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .nav-toggle{
+  background:#f4f6fa;
+  color:#29344a;
+  border-color:#d8e0ea;
+}
+html[data-theme="dark"] .theme-toggle,
+html[data-theme="dark"] .nav-toggle{
+  background:#242832;
+  color:#f5f7fb;
+  border-color:#303644;
+}
+
+/* Text that was previously hard-coded for dark mode */
+html[data-theme="light"] .guild-card{color:#1b2559}
+html[data-theme="light"] .twitch-name,
+html[data-theme="light"] .ticket-module-head h3,
+html[data-theme="light"] .feature-label-row h3,
+html[data-theme="light"] .command-card strong{
+  color:#1b2559;
+}
+html[data-theme="dark"] .guild-card,
+html[data-theme="dark"] .twitch-name,
+html[data-theme="dark"] .ticket-module-head h3,
+html[data-theme="dark"] .feature-label-row h3{
+  color:#f5f7fb;
+}
