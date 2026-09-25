@@ -1045,8 +1045,9 @@ html[data-theme="dark"] .hero-category{
 .dashboard-server-summary{
   display:grid;
   grid-template-columns:repeat(6,minmax(0,1fr));
-  gap:12px;
-  margin:0;
+  gap:10px;
+  margin:2px 0 0;
+  align-items:stretch;
 }
 .dashboard-server-summary>div{
   min-width:0;
@@ -1055,49 +1056,69 @@ html[data-theme="dark"] .hero-category{
 .dashboard-server-summary .summary-card{
   display:flex;
   align-items:center;
-  gap:12px;
-  min-height:96px;
-  padding:17px;
+  gap:11px;
+  min-height:86px;
+  padding:14px 15px;
   border:1px solid var(--line);
-  border-radius:17px;
+  border-radius:15px;
   background:linear-gradient(180deg,var(--panel2),var(--panel));
-  box-shadow:0 14px 36px rgba(0,0,0,.10);
+  box-shadow:0 10px 28px rgba(0,0,0,.09);
+  overflow:hidden;
 }
 .summary-icon{
-  width:42px;
-  height:42px;
-  flex:0 0 42px;
+  width:38px;
+  height:38px;
+  flex:0 0 38px;
   display:grid;
   place-items:center;
   border:1px solid rgba(88,101,242,.28);
-  border-radius:12px;
+  border-radius:11px;
   background:rgba(88,101,242,.10);
   color:#aeb7ff;
-  font-family:Inter,"Segoe UI Symbol","Segoe UI Emoji",system-ui,sans-serif;
-  font-size:19px;
-  font-weight:800;
-  line-height:1;
-  text-align:center;
+}
+.summary-icon svg{
+  width:18px;
+  height:18px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.summary-icon-members svg,
+.summary-icon-tickets svg{
+  width:19px;
+  height:19px;
+}
+.summary-icon-channels svg{
+  width:17px;
+  height:17px;
+}
+.summary-icon-commands svg{
+  width:18px;
+  height:18px;
 }
 .dashboard-server-summary .summary-card>div{
   min-width:0;
 }
 .dashboard-server-summary strong{
   display:block;
-  font-size:24px;
-  line-height:1;
+  font-size:22px;
+  line-height:1.05;
   letter-spacing:-.025em;
   color:var(--text);
 }
 .dashboard-server-summary .summary-card>div>span{
   display:block;
-  margin-top:6px;
+  margin-top:5px;
   color:var(--muted);
-  font-size:9px;
+  font-size:8px;
+  line-height:1.2;
   font-weight:900;
-  letter-spacing:.08em;
+  letter-spacing:.075em;
   text-transform:uppercase;
-  white-space:nowrap;
+  white-space:normal;
 }
 
 /* managed servers section */
@@ -1345,18 +1366,21 @@ html[data-theme="dark"] .friendly-guild-card{
     gap:8px;
   }
   .dashboard-server-summary .summary-card{
-    min-height:82px;
-    padding:13px;
+    min-height:76px;
+    padding:12px;
   }
   .summary-icon{
-    width:36px;
-    height:36px;
-    flex:0 0 36px;
+    width:34px;
+    height:34px;
+    flex:0 0 34px;
     border-radius:10px;
-    font-size:17px;
+  }
+  .summary-icon svg{
+    width:16px;
+    height:16px;
   }
   .dashboard-server-summary strong{
-    font-size:20px;
+    font-size:19px;
   }
   .dashboard-server-section-head{
     align-items:flex-start;
