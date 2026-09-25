@@ -1852,3 +1852,125 @@ html[data-theme="light"] *{
     box-shadow:0 12px 28px rgba(31,51,89,.10) !important;
   }
 }
+
+
+/* === Light-mode navigation/button cleanup ===
+   Remove legacy dark pill/button backgrounds from dashboard controls.
+*/
+html[data-theme="light"] .dashboard-jump{
+  background:rgba(255,255,255,.96) !important;
+  border-color:#dfe5ef !important;
+  box-shadow:0 8px 24px rgba(31,51,89,.06) !important;
+}
+
+html[data-theme="light"] .dashboard-jump a,
+html[data-theme="light"] .dashboard-jump button,
+html[data-theme="light"] .section-tabs a,
+html[data-theme="light"] .section-tabs button,
+html[data-theme="light"] .tab-list a,
+html[data-theme="light"] .tab-list button,
+html[data-theme="light"] .settings-nav a,
+html[data-theme="light"] .settings-nav button,
+html[data-theme="light"] .module-nav a,
+html[data-theme="light"] .module-nav button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:40px;
+  padding:9px 14px;
+  border:1px solid #d6deea !important;
+  border-radius:10px;
+  background:#ffffff !important;
+  color:#344054 !important;
+  box-shadow:0 1px 2px rgba(16,24,40,.04) !important;
+  font-weight:700;
+  text-decoration:none;
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    box-shadow .16s ease,
+    transform .16s ease;
+}
+
+html[data-theme="light"] .dashboard-jump a:hover,
+html[data-theme="light"] .dashboard-jump button:hover,
+html[data-theme="light"] .section-tabs a:hover,
+html[data-theme="light"] .section-tabs button:hover,
+html[data-theme="light"] .tab-list a:hover,
+html[data-theme="light"] .tab-list button:hover,
+html[data-theme="light"] .settings-nav a:hover,
+html[data-theme="light"] .settings-nav button:hover,
+html[data-theme="light"] .module-nav a:hover,
+html[data-theme="light"] .module-nav button:hover{
+  background:#f3f5ff !important;
+  border-color:#b8c1ff !important;
+  color:#3843c7 !important;
+  box-shadow:0 5px 14px rgba(88,101,242,.10) !important;
+  transform:translateY(-1px);
+}
+
+html[data-theme="light"] .dashboard-jump a:focus-visible,
+html[data-theme="light"] .dashboard-jump button:focus-visible,
+html[data-theme="light"] .section-tabs a:focus-visible,
+html[data-theme="light"] .section-tabs button:focus-visible,
+html[data-theme="light"] .tab-list a:focus-visible,
+html[data-theme="light"] .tab-list button:focus-visible,
+html[data-theme="light"] .settings-nav a:focus-visible,
+html[data-theme="light"] .settings-nav button:focus-visible,
+html[data-theme="light"] .module-nav a:focus-visible,
+html[data-theme="light"] .module-nav button:focus-visible{
+  outline:0;
+  border-color:#7c87f5 !important;
+  box-shadow:0 0 0 3px rgba(88,101,242,.14) !important;
+}
+
+html[data-theme="light"] .dashboard-jump a:active,
+html[data-theme="light"] .dashboard-jump button:active,
+html[data-theme="light"] .section-tabs a:active,
+html[data-theme="light"] .section-tabs button:active,
+html[data-theme="light"] .tab-list a:active,
+html[data-theme="light"] .tab-list button:active,
+html[data-theme="light"] .settings-nav a:active,
+html[data-theme="light"] .settings-nav button:active,
+html[data-theme="light"] .module-nav a:active,
+html[data-theme="light"] .module-nav button:active{
+  background:#e9edff !important;
+  border-color:#9ea9fb !important;
+  color:#303bb8 !important;
+  transform:none;
+}
+
+/* Legacy text-chip controls should not remain charcoal in light mode. */
+html[data-theme="light"] .token-row span,
+html[data-theme="light"] .command-subcommands span{
+  background:#f2f4f7 !important;
+  color:#475467 !important;
+  border-color:#e4e7ec !important;
+}
+
+/* Generic non-primary native buttons inside dashboard panels. */
+html[data-theme="light"] main button:not(.btn):not(.theme-toggle):not(.nav-toggle){
+  background:#ffffff;
+  color:#344054;
+  border-color:#d6deea;
+}
+
+html[data-theme="light"] main button:not(.btn):not(.theme-toggle):not(.nav-toggle):hover{
+  background:#f4f6f9;
+  color:#172033;
+  border-color:#c6cfdd;
+}
+
+@media(max-width:720px){
+  html[data-theme="light"] .dashboard-jump{
+    gap:7px;
+    padding:8px;
+  }
+
+  html[data-theme="light"] .dashboard-jump a{
+    min-height:38px;
+    padding:8px 11px;
+    font-size:12px;
+  }
+}
