@@ -199,6 +199,16 @@ const schemaStatements = [
     data MEDIUMTEXT,
     PRIMARY KEY (session_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS dashboard_secure_records (
+    guild_id VARCHAR(32) NOT NULL,
+    namespace VARCHAR(64) NOT NULL,
+    record_key VARCHAR(128) NOT NULL,
+    encrypted_json LONGTEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (guild_id, namespace, record_key),
+    KEY idx_dashboard_secure_namespace (namespace, guild_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS twitch_announcements (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     guild_id VARCHAR(32) NOT NULL,
