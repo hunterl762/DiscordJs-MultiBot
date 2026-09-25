@@ -1,0 +1,6 @@
+const { SlashCommandBuilder } = require('discord.js');
+const { musicContext, existingPlayer, sameVoiceChannel, replySlash, replyPrefix } = require('../../src/music/helpers');
+const modes=new Set(['none','track','queue']);
+async function set(source,mode,slash){const reply=slash?replySlash:replyPrefix;const c=await musicContext(source);if(c.error)return reply(source,c.error,slash);const p=existingPlayer(c.manager,c.guild.id);if(!p)return reply(source,'No active music player.',slash);if(!sameVoiceChannel(p,source.member))return reply(source,'Join the same voice channel as the bot.',slash);const selected=modes.has(mode)?mode:'none';p.setLoop(selected);return reply(source,`🔁 Loop mode: **${selected}**.`);}
+module.exports={name:'loop',category:'Music',data:new SlashCommandBuilder().setName('loop').setDescription('Set loop mode.').addStringOption(o=>o.setName('mode').setDescription('Loop mode').setRequired(true).addChoices({name:'Off',value:'none'},{name:'Current track',value:'track'},{name:'Entire queue',value:'queue'})),guildOnly:true,
+executeSlash(i){return set(i,i.options.getString('mode',true),true);},executePrefix(m,args){const mode=String(args[0]||'none').toLowerCase();if(!modes.has(mode))return replyPrefix(m,'Usage: !loop <none|track|queue>');return set(m,mode,false);}};
