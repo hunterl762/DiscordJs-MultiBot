@@ -1,9 +1,25 @@
 const { EmbedBuilder } = require('discord.js');
-const { Kazagumo } = require('kazagumo');
-const { Connectors } = require('shoukaku');
 
+let Kazagumo = null;
+let Connectors = null;
 let kazagumo = null;
 let initialized = false;
+
+function loadMusicDependencies() {
+  if (Kazagumo && Connectors) return true;
+
+  try {
+    ({ Kazagumo } = require('kazagumo'));
+    ({ Connectors } = require('shoukaku'));
+    return true;
+  } catch (error) {
+    console.error(
+      '[Music] Kazagumo/Shoukaku dependencies are unavailable. Music will stay disabled; run npm install to enable it:',
+      error?.message || error,
+    );
+    return false;
+  }
+}
 
 function envEnabled(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
@@ -54,6 +70,11 @@ async function initMusic(client) {
 
   if (!lavalinkConfigured()) {
     console.warn('[Music] MUSIC_ENABLED is true, but LAVALINK_URL/LAVALINK_PASSWORD are not configured.');
+    return null;
+  }
+
+  if (!loadMusicDependencies()) {
+    initialized = false;
     return null;
   }
 

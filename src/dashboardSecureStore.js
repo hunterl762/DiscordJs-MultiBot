@@ -2,7 +2,7 @@ const { getPool } = require('./database');
 const { encryptSecret, decryptSecret } = require('./cryptoSecrets');
 
 function decode(row) {
-  if (!row) return null;
+  if (!row || row.encrypted_json == null || row.encrypted_json === '') return null;
   try {
     return {
       guildId: row.guild_id,
@@ -36,7 +36,7 @@ async function listSecureRecords(guildId, namespace) {
       ORDER BY record_key ASC`,
     [guildId, namespace],
   );
-  return rows.map(decode);
+  return rows.map(decode).filter(Boolean);
 }
 
 async function listSecureNamespace(namespace) {
@@ -47,7 +47,7 @@ async function listSecureNamespace(namespace) {
       ORDER BY guild_id ASC,record_key ASC`,
     [namespace],
   );
-  return rows.map(decode);
+  return rows.map(decode).filter(Boolean);
 }
 
 async function putSecureRecord(guildId, namespace, recordKey, payload) {
