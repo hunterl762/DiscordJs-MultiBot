@@ -43,6 +43,13 @@ const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 const GUILD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
+const cloudflareZoneCache = {
+  zoneName: '',
+  zoneId: '',
+  expiresAt: 0,
+  error: '',
+  errorExpiresAt: 0,
+};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -156,20 +163,136 @@ function loadDashboardTlsOptions() {
 function cloudflareSslConfig() {
   return {
     zoneId: String(process.env.CLOUDFLARE_ZONE_ID || '').trim(),
+    zoneName: String(
+      process.env.CLOUDFLARE_ZONE_NAME
+        || process.env.WEB_CANONICAL_HOST
+        || 'kryndexabot.xyz',
+    ).trim().toLowerCase(),
     apiToken: String(process.env.CLOUDFLARE_API_TOKEN || '').trim(),
   };
 }
 
-async function getCloudflareCertificatePacks() {
-  const { zoneId, apiToken } = cloudflareSslConfig();
+async function cloudflareJson(endpoint, apiToken) {
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      Accept: 'application/json',
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
 
-  if (!zoneId || !apiToken) {
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  return { response, payload };
+}
+
+function cloudflareErrorMessage(payload, fallback = '') {
+  const detail = Array.isArray(payload?.errors)
+    ? payload.errors.map((item) => item?.message).filter(Boolean).join('; ')
+    : '';
+
+  return detail || fallback;
+}
+
+function isInvalidCloudflareZone(response, payload) {
+  if (response?.status !== 403) return false;
+
+  const detail = cloudflareErrorMessage(payload).toLowerCase();
+  return detail.includes('invalid zone identifier')
+    || detail.includes('zone identifier');
+}
+
+async function resolveCloudflareZoneId(zoneName, apiToken, force = false) {
+  const normalizedName = String(zoneName || '').trim().toLowerCase();
+  if (!normalizedName || !apiToken) return null;
+
+  const now = Date.now();
+
+  if (
+    !force
+    && cloudflareZoneCache.zoneName === normalizedName
+    && cloudflareZoneCache.zoneId
+    && cloudflareZoneCache.expiresAt > now
+  ) {
+    return cloudflareZoneCache.zoneId;
+  }
+
+  if (
+    !force
+    && cloudflareZoneCache.zoneName === normalizedName
+    && cloudflareZoneCache.error
+    && cloudflareZoneCache.errorExpiresAt > now
+  ) {
+    return null;
+  }
+
+  const endpoint = `${CLOUDFLARE_API}/zones?name=${encodeURIComponent(normalizedName)}&status=active&per_page=50`;
+  const { response, payload } = await cloudflareJson(endpoint, apiToken);
+
+  if (!response.ok || !payload?.success) {
+    const detail = cloudflareErrorMessage(
+      payload,
+      `Cloudflare zone lookup failed with HTTP ${response.status}`,
+    );
+
+    cloudflareZoneCache.zoneName = normalizedName;
+    cloudflareZoneCache.zoneId = '';
+    cloudflareZoneCache.expiresAt = 0;
+    cloudflareZoneCache.error = detail;
+    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
+
+    return null;
+  }
+
+  const matches = Array.isArray(payload.result) ? payload.result : [];
+  const exact = matches.find(
+    (zone) => String(zone?.name || '').trim().toLowerCase() === normalizedName,
+  );
+
+  if (!exact?.id) {
+    const detail = `No active Cloudflare zone named "${normalizedName}" was visible to this API token.`;
+
+    cloudflareZoneCache.zoneName = normalizedName;
+    cloudflareZoneCache.zoneId = '';
+    cloudflareZoneCache.expiresAt = 0;
+    cloudflareZoneCache.error = detail;
+    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
+
+    return null;
+  }
+
+  cloudflareZoneCache.zoneName = normalizedName;
+  cloudflareZoneCache.zoneId = String(exact.id);
+  cloudflareZoneCache.expiresAt = now + 6 * 60 * 60_000;
+  cloudflareZoneCache.error = '';
+  cloudflareZoneCache.errorExpiresAt = 0;
+
+  console.log(
+    `[Cloudflare SSL] Resolved Cloudflare zone "${normalizedName}" to ${cloudflareZoneCache.zoneId}.`,
+  );
+
+  return cloudflareZoneCache.zoneId;
+}
+
+async function getCloudflareCertificatePacks() {
+  const {
+    zoneId: configuredZoneId,
+    zoneName,
+    apiToken,
+  } = cloudflareSslConfig();
+
+  if (!apiToken) {
     return {
       configured: false,
-      zoneId,
-      endpoint: zoneId
-        ? `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`
-        : null,
+      zoneId: configuredZoneId,
+      zoneName,
+      endpoint: null,
       packs: [],
       activeCertificates: 0,
       pendingCertificates: 0,
@@ -178,29 +301,63 @@ async function getCloudflareCertificatePacks() {
     };
   }
 
-  const endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
+  let zoneId = configuredZoneId;
+
+  if (!zoneId) {
+    zoneId = await resolveCloudflareZoneId(zoneName, apiToken);
+
+    if (!zoneId) {
+      return {
+        configured: true,
+        zoneId: '',
+        zoneName,
+        endpoint: null,
+        packs: [],
+        activeCertificates: 0,
+        pendingCertificates: 0,
+        hosts: [],
+        error: cloudflareZoneCache.error
+          || `Unable to resolve Cloudflare zone "${zoneName}". Give the token Zone Read access or set CLOUDFLARE_ZONE_ID to the zone's actual Zone ID.`,
+      };
+    }
+  }
+
+  let endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        Accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(8_000),
-    });
+    let { response, payload } = await cloudflareJson(endpoint, apiToken);
 
-    let payload;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
+    if (isInvalidCloudflareZone(response, payload)) {
+      const resolvedZoneId = await resolveCloudflareZoneId(zoneName, apiToken, true);
+
+      if (resolvedZoneId && resolvedZoneId !== zoneId) {
+        console.warn(
+          `[Cloudflare SSL] Configured CLOUDFLARE_ZONE_ID "${zoneId}" is invalid for this token; using resolved zone "${resolvedZoneId}" for ${zoneName}.`,
+        );
+
+        zoneId = resolvedZoneId;
+        endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
+        ({ response, payload } = await cloudflareJson(endpoint, apiToken));
+      } else {
+        const detail = cloudflareZoneCache.error
+          || cloudflareErrorMessage(payload, 'Invalid zone identifier');
+
+        return {
+          configured: true,
+          zoneId,
+          zoneName,
+          endpoint,
+          packs: [],
+          activeCertificates: 0,
+          pendingCertificates: 0,
+          hosts: [],
+          error: `${detail}. Replace CLOUDFLARE_ZONE_ID with the Zone ID for ${zoneName}, or leave CLOUDFLARE_ZONE_ID blank and allow automatic lookup.`,
+        };
+      }
     }
 
     if (!response.ok || !payload?.success) {
-      const detail = Array.isArray(payload?.errors)
-        ? payload.errors.map((item) => item?.message).filter(Boolean).join('; ')
-        : '';
+      const detail = cloudflareErrorMessage(payload);
       throw new Error(
         `Cloudflare certificate-pack request failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
       );
@@ -232,6 +389,7 @@ async function getCloudflareCertificatePacks() {
     return {
       configured: true,
       zoneId,
+      zoneName,
       endpoint,
       packs,
       activeCertificates,
@@ -240,10 +398,15 @@ async function getCloudflareCertificatePacks() {
       error: null,
     };
   } catch (error) {
-    console.error('[Cloudflare SSL] Unable to list certificate packs:', error);
+    console.warn(
+      '[Cloudflare SSL] Certificate-pack status unavailable:',
+      error.message || error,
+    );
+
     return {
       configured: true,
       zoneId,
+      zoneName,
       endpoint,
       packs: [],
       activeCertificates: 0,
