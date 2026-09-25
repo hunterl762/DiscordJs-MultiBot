@@ -65,7 +65,16 @@ MYSQL_SSL_CA_FILE=
 
 TWITCH_CLIENT_ID=
 TWITCH_CLIENT_SECRET=
-TWITCH_CHECK_INTERVAL_MS=120000
+YOUTUBE_API_KEY=
+KICK_CLIENT_ID=
+KICK_CLIENT_SECRET=
+STREAM_ALERT_CHECK_INTERVAL_MS=120000
+
+MUSIC_ENABLED=false
+LAVALINK_URL=localhost:2333
+LAVALINK_PASSWORD=
+LAVALINK_SECURE=false
+MUSIC_DEFAULT_SEARCH_ENGINE=youtube
 ```
 
 For remote/cloud MySQL, enable TLS when your provider supports or requires it.
@@ -139,13 +148,11 @@ Tickets use private Discord channels. When a ticket is closed, MultiBot:
 5. Attempts to DM it to the ticket opener.
 6. Makes it downloadable by authorized admins through the dashboard.
 
-## Twitch live announcements
+## Twitch, YouTube, and Kick live announcements
 
-Create a Twitch application in the Twitch Developer Console and set `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`.
+Kryndexa supports live alerts for Twitch, YouTube, and Kick from the dashboard. Configure `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET`, `YOUTUBE_API_KEY`, and/or `KICK_CLIENT_ID`/`KICK_CLIENT_SECRET` for the providers you want to use.
 
-Server administrators can then open their server in the web panel and add one or more Twitch usernames. Each Twitch account can target a selected Discord text or announcement channel.
-
-The monitor uses Twitch's app access token flow and Helix `Get Streams` endpoint. It checks configured channels in batches, records the current stream ID in MySQL, and only posts when a new live stream is detected. Each live alert is sent as a rich Discord embed with the stream title, game, viewer count, relative start time, Twitch preview image, and a **Watch on Twitch** link button.
+Server administrators can add provider-specific streamer/channel identifiers, choose a Discord announcement channel, set a custom message, and optionally assign a live role. The monitor records live state so it only announces a newly detected stream rather than reposting the same broadcast.
 
 Optional custom announcement variables:
 
@@ -153,8 +160,9 @@ Optional custom announcement variables:
 - `{game}`
 - `{title}`
 - `{url}`
+- `{platform}`
 
-The default check interval is 120 seconds and can be changed with `TWITCH_CHECK_INTERVAL_MS`. MultiBot enforces a minimum interval of 60 seconds.
+The shared check interval defaults to 120 seconds and can be changed with `STREAM_ALERT_CHECK_INTERVAL_MS`. `TWITCH_CHECK_INTERVAL_MS` remains as a legacy fallback. Kryndexa enforces a minimum interval of 60 seconds.
 
 ## Web-panel Command Center
 
@@ -249,14 +257,13 @@ Every server page now has a **Feature Center** with priority badges, operational
 - **Temporary Voice** — join-to-create voice rooms with cleanup.
 - **Analytics** — persistent command-use tracking and `/stats`.
 - **Custom Automations** — dashboard rule builder for member-join/message-match triggers with send-message, DM-user and add-role actions.
-- **Twitch Alerts** — existing rich Twitch live embeds and per-streamer channel configuration.
+- **Twitch / YouTube / Kick Alerts** — provider-aware live detection, rich embeds, announcement channels, custom messages, and optional live roles.
 
 ### Partial / provider-dependent features
 
 - **Giveaways** — timed, multi-winner giveaways are operational; restart persistence, advanced entry requirements and reroll history are still an expansion point.
-- **YouTube / Kick Alerts** — represented in the Stream Alerts module; Twitch is operational now, while YouTube/Kick need their provider API integrations.
 - **AI Assistant** — dashboard integration slot is present but requires an AI provider/API implementation.
-- **Music** — dashboard settings are present but playback requires a Lavalink-compatible backend and source plugins for services such as Spotify/Apple Music.
+- **Music** — playback commands and dashboard settings are implemented through Kazagumo/Lavalink; a Lavalink-compatible backend must be configured and enabled.
 
 The dashboard intentionally labels these integration-dependent modules instead of reporting them as fully operational without their external services.
 
@@ -265,6 +272,8 @@ The dashboard intentionally labels these integration-dependent modules instead o
 `/backup create` saves the current server channel and role structure to MySQL, including role permissions and channel permission overwrites. It intentionally does not store message history.
 
 `/backup list` shows recent stored backup IDs and counts.
+
+`/backup restore backup_id:<id> confirm:true` restores a stored backup in merge mode. Before restoring, Kryndexa automatically creates a safety backup; unrelated current roles and channels are left intact.
 
 ## Bot runtime information
 
