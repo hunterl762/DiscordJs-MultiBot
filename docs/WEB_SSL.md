@@ -142,11 +142,12 @@ GET https://api.cloudflare.com/client/v4/zones/{zone_id}/ssl/certificate_packs
 Configure:
 
 ```env
-CLOUDFLARE_ZONE_ID=a0bc666fd167fd1c5a390d516c9dacb7
+CLOUDFLARE_ZONE_NAME=kryndexabot.xyz
+CLOUDFLARE_ZONE_ID=
 CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
 ```
 
-The API token should be scoped to the required zone and have **SSL and Certificates Read** permission.
+The API token should be scoped to the required zone and have **SSL and Certificates Read** permission. If `CLOUDFLARE_ZONE_ID` is blank or invalid and you want Kryndexa to resolve it automatically, the token also needs **Zone Read** for `kryndexabot.xyz`.
 
 The token stays server-side and is never sent to the dashboard browser. The dashboard shows:
 
@@ -292,3 +293,32 @@ WEB_SSL_ENABLED=true
 WEB_SSL_PROVIDER=cloudflare-origin
 WEB_HTTPS_PORT=443
 ```
+
+
+### Invalid Cloudflare zone identifier
+
+If Cloudflare returns:
+
+```
+HTTP 403: Invalid zone identifier
+```
+
+Kryndexa now attempts to resolve the correct zone ID automatically from:
+
+```env
+CLOUDFLARE_ZONE_NAME=kryndexabot.xyz
+```
+
+Recommended configuration:
+
+```env
+CLOUDFLARE_ZONE_NAME=kryndexabot.xyz
+CLOUDFLARE_ZONE_ID=
+CLOUDFLARE_API_TOKEN=your-token
+```
+
+Leaving `CLOUDFLARE_ZONE_ID` blank prevents an old or copied Zone ID from being used. The resolved ID is cached in memory for six hours.
+
+If automatic lookup cannot see the zone, add **Zone Read** permission for `kryndexabot.xyz` to the Cloudflare API token, or manually copy the domain's actual **Zone ID** from Cloudflare and set it in `CLOUDFLARE_ZONE_ID`.
+
+An invalid Zone ID no longer prints a full exception stack on every dashboard load.
