@@ -15,11 +15,58 @@ const { escapeHtml } = require('../utils/html');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 
+function botInviteUrl() {
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  if (!clientId) return null;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    scope: 'bot applications.commands',
+    permissions: PermissionFlagsBits.Administrator.toString(),
+  });
+  return `https://discord.com/oauth2/authorize?${params}`;
+}
+
 function page(title, body, user) {
   const auth = user
-    ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary" href="/logout">Log out</a></div>`
-    : '<a class="btn" href="/login">Login with Discord</a>';
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/">MultiBot</a>${auth}</header><main>${body}</main><footer>MultiBot • discord.js v14 • <a href="/privacy">Privacy Policy</a></footer></body></html>`;
+    ? `<div class="user"><span class="user-name">${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
+    : '<a class="btn compact" href="/login">Login with Discord</a>';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>${escapeHtml(title)}</title>
+<script>(function(){try{var t=localStorage.getItem('multibot-theme');if(!t&&window.matchMedia('(prefers-color-scheme: light)').matches)t='light';if(t)document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<link rel="stylesheet" href="/style.css">
+<script src="/dashboard.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="nav-shell">
+    <a class="brand" href="/" aria-label="MultiBot home">MultiBot</a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
+      <span class="sr-only">Toggle navigation</span><span aria-hidden="true">☰</span>
+    </button>
+    <nav class="site-nav" id="site-nav" data-nav aria-label="Primary navigation">
+      <a href="/" data-nav-link>Home</a>
+      <a href="/dashboard" data-nav-link>Dashboard</a>
+      <a href="/invite" data-nav-link>Add Bot</a>
+      <a href="/privacy" data-nav-link>Privacy</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme" title="Switch color theme">
+        <span data-theme-icon aria-hidden="true">☀</span>
+      </button>
+      ${auth}
+    </div>
+  </div>
+</header>
+<main>${body}</main>
+<footer>MultiBot • discord.js v14 • <a href="/privacy">Privacy Policy</a></footer>
+</body>
+</html>`;
 }
 
 function oauthUrl(state) {
@@ -78,7 +125,10 @@ function startDashboard(client) {
   }));
 
   app.get('/', (req, res) => {
-    const body = `<section class="hero"><span class="pill">Discord.js v14</span><h1>MultiBot Control Panel</h1><p>Configure moderation, welcome/logging, ticket channels, staff roles, and HTML transcripts from the web.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : '<a class="btn" href="/login">Login with Discord</a>'}</div></section>`;
+    const primaryAction = req.session.user
+      ? '<a class="btn" href="/dashboard">Open Dashboard</a>'
+      : '<a class="btn" href="/login">Login with Discord</a>';
+    const body = `<section class="hero"><span class="pill">Discord.js v14</span><h1>MultiBot Control Panel</h1><p>Configure moderation, welcome/logging, ticket channels, staff roles, and HTML transcripts from the web.</p><div class="actions">${primaryAction}<a class="btn secondary" href="/invite">Add Bot to Server</a></div></section>`;
     res.send(page('MultiBot', body, req.session.user));
   });
 
@@ -88,6 +138,12 @@ function startDashboard(client) {
       ? fs.readFileSync(policyPath, 'utf8')
       : 'MultiBot Privacy Policy is unavailable.';
     res.send(page('Privacy Policy', `<section class="panel policy"><pre>${escapeHtml(policy)}</pre></section>`, req.session.user));
+  });
+
+  app.get('/invite', (_req, res) => {
+    const url = botInviteUrl();
+    if (!url) return res.status(500).send(page('Invite unavailable', '<div class="empty">DISCORD_CLIENT_ID is not configured, so the bot invite link cannot be generated.</div>'));
+    res.redirect(url);
   });
 
   app.get('/login', (req, res) => {
@@ -145,8 +201,11 @@ function startDashboard(client) {
       const roles = [...guild.roles.cache.values()].filter((r) => r.id !== guild.id).sort((a, b) => b.position - a.position);
       const tickets = listGuildTickets(guild.id).slice(0, 20);
       const transcriptRows = tickets.length ? tickets.map((t) => `<tr><td>${escapeHtml(t.id.slice(0, 8))}</td><td>${escapeHtml(t.status)}</td><td>${escapeHtml(new Date(t.createdAt).toLocaleString())}</td><td>${t.transcriptFile ? `<a href="/transcripts/${t.id}">Download HTML</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="4">No tickets yet.</td></tr>';
-      const form = `<div class="section-title"><a href="/dashboard">← Servers</a><h1>${escapeHtml(guild.name)}</h1><p>Changes apply immediately; no bot restart is required.</p></div>
-      <form class="panel" method="post" action="/dashboard/${guild.id}"><input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}"><div class="form-grid">
+      const saveNotice = req.query.saved === '1'
+        ? '<div class="notice success" role="status">Settings saved successfully.</div>'
+        : '';
+      const form = `${saveNotice}<div class="section-title"><a class="back-link" href="/dashboard">← Servers</a><h1>${escapeHtml(guild.name)}</h1><p>Changes apply immediately; no bot restart is required.</p></div>
+      <form class="panel settings-form" method="post" action="/dashboard/${guild.id}" data-loading-form><input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}"><div class="form-grid">
       <label>Prefix<input name="prefix" maxlength="5" value="${escapeHtml(settings.prefix)}"></label>
       <label>Welcome Channel<select name="welcomeChannelId">${selectOptions(textChannels, settings.welcomeChannelId)}</select></label>
       <label>Leave Channel<select name="leaveChannelId">${selectOptions(textChannels, settings.leaveChannelId)}</select></label>
@@ -197,7 +256,7 @@ function startDashboard(client) {
         verificationEnabled: req.body.verificationEnabled === 'on',
         prefixCommandsEnabled: req.body.prefixCommandsEnabled === 'on',
       });
-      res.redirect(`/dashboard/${req.params.guildId}`);
+      res.redirect(`/dashboard/${req.params.guildId}?saved=1`);
     } catch (error) {
       console.error(error);
       res.status(500).send('Unable to save settings.');
