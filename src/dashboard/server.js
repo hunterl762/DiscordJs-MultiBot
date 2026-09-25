@@ -282,7 +282,19 @@ function startDashboard(client) {
   app.get('/health', (_req, res) => res.json({ ok: true, botReady: client.isReady(), guilds: client.guilds.cache.size }));
 
   const port = Number(process.env.PORT || 3000);
-  app.listen(port, () => console.log(`Dashboard listening on ${process.env.BASE_URL || `http://localhost:${port}`}`));
+  const webServer = app.listen(port, () => {
+    console.log(`Dashboard listening on ${process.env.BASE_URL || `http://localhost:${port}`}`);
+  });
+
+  webServer.on('error', (error) => {
+    if (error?.code === 'EADDRINUSE') {
+      console.error(`Dashboard failed to start: port ${port} is already in use. Change PORT in .env or stop the process using that port.`);
+      return;
+    }
+    console.error('Dashboard web server error:', error);
+  });
+
+  return webServer;
 }
 
 module.exports = { startDashboard };
