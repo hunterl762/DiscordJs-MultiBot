@@ -594,7 +594,7 @@ function page(title, body, user, meta = {}) {
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
     <a href="/">Home</a><a href="/features">Features</a>
-    ${user ? '<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>' : ''}
+    ${user ? `<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
     <a href="/privacy">Privacy</a><a href="/terms">Terms</a>
   </nav>
   <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme"><span data-theme-icon>◐</span></button><div class="header-auth">${auth}</div></div>
