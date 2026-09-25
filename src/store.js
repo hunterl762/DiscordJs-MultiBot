@@ -1,4 +1,5 @@
 const { getPool } = require('./database');
+const { getSecureRecord, putSecureRecord } = require('./dashboardSecureStore');
 
 const settingsCache = new Map();
 const SETTINGS_CACHE_TTL_MS = Math.max(5_000, Number(process.env.SETTINGS_CACHE_TTL_MS || 60_000));
@@ -67,9 +68,9 @@ function cacheSettings(guildId, settings) {
   return settings;
 }
 
-async function getGuildSettings(guildId) {
-  const cached = settingsCache.get(guildId);
-  if (cached && cached.expiresAt > Date.now()) return cached.settings;
+async function migrateLegacyGuildSettings(guildId) {
+  const secure = await getSecureRecord(guildId, 'guild_settings', 'settings');
+  if (secure?.payload) return { ...defaultGuildSettings(), ...secure.payload };
 
   const [rows] = await getPool().execute(
     `SELECT prefix, welcome_channel_id, leave_channel_id, logs_channel_id, verification_log_channel_id,
@@ -82,71 +83,24 @@ async function getGuildSettings(guildId) {
     [guildId],
   );
 
-  return cacheSettings(guildId, rowToSettings(rows[0]));
+  const settings = rowToSettings(rows[0]);
+  if (rows[0]) {
+    await putSecureRecord(guildId, 'guild_settings', 'settings', settings);
+    await getPool().execute('DELETE FROM guild_settings WHERE guild_id=?', [guildId]);
+  }
+  return settings;
+}
+
+async function getGuildSettings(guildId) {
+  const cached = settingsCache.get(guildId);
+  if (cached && cached.expiresAt > Date.now()) return cached.settings;
+  return cacheSettings(guildId, await migrateLegacyGuildSettings(guildId));
 }
 
 async function saveGuildSettings(guildId, settings) {
   const merged = { ...defaultGuildSettings(), ...settings };
   merged.maxOpenTicketsPerUser = Math.max(1, Math.min(25, Number(merged.maxOpenTicketsPerUser || 3)));
-
-  await getPool().execute(
-    `INSERT INTO guild_settings (
-       guild_id, prefix, welcome_channel_id, leave_channel_id, logs_channel_id, verification_log_channel_id,
-       role_log_channel_id, broadcast_channel_id, verification_channel_id, verified_role_id, unverified_role_id,
-       tickets_category_id, ticket_panel_channel_id, ticket_staff_role_id, transcript_channel_id,
-       max_open_tickets_per_user, online_transcripts_enabled, transcript_attachments_enabled, tickets_enabled,
-       logging_enabled, welcome_enabled, verification_enabled, prefix_commands_enabled
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       prefix = VALUES(prefix),
-       welcome_channel_id = VALUES(welcome_channel_id),
-       leave_channel_id = VALUES(leave_channel_id),
-       logs_channel_id = VALUES(logs_channel_id),
-       verification_log_channel_id = VALUES(verification_log_channel_id),
-       role_log_channel_id = VALUES(role_log_channel_id),
-       broadcast_channel_id = VALUES(broadcast_channel_id),
-       verification_channel_id = VALUES(verification_channel_id),
-       verified_role_id = VALUES(verified_role_id),
-       unverified_role_id = VALUES(unverified_role_id),
-       tickets_category_id = VALUES(tickets_category_id),
-       ticket_panel_channel_id = VALUES(ticket_panel_channel_id),
-       ticket_staff_role_id = VALUES(ticket_staff_role_id),
-       transcript_channel_id = VALUES(transcript_channel_id),
-       max_open_tickets_per_user = VALUES(max_open_tickets_per_user),
-       online_transcripts_enabled = VALUES(online_transcripts_enabled),
-       transcript_attachments_enabled = VALUES(transcript_attachments_enabled),
-       tickets_enabled = VALUES(tickets_enabled),
-       logging_enabled = VALUES(logging_enabled),
-       welcome_enabled = VALUES(welcome_enabled),
-       verification_enabled = VALUES(verification_enabled),
-       prefix_commands_enabled = VALUES(prefix_commands_enabled)`,
-    [
-      guildId,
-      merged.prefix,
-      merged.welcomeChannelId,
-      merged.leaveChannelId,
-      merged.logsChannelId,
-      merged.verificationLogChannelId,
-      merged.roleLogChannelId,
-      merged.broadcastChannelId,
-      merged.verificationChannelId,
-      merged.verifiedRoleId,
-      merged.unverifiedRoleId,
-      merged.ticketsCategoryId,
-      merged.ticketPanelChannelId,
-      merged.ticketStaffRoleId,
-      merged.transcriptChannelId,
-      merged.maxOpenTicketsPerUser,
-      merged.onlineTranscriptsEnabled ? 1 : 0,
-      merged.transcriptAttachmentsEnabled ? 1 : 0,
-      merged.ticketsEnabled ? 1 : 0,
-      merged.loggingEnabled ? 1 : 0,
-      merged.welcomeEnabled ? 1 : 0,
-      merged.verificationEnabled ? 1 : 0,
-      merged.prefixCommandsEnabled ? 1 : 0,
-    ],
-  );
-
+  await putSecureRecord(guildId, 'guild_settings', 'settings', merged);
   return cacheSettings(guildId, merged);
 }
 
