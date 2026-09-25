@@ -1,84 +1,17 @@
-const {
-  EmbedBuilder,
-  MessageFlags,
-  PermissionFlagsBits,
-  SlashCommandBuilder,
-} = require('discord.js');
-const { createServerBackup, listServerBackups } = require('../../src/backupStore');
+const { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
+const { createServerBackup, getServerBackup, listServerBackups, restoreServerBackup } = require('../../src/backupStore');
 
-function backupListEmbed(guild, rows) {
-  return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`Server Backups • ${guild.name}`)
-    .setDescription(rows.length
-      ? rows.map((row) => [
-          `**${row.id}**`,
-          `Channels: **${row.channelCount}** • Roles: **${row.roleCount}**`,
-          `Created by <@${row.createdBy}> • <t:${Math.floor(new Date(row.createdAt).getTime() / 1000)}:R>`,
-        ].join('\n')).join('\n\n')
-      : 'No server backups are stored yet.')
-    .setFooter({ text: 'Backups contain channel/role structure and permissions, not message history.' })
-    .setTimestamp();
-}
+function listEmbed(guild,rows){return new EmbedBuilder().setColor(0x5865f2).setTitle(`Server Backups • ${guild.name}`).setDescription(rows.length?rows.map(r=>`**${r.id}**\nChannels: **${r.channelCount}** • Roles: **${r.roleCount}**\nCreated by <@${r.createdBy}> • <t:${Math.floor(new Date(r.createdAt).getTime()/1000)}:R>`).join('\n\n'):'No server backups are stored yet.').setTimestamp();}
+function summary(r,safety){return ['✅ Server backup restore completed.',`**Restored Backup:** \`${r.backupId}\``,`**Safety Backup:** \`${safety.id}\``,'',`**Roles:** ${r.rolesCreated} created • ${r.rolesUpdated} updated • ${r.rolesSkipped} skipped`,`**Channels:** ${r.channelsCreated} created • ${r.channelsUpdated} updated • ${r.channelsSkipped} skipped`,`**Warnings:** ${r.warningCount}`,'','Restore is merge-based: unrelated current roles/channels are left intact.'].join('\n');}
 
-module.exports = {
-  name: 'backup',
-  category: 'Administration',
-  data: new SlashCommandBuilder()
-    .setName('backup')
-    .setDescription('Save or view SQL backups of this server structure.')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addSubcommand((sub) => sub
-      .setName('create')
-      .setDescription('Back up all channels, roles, and channel permission overwrites to MySQL'))
-    .addSubcommand((sub) => sub
-      .setName('list')
-      .setDescription('List the most recent server backups stored in MySQL')),
-  guildOnly: true,
-
-  async executeSlash(interaction) {
-    const sub = interaction.options.getSubcommand();
-
-    if (sub === 'list') {
-      const rows = await listServerBackups(interaction.guildId, 10);
-      return interaction.reply({
-        embeds: [backupListEmbed(interaction.guild, rows)],
-        flags: MessageFlags.Ephemeral,
-        allowedMentions: { parse: [] },
-      });
-    }
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const backup = await createServerBackup(interaction.guild, interaction.user.id);
-
-    return interaction.editReply([
-      '✅ Server backup saved to MySQL.',
-      `**Backup ID:** \`${backup.id}\``,
-      `**Channels:** ${backup.channelCount}`,
-      `**Roles:** ${backup.roleCount}`,
-      'Message history and member data are not included.',
-    ].join('\n'));
-  },
-
-  async executePrefix(message, args, { settings }) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('Administrator permission is required.');
-    }
-
-    const sub = String(args[0] || 'create').toLowerCase();
-
-    if (sub === 'list') {
-      const rows = await listServerBackups(message.guildId, 10);
-      return message.reply({ embeds: [backupListEmbed(message.guild, rows)], allowedMentions: { parse: [] } });
-    }
-
-    if (sub !== 'create') {
-      return message.reply(`Usage: ${settings.prefix}backup <create|list>`);
-    }
-
-    const backup = await createServerBackup(message.guild, message.author.id);
-    return message.reply(
-      `Backup saved. ID: \`${backup.id}\` • ${backup.channelCount} channels • ${backup.roleCount} roles.`,
-    );
-  },
-};
+module.exports={name:'backup',category:'Administration',guildOnly:true,
+data:new SlashCommandBuilder().setName('backup').setDescription('Create, list, or restore server-structure backups.').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+.addSubcommand(s=>s.setName('create').setDescription('Save channels, roles and overwrites to MySQL'))
+.addSubcommand(s=>s.setName('list').setDescription('List recent backups'))
+.addSubcommand(s=>s.setName('restore').setDescription('Restore a stored backup using safe merge mode').addStringOption(o=>o.setName('backup_id').setDescription('Backup UUID').setRequired(true)).addBooleanOption(o=>o.setName('confirm').setDescription('Confirm restore').setRequired(true))),
+async executeSlash(i){const sub=i.options.getSubcommand();if(sub==='list'){return i.reply({embeds:[listEmbed(i.guild,await listServerBackups(i.guildId,10))],flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});}
+if(sub==='restore'){const id=i.options.getString('backup_id',true).trim();if(!i.options.getBoolean('confirm',true))return i.reply({content:'Restore cancelled. Set confirm to True to continue.',flags:MessageFlags.Ephemeral});if(!(await getServerBackup(i.guildId,id)))return i.reply({content:`No backup \`${id}\` exists for this server.`,flags:MessageFlags.Ephemeral});await i.deferReply({flags:MessageFlags.Ephemeral});const safety=await createServerBackup(i.guild,i.user.id);const result=await restoreServerBackup(i.guild,id);return i.editReply(summary(result,safety));}
+await i.deferReply({flags:MessageFlags.Ephemeral});const b=await createServerBackup(i.guild,i.user.id);return i.editReply(`✅ Backup saved. ID: \`${b.id}\` • ${b.channelCount} channels • ${b.roleCount} roles.`);},
+async executePrefix(m,args,{settings}){if(!m.member.permissions.has(PermissionFlagsBits.Administrator))return m.reply('Administrator permission is required.');const sub=String(args[0]||'create').toLowerCase();if(sub==='list')return m.reply({embeds:[listEmbed(m.guild,await listServerBackups(m.guildId,10))],allowedMentions:{parse:[]}});
+if(sub==='restore'){const id=String(args[1]||'').trim();if(!id||String(args[2]||'').toLowerCase()!=='confirm')return m.reply(`Usage: ${settings.prefix}backup restore <backup-id> confirm`);if(!(await getServerBackup(m.guildId,id)))return m.reply('Backup not found.');const safety=await createServerBackup(m.guild,m.author.id);const result=await restoreServerBackup(m.guild,id);return m.reply(summary(result,safety));}
+if(sub!=='create')return m.reply(`Usage: ${settings.prefix}backup <create|list|restore>`);const b=await createServerBackup(m.guild,m.author.id);return m.reply(`Backup saved. ID: \`${b.id}\` • ${b.channelCount} channels • ${b.roleCount} roles.`);}};
