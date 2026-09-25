@@ -75,3 +75,57 @@ Reverse-proxy mode prints the normal dashboard listener plus:
 ## Certificate renewal
 
 The bot reads certificate files when it starts. If your certificate is renewed on disk, restart the bot so Node reloads the new key/certificate.
+
+
+## Option 3: Cloudflare Origin CA certificate
+
+This mode encrypts the connection **between Cloudflare and the Kryndexa web panel** with a Cloudflare Origin CA certificate.
+
+1. In Cloudflare, open **SSL/TLS → Origin Server**.
+2. Choose **Create Certificate**.
+3. Include the dashboard hostname, for example `panel.example.com`.
+4. Save the private key and Origin Certificate as PEM files on the bot host.
+5. Do **not** commit either file to Git.
+6. In Cloudflare, set **SSL/TLS encryption mode** to **Full (strict)**.
+7. Keep the DNS record proxied through Cloudflare (orange cloud).
+
+Example:
+
+```env
+NODE_ENV=production
+BASE_URL=https://panel.example.com
+DISCORD_REDIRECT_URI=https://panel.example.com/auth/callback
+
+WEB_SSL_ENABLED=true
+WEB_SSL_PROVIDER=cloudflare-origin
+WEB_CLOUDFLARE_ORIGIN_KEY_FILE=certs/cloudflare-origin-key.pem
+WEB_CLOUDFLARE_ORIGIN_CERT_FILE=certs/cloudflare-origin-cert.pem
+WEB_HTTPS_PORT=443
+WEB_HTTP_REDIRECT_PORT=80
+WEB_FORCE_HTTPS=true
+WEB_TRUST_PROXY=true
+WEB_HSTS_ENABLED=true
+```
+
+Expected startup output:
+
+```
+[Dashboard SSL] Cloudflare Origin CA certificate enabled.
+[Dashboard SSL] Use Cloudflare SSL/TLS mode: Full (strict).
+[Dashboard SSL] HTTPS enabled on port 443.
+Dashboard listening securely on https://panel.example.com
+```
+
+### Important Cloudflare Origin CA note
+
+Cloudflare Origin CA certificates are intended for the **Cloudflare → origin server** connection. Normal browsers generally do not trust an Origin CA certificate when connecting directly to the origin IP/hostname without Cloudflare in front of it. Keep the dashboard hostname proxied through Cloudflare.
+
+### Recommended Cloudflare settings
+
+- DNS record: **Proxied**
+- SSL/TLS mode: **Full (strict)**
+- Always Use HTTPS: **On** (optional when `WEB_FORCE_HTTPS=true`)
+- Minimum TLS Version: TLS 1.2 or newer
+- Automatic HTTPS Rewrites: optional
+
+The Node HTTPS server also enforces a minimum of TLS 1.2.
