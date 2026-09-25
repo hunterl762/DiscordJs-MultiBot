@@ -1974,3 +1974,144 @@ html[data-theme="light"] main button:not(.btn):not(.theme-toggle):not(.nav-toggl
     font-size:12px;
   }
 }
+
+
+/* === Bot owner dashboard === */
+.owner-dashboard-shell{
+  display:grid;
+  gap:18px;
+}
+.owner-dashboard-hero{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:24px;
+  padding:26px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:linear-gradient(145deg,rgba(88,101,242,.16),rgba(18,20,27,.96) 48%);
+  box-shadow:0 18px 44px rgba(0,0,0,.14);
+}
+.owner-dashboard-hero h1{
+  margin:6px 0 8px;
+  font-size:clamp(30px,5vw,46px);
+  letter-spacing:-.035em;
+}
+.owner-dashboard-hero p{
+  max-width:700px;
+  margin:0;
+  color:var(--muted);
+}
+.owner-access-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  margin-bottom:10px;
+  padding:7px 10px;
+  border:1px solid rgba(255,178,36,.28);
+  border-radius:999px;
+  background:rgba(255,178,36,.08);
+  color:#ffc76a;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.owner-access-badge i{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#ffb224;
+  box-shadow:0 0 0 4px rgba(255,178,36,.10);
+}
+.owner-dashboard-meta{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(130px,1fr));
+  gap:9px;
+  min-width:min(360px,100%);
+}
+.owner-dashboard-meta span{
+  padding:13px 14px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(0,0,0,.12);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:700;
+}
+.owner-dashboard-meta strong{
+  display:block;
+  margin-bottom:3px;
+  color:var(--text);
+  font-size:20px;
+}
+.owner-section{
+  padding:20px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--panel);
+  box-shadow:0 14px 34px rgba(0,0,0,.10);
+}
+.owner-section-heading{
+  margin-bottom:14px;
+}
+.owner-section-heading h2{
+  margin:3px 0 5px;
+}
+.owner-section-heading p{
+  margin:0;
+  color:var(--muted);
+}
+.owner-cloudflare-card{
+  box-shadow:none;
+}
+.site-nav a[href="/dashboard/owner"]{
+  color:#ffc76a;
+}
+.site-nav a[href="/dashboard/owner"]:hover{
+  background:rgba(255,178,36,.08);
+  color:#ffd896;
+}
+
+html[data-theme="light"] .owner-dashboard-hero,
+html[data-theme="light"] .owner-section{
+  background:#ffffff !important;
+  border-color:#dfe5ef !important;
+  color:#172033 !important;
+  box-shadow:0 14px 34px rgba(31,51,89,.08) !important;
+}
+html[data-theme="light"] .owner-dashboard-hero{
+  background:
+    radial-gradient(circle at top right,rgba(88,101,242,.10),transparent 38%),
+    #ffffff !important;
+}
+html[data-theme="light"] .owner-dashboard-meta span{
+  background:#f8fafc !important;
+  border-color:#dfe5ef !important;
+  color:#667085 !important;
+}
+html[data-theme="light"] .owner-dashboard-meta strong{
+  color:#172033 !important;
+}
+html[data-theme="light"] .owner-access-badge{
+  background:#fff8eb !important;
+  border-color:#fedf89 !important;
+  color:#b54708 !important;
+}
+html[data-theme="light"] .site-nav a[href="/dashboard/owner"]{
+  color:#b54708 !important;
+}
+html[data-theme="light"] .site-nav a[href="/dashboard/owner"]:hover{
+  background:#fff8eb !important;
+  color:#93370d !important;
+}
+
+@media(max-width:760px){
+  .owner-dashboard-hero{
+    flex-direction:column;
+    padding:20px;
+  }
+  .owner-dashboard-meta{
+    width:100%;
+    min-width:0;
+  }
+}
