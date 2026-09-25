@@ -39,6 +39,7 @@ const { getAnalytics } = require('../features/dataStore');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const GUILD_CACHE_TTL_MS = 60_000;
+const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
 
 function sleep(ms) {
@@ -294,6 +295,7 @@ function oauthStateKey() {
 
 function createOAuthState(redirectUri) {
   const payload = Buffer.from(JSON.stringify({
+    version: DASHBOARD_OAUTH_STATE_VERSION,
     nonce: crypto.randomBytes(24).toString('hex'),
     issuedAt: Date.now(),
     redirectUri,
@@ -334,6 +336,10 @@ function verifyOAuthState(state) {
     decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
   } catch {
     throw new Error('OAuth state payload is invalid.');
+  }
+
+  if (Number(decoded?.version) !== DASHBOARD_OAUTH_STATE_VERSION) {
+    throw new Error('This login link was created by an older dashboard version. Start a new Discord login.');
   }
 
   const issuedAt = Number(decoded?.issuedAt || 0);
@@ -471,6 +477,7 @@ function featureFieldHtml(field, value, resources) {
 }
 
 function startDashboard(client) {
+  console.log(`[Dashboard OAuth] Signed OAuth state v${DASHBOARD_OAUTH_STATE_VERSION} enabled.`);
   const addBotButton = renderAddBotButton();
   const app = express();
   app.disable('x-powered-by');
@@ -662,6 +669,12 @@ function startDashboard(client) {
 
       const redirectUri = resolveOAuthRedirectUri(req);
       const state = createOAuthState(redirectUri);
+
+      // Remove legacy session-bound OAuth metadata from older dashboard builds.
+      // Signed state v2 does not depend on these fields.
+      delete req.session.oauthState;
+      delete req.session.oauthRedirectUri;
+      delete req.session.oauthStartedAt;
 
       // OAuth state is signed and self-contained. It no longer depends on the
       // pre-login MySQL session surviving the round trip through Discord.
