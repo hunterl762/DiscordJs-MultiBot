@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "check": "node --check src/index.js && node --check src/store.js && node --check src/bot/commands.js && node --check src/bot/broadcast.js && node --check src/bot/verification.js && node --check src/bot/events.js && node --check src/bot/interactions.js && node --check src/dashboard/server.js && node --check src/tickets/ticketService.js && node --check src/utils/html.js"
+    "check": "node --check src/index.js && node --check src/store.js && node --check src/bot/commands.js && node --check src/bot/broadcast.js && node --check src/bot/verification.js && node --check src/bot/events.js && node --check src/bot/interactions.js && node --check src/dashboard/server.js && node --check public/dashboard.js && node --check src/tickets/ticketService.js && node --check src/utils/html.js"
   },
   "engines": {
     "node": ">=20.0.0"
