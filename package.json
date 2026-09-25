@@ -7,7 +7,11 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "check": "node scripts/check.js"
+    "check": "node scripts/check.js",
+    "build:css": "npx @tailwindcss/cli -i ./src/styles/tailwind.css -o ./public/tailwind.css --minify",
+    "watch:css": "npx @tailwindcss/cli -i ./src/styles/tailwind.css -o ./public/tailwind.css --watch",
+    "prestart": "npm run build:css",
+    "predev": "npm run build:css"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -20,7 +24,9 @@
     "express-session": "^1.19.0",
     "mysql2": "^3.24.4",
     "kazagumo": "^3.4.2",
-    "shoukaku": "^4.3.0"
+    "shoukaku": "^4.3.0",
+    "tailwindcss": "^4.3.3",
+    "@tailwindcss/cli": "^4.3.3"
   },
   "devDependencies": {},
   "keywords": [

@@ -7,3 +7,4 @@ npm-debug.log*
 data/settings.json
 data/tickets.json
 data/transcripts/*.html
+public/tailwind.css
