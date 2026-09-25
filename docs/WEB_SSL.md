@@ -216,3 +216,79 @@ WEB_META_IMAGE_URL=https://kryndexabot.xyz/path/to/1200x630-image.png
 ```
 
 If this is blank, the panel uses `https://kryndexabot.xyz/favicon.ico` as the embed image fallback.
+
+
+## Fixing EADDRINUSE on port 443
+
+If startup reports:
+
+```
+Error: listen EADDRINUSE: address already in use :::443
+```
+
+another process already owns HTTPS port 443.
+
+Kryndexa now handles this without crashing. With:
+
+```env
+WEB_SSL_PORT_CONFLICT_FALLBACK=true
+WEB_INTERNAL_PORT=3000
+```
+
+the dashboard falls back to:
+
+```
+http://127.0.0.1:3000
+```
+
+and the service already listening on 443 should reverse-proxy `https://kryndexabot.xyz` to that internal address.
+
+Expected log:
+
+```
+[Dashboard SSL] HTTPS port 443 is already in use by another process.
+Dashboard listening internally on http://127.0.0.1:3000
+[Dashboard SSL] Port 443 is occupied, so Kryndexa switched to reverse-proxy mode on internal port 3000.
+```
+
+### Find what owns port 443 on Windows
+
+```powershell
+Get-NetTCPConnection -LocalPort 443 -State Listen |
+  Select-Object LocalAddress, LocalPort, OwningProcess
+
+Get-Process -Id (Get-NetTCPConnection -LocalPort 443 -State Listen).OwningProcess
+```
+
+or:
+
+```cmd
+netstat -ano | findstr :443
+```
+
+Do not stop the process blindly. It may be IIS, NGINX, a Cloudflare tunnel/proxy service, another website, or another required application.
+
+### Reverse-proxy deployment
+
+When a proxy already owns port 443, the recommended Kryndexa configuration is:
+
+```env
+PORT=3000
+WEB_INTERNAL_PORT=3000
+WEB_SSL_ENABLED=false
+WEB_FORCE_HTTPS=true
+WEB_TRUST_PROXY=true
+
+BASE_URL=https://kryndexabot.xyz
+DISCORD_REDIRECT_URI=https://kryndexabot.xyz/auth/callback
+```
+
+In this mode the proxy owns the public certificate/HTTPS connection and forwards traffic to `http://127.0.0.1:3000`.
+
+If you specifically want Node to own the Cloudflare Origin certificate directly, stop/reconfigure the process currently occupying port 443 before enabling:
+
+```env
+WEB_SSL_ENABLED=true
+WEB_SSL_PROVIDER=cloudflare-origin
+WEB_HTTPS_PORT=443
+```
