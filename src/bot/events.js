@@ -27,9 +27,18 @@ function roleList(roles) {
 }
 
 function registerEvents(client) {
+  const updateBotActivity = (readyClient) => {
+    const shardCount = Math.max(1, readyClient.ws.shards.size || 1);
+    readyClient.user.setActivity(`/help • kryndexabot.xyz • (${shardCount} / 100)`);
+  };
+
   client.on(Events.ClientReady, (readyClient) => {
     console.log(`${readyClient.user.tag} is online in ${readyClient.guilds.cache.size} server(s).`);
-    readyClient.user.setActivity('/help • MultiBot v14');
+    updateBotActivity(readyClient);
+  });
+
+  client.on(Events.ShardReady, () => {
+    if (client.isReady()) updateBotActivity(client);
   });
 
   client.on(Events.MessageCreate, executePrefix);
