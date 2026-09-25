@@ -37,6 +37,12 @@ const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encrypte
 const { PROVIDERS, listAiCredentials, saveAiCredential, deleteAiCredential } = require('../aiCredentialStore');
 const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedConfigStore');
 const { getAnalytics } = require('../features/dataStore');
+const {
+  ensureLetsEncryptCertificate,
+  getLetsEncryptPaths,
+  getLetsEncryptStatus,
+  startLetsEncryptRenewal,
+} = require('./letsEncrypt');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
@@ -68,22 +74,37 @@ function loadDashboardTlsOptions() {
     .toLowerCase();
 
   const cloudflareOrigin = provider === 'cloudflare-origin';
-  const keyPath = resolveDashboardFile(
-    cloudflareOrigin
-      ? process.env.WEB_CLOUDFLARE_ORIGIN_KEY_FILE
-      : process.env.WEB_SSL_KEY_FILE,
-  );
-  const certPath = resolveDashboardFile(
-    cloudflareOrigin
-      ? process.env.WEB_CLOUDFLARE_ORIGIN_CERT_FILE
-      : process.env.WEB_SSL_CERT_FILE,
-  );
-  const caPath = resolveDashboardFile(process.env.WEB_SSL_CA_FILE);
+  const letsencrypt = provider === 'letsencrypt';
+  const letsEncryptPaths = letsencrypt ? getLetsEncryptPaths() : null;
+
+  const keyPath = letsencrypt
+    ? letsEncryptPaths.keyPath
+    : resolveDashboardFile(
+      cloudflareOrigin
+        ? process.env.WEB_CLOUDFLARE_ORIGIN_KEY_FILE
+        : process.env.WEB_SSL_KEY_FILE,
+    );
+
+  const certPath = letsencrypt
+    ? letsEncryptPaths.certPath
+    : resolveDashboardFile(
+      cloudflareOrigin
+        ? process.env.WEB_CLOUDFLARE_ORIGIN_CERT_FILE
+        : process.env.WEB_SSL_CERT_FILE,
+    );
+
+  const caPath = letsencrypt ? '' : resolveDashboardFile(process.env.WEB_SSL_CA_FILE);
 
   if (!keyPath || !certPath) {
     if (cloudflareOrigin) {
       throw new Error(
         'WEB_SSL_PROVIDER=cloudflare-origin requires WEB_CLOUDFLARE_ORIGIN_KEY_FILE and WEB_CLOUDFLARE_ORIGIN_CERT_FILE.',
+      );
+    }
+
+    if (letsencrypt) {
+      throw new Error(
+        'Let\'s Encrypt certificate files are not available yet. Check the ACME startup logs.',
       );
     }
 
@@ -764,7 +785,7 @@ function featureFieldHtml(field, value, resources) {
   return `<label>${escapeHtml(field.label)}<input type="text" name="cfg_${escapeHtml(field.key)}" value="${escapeHtml(String(safeValue))}"></label>`;
 }
 
-function startDashboard(client) {
+async function startDashboard(client) {
   console.log(`[Dashboard OAuth] Signed OAuth state v${DASHBOARD_OAUTH_STATE_VERSION} enabled.`);
   const addBotButton = renderAddBotButton();
   const app = express();
@@ -2213,6 +2234,13 @@ function startDashboard(client) {
     });
   });
 
+  app.get('/api/letsencrypt/status', requireAuth, (_req, res) => {
+    return res.json({
+      ok: true,
+      ...getLetsEncryptStatus(),
+    });
+  });
+
   app.get('/health', async (_req, res) => {
     let database = false;
     try {
@@ -2229,7 +2257,34 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  const tlsConfig = loadDashboardTlsOptions();
+  const requestedSslProvider = String(process.env.WEB_SSL_PROVIDER || 'standard')
+    .trim()
+    .toLowerCase();
+
+  let letsEncryptError = null;
+
+  if (
+    envFlag('LETSENCRYPT_ENABLED')
+    || (envFlag('WEB_SSL_ENABLED') && requestedSslProvider === 'letsencrypt')
+  ) {
+    try {
+      await ensureLetsEncryptCertificate();
+    } catch (error) {
+      letsEncryptError = error;
+      console.error('[Let\'s Encrypt] Certificate provisioning failed:', error);
+      console.error('[Let\'s Encrypt] The dashboard will fall back to its internal HTTP listener when no usable certificate exists.');
+    }
+  }
+
+  let tlsConfig = null;
+  try {
+    tlsConfig = loadDashboardTlsOptions();
+  } catch (error) {
+    if (requestedSslProvider !== 'letsencrypt') throw error;
+
+    letsEncryptError = letsEncryptError || error;
+    console.error('[Let\'s Encrypt] Unable to load a usable certificate:', error.message || error);
+  }
 
   const startHttpApp = (listenPort, reason = '') => {
     const httpServer = app.listen(listenPort);
@@ -2272,6 +2327,22 @@ function startDashboard(client) {
       if (tlsConfig.provider === 'cloudflare-origin') {
         console.log('[Dashboard SSL] Cloudflare Origin CA certificate enabled.');
         console.log('[Dashboard SSL] Use Cloudflare SSL/TLS mode: Full (strict).');
+      } else if (tlsConfig.provider === 'letsencrypt') {
+        const status = getLetsEncryptStatus();
+        console.log(
+          `[Dashboard SSL] Let\'s Encrypt certificate enabled for ${status.domains.join(', ') || 'configured domains'}.`,
+        );
+        console.log(
+          `[Dashboard SSL] Let\'s Encrypt certificate expires ${status.certificate?.expiresAt || 'at an unknown date'}.`,
+        );
+
+        startLetsEncryptRenewal(async () => {
+          const refreshed = loadDashboardTlsOptions();
+          if (!refreshed) return;
+
+          server.setSecureContext(refreshed.options);
+          console.log('[Let\'s Encrypt] HTTPS server reloaded the renewed certificate without a restart.');
+        });
       } else {
         console.log(`[Dashboard SSL] HTTPS enabled with provider: ${tlsConfig.provider}.`);
       }
@@ -2335,10 +2406,12 @@ function startDashboard(client) {
   }
 
   return startHttpApp(
-    port,
-    envFlag('WEB_FORCE_HTTPS')
-      ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
-      : '',
+    Number(process.env.WEB_INTERNAL_PORT || port),
+    letsEncryptError
+      ? `Let's Encrypt TLS is unavailable: ${letsEncryptError.message || letsEncryptError}. Serve this internal port through a reverse proxy until certificate issuance succeeds.`
+      : envFlag('WEB_FORCE_HTTPS')
+        ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
+        : '',
   );
 }
 
