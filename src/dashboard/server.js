@@ -96,7 +96,7 @@ function page(title, body, user) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-oauth-repair">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-oauth-state-repair">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -286,6 +286,69 @@ function oauthUrl(state, redirectUri) {
   return `https://discord.com/oauth2/authorize?${params}`;
 }
 
+function oauthStateKey() {
+  const secret = String(process.env.SESSION_SECRET || '').trim();
+  if (!secret) throw new Error('SESSION_SECRET is required for Discord OAuth state signing.');
+  return secret;
+}
+
+function createOAuthState(redirectUri) {
+  const payload = Buffer.from(JSON.stringify({
+    nonce: crypto.randomBytes(24).toString('hex'),
+    issuedAt: Date.now(),
+    redirectUri,
+  }), 'utf8').toString('base64url');
+
+  const signature = crypto
+    .createHmac('sha256', oauthStateKey())
+    .update(payload)
+    .digest('base64url');
+
+  return `${payload}.${signature}`;
+}
+
+function verifyOAuthState(state) {
+  const [payload, signature, extra] = String(state || '').split('.');
+  if (!payload || !signature || extra !== undefined) {
+    throw new Error('OAuth state token is malformed.');
+  }
+
+  const expected = crypto
+    .createHmac('sha256', oauthStateKey())
+    .update(payload)
+    .digest();
+
+  let supplied;
+  try {
+    supplied = Buffer.from(signature, 'base64url');
+  } catch {
+    throw new Error('OAuth state signature is malformed.');
+  }
+
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+    throw new Error('OAuth state signature is invalid.');
+  }
+
+  let decoded;
+  try {
+    decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('OAuth state payload is invalid.');
+  }
+
+  const issuedAt = Number(decoded?.issuedAt || 0);
+  if (!issuedAt || Date.now() - issuedAt > 10 * 60 * 1000 || issuedAt > Date.now() + 60_000) {
+    throw new Error('OAuth state token has expired.');
+  }
+
+  const redirectUri = String(decoded?.redirectUri || '').trim();
+  if (!/^https?:\/\//i.test(redirectUri)) {
+    throw new Error('OAuth state redirect URI is invalid.');
+  }
+
+  return { redirectUri };
+}
+
 function saveSession(req) {
   return new Promise((resolve, reject) => {
     req.session.save((error) => error ? reject(error) : resolve());
@@ -448,7 +511,7 @@ function startDashboard(client) {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000 },
+    cookie: { httpOnly: true, sameSite: 'lax', secure: 'auto', maxAge: 7 * 24 * 60 * 60 * 1000 },
   }));
 
   app.get('/favicon.ico', (_req, res) => {
@@ -598,16 +661,10 @@ function startDashboard(client) {
       if (consent !== 'essential') return res.redirect('/?cookie=required&continue=login');
 
       const redirectUri = resolveOAuthRedirectUri(req);
-      const state = crypto.randomBytes(32).toString('hex');
+      const state = createOAuthState(redirectUri);
 
-      req.session.oauthState = state;
-      req.session.oauthRedirectUri = redirectUri;
-      req.session.oauthStartedAt = Date.now();
-
-      // The session is stored in MySQL. Persist the OAuth state before sending the
-      // browser to Discord so the callback cannot race the asynchronous store write.
-      await saveSession(req);
-
+      // OAuth state is signed and self-contained. It no longer depends on the
+      // pre-login MySQL session surviving the round trip through Discord.
       return res.redirect(oauthUrl(state, redirectUri));
     } catch (error) {
       console.error('[Dashboard OAuth] Unable to start Discord login:', error);
@@ -631,26 +688,27 @@ function startDashboard(client) {
         ));
       }
 
-      const expectedState = String(req.session.oauthState || '');
-      const receivedState = String(req.query.state || '');
-      const startedAt = Number(req.session.oauthStartedAt || 0);
-      const stateExpired = !startedAt || Date.now() - startedAt > 10 * 60 * 1000;
-
-      if (!req.query.code || !expectedState || stateExpired || receivedState !== expectedState) {
-        console.warn('[Dashboard OAuth] State validation failed.', {
-          hasCode: Boolean(req.query.code),
-          hasExpectedState: Boolean(expectedState),
-          stateExpired,
-          stateMatches: Boolean(expectedState) && receivedState === expectedState,
-        });
+      if (!req.query.code || !req.query.state) {
         return res.status(400).send(page(
           'Discord login expired',
-          '<div class="empty"><strong>Your Discord login session expired or could not be verified.</strong><p>Please start the login again. This can also happen if cookies are blocked for the dashboard domain.</p><p><a class="btn" href="/login">Try Discord Login Again</a></p></div>',
+          '<div class="empty"><strong>Discord did not return a complete login response.</strong><p>Please start the login again.</p><p><a class="btn" href="/login">Try Discord Login Again</a></p></div>',
           req.session.user,
         ));
       }
 
-      const redirectUri = String(req.session.oauthRedirectUri || resolveOAuthRedirectUri(req));
+      let verifiedState;
+      try {
+        verifiedState = verifyOAuthState(req.query.state);
+      } catch (stateError) {
+        console.warn('[Dashboard OAuth] Signed state validation failed:', stateError.message);
+        return res.status(400).send(page(
+          'Discord login expired',
+          `<div class="empty"><strong>Your Discord login request could not be verified.</strong><p>${escapeHtml(stateError.message)}</p><p>Please start a fresh login attempt.</p><p><a class="btn" href="/login">Try Discord Login Again</a></p></div>`,
+          req.session.user,
+        ));
+      }
+
+      const redirectUri = verifiedState.redirectUri;
       const body = new URLSearchParams({
         client_id: String(process.env.DISCORD_CLIENT_ID || '').trim(),
         client_secret: String(process.env.DISCORD_CLIENT_SECRET || '').trim(),
