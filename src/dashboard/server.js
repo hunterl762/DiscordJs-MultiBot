@@ -65,11 +65,15 @@ function parseCookies(req) {
   return cookies;
 }
 
-function renderAddBotButton() {
+function botInstallUrl() {
   const clientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
   if (!clientId) return '';
+  return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=bot%20applications.commands`;
+}
 
-  const installUrl = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=bot%20applications.commands`;
+function renderAddBotButton() {
+  const installUrl = botInstallUrl();
+  if (!installUrl) return '';
   return `<a class="btn add-bot-button" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`;
 }
 
@@ -368,6 +372,8 @@ function startDashboard(client) {
   const addBotButton = renderAddBotButton();
   const app = express();
   app.disable('x-powered-by');
+  app.set('views', path.join(__dirname, 'views'));
+  app.set('view engine', 'ejs');
   if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(express.static(path.join(process.cwd(), 'public')));
@@ -574,26 +580,31 @@ function startDashboard(client) {
 
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
-      const guilds = await getManagedGuilds(req, client);
-      const connected = guilds.map((managed) => client.guilds.cache.get(managed.id)).filter(Boolean);
-      const totalMembers = connected.reduce((sum, guild) => sum + guild.memberCount, 0);
-
-      const cards = guilds.length ? guilds.map((managed) => {
+      const managedGuilds = await getManagedGuilds(req, client);
+      const guilds = managedGuilds.map((managed) => {
         const guild = client.guilds.cache.get(managed.id);
-        const icon = managed.icon
-          ? `<img src="https://cdn.discordapp.com/icons/${managed.id}/${managed.icon}.png?size=128" alt="">`
-          : escapeHtml(managed.name.slice(0, 2).toUpperCase());
-        return `<article class="guild-card friendly-guild-card" data-guild-card data-guild-search="${escapeHtml((managed.name + ' ' + managed.id).toLowerCase())}">
-          <div class="guild-card-main"><div class="guild-icon">${icon}</div><div class="guild-card-copy"><strong>${escapeHtml(managed.name)}</strong><small>${(guild?.memberCount || 0).toLocaleString()} members • ${guild?.channels.cache.size || 0} channels</small></div></div>
-          <div class="guild-card-actions"><a class="btn" href="/dashboard/${managed.id}">Configure</a><a class="btn secondary" href="/dashboard/statistics#guild-${managed.id}">View Stats</a></div>
-        </article>`;
-      }).join('') : '<div class="empty">No servers found where you have Manage Server and Kryndexa Bot is installed.</div>';
+        return {
+          id: managed.id,
+          name: managed.name,
+          icon: managed.icon || guild?.icon || null,
+          memberCount: guild?.memberCount || 0,
+          channelCount: guild?.channels.cache.size || 0,
+        };
+      });
+      const totalMembers = guilds.reduce((sum, guild) => sum + guild.memberCount, 0);
 
-      const body = `<section class="dashboard-home-hero"><div><span class="eyebrow">YOUR COMMAND CENTER</span><h1>Your Servers</h1><p>Choose a server to configure or compare activity across all servers you manage.</p></div><a class="btn secondary" href="/dashboard/statistics">Server Statistics</a></section>
-        <section class="dashboard-home-stats"><div><strong>${guilds.length}</strong><span>Managed Servers</span></div><div><strong>${totalMembers.toLocaleString()}</strong><span>Total Members</span></div><div><strong>${client.guilds.cache.size.toLocaleString()}</strong><span>Bot Servers</span></div></section>
-        <div class="dashboard-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Search servers by name or ID" data-filter-selector="[data-guild-card]" data-filter-attribute="data-guild-search" data-filter-empty="#dashboardSearchEmpty"></label><span>Select a server to configure.</span></div>
-        <div class="guild-grid friendly-guild-grid">${cards}</div><div id="dashboardSearchEmpty" class="search-empty-state" hidden>No servers match your search.</div>`;
-      return res.send(page('Dashboard • Kryndexa Bot', body, req.session.user));
+      return res.render('dashboard/index', {
+        title: 'Dashboard',
+        user: req.session.user,
+        csrf: req.session.csrf,
+        installUrl: botInstallUrl(),
+        activePage: 'dashboard',
+        currentGuild: null,
+        sidebarGuilds: guilds,
+        guilds,
+        totalMembers,
+        totalBotServers: client.guilds.cache.size,
+      });
     } catch (error) {
       console.error(error);
       if (error.status === 429) return res.status(503).send(page('Discord rate limit', '<div class="empty">Discord is temporarily rate limiting dashboard access. Refresh shortly.</div>', req.session.user));
@@ -605,36 +616,56 @@ function startDashboard(client) {
   app.get('/dashboard/statistics', requireAuth, async (req, res) => {
     try {
       const managedGuilds = await getManagedGuilds(req, client);
+      const sidebarGuilds = managedGuilds.map((managed) => {
+        const guild = client.guilds.cache.get(managed.id);
+        return {
+          id: managed.id,
+          name: managed.name,
+          icon: managed.icon || guild?.icon || null,
+          memberCount: guild?.memberCount || 0,
+          channelCount: guild?.channels.cache.size || 0,
+        };
+      });
+
       const stats = await Promise.all(managedGuilds.map(async (managed) => {
         const guild = client.guilds.cache.get(managed.id);
         if (!guild) return null;
         const [tickets, analytics] = await Promise.all([listGuildTickets(guild.id), getAnalytics(guild.id)]);
         return {
-          id: guild.id, name: guild.name, icon: guild.icon, members: guild.memberCount,
-          channels: guild.channels.cache.size, roles: Math.max(0, guild.roles.cache.size - 1),
+          id: guild.id,
+          name: guild.name,
+          icon: guild.icon,
+          members: guild.memberCount,
+          channels: guild.channels.cache.size,
+          roles: Math.max(0, guild.roles.cache.size - 1),
           boosts: guild.premiumSubscriptionCount || 0,
           openTickets: tickets.filter((ticket) => ticket.status === 'open').length,
           closedTickets: tickets.filter((ticket) => ticket.status === 'closed').length,
-          commandUses: analytics.uses, commandUsers: analytics.users,
+          commandUses: analytics.uses,
+          commandUsers: analytics.users,
         };
       }));
 
       const rows = stats.filter(Boolean).sort((a, b) => b.members - a.members || a.name.localeCompare(b.name));
       const totals = rows.reduce((sum, item) => ({
-        members: sum.members + item.members, channels: sum.channels + item.channels,
-        roles: sum.roles + item.roles, openTickets: sum.openTickets + item.openTickets,
+        members: sum.members + item.members,
+        channels: sum.channels + item.channels,
+        roles: sum.roles + item.roles,
+        openTickets: sum.openTickets + item.openTickets,
         commandUses: sum.commandUses + item.commandUses,
       }), { members: 0, channels: 0, roles: 0, openTickets: 0, commandUses: 0 });
 
-      const tableRows = rows.length ? rows.map((item) => {
-        const icon = item.icon ? `<img src="https://cdn.discordapp.com/icons/${item.id}/${item.icon}.png?size=64" alt="">` : `<span>${escapeHtml(item.name.slice(0,2).toUpperCase())}</span>`;
-        return `<tr id="guild-${item.id}" data-stat-row data-stat-search="${escapeHtml((item.name+' '+item.id).toLowerCase())}"><td><div class="stats-server-cell"><div class="stats-server-icon">${icon}</div><div><strong>${escapeHtml(item.name)}</strong><small>${item.id}</small></div></div></td><td>${item.members.toLocaleString()}</td><td>${item.channels}</td><td>${item.roles}</td><td>${item.boosts}</td><td><strong>${item.openTickets} open</strong><small>${item.closedTickets} closed</small></td><td><strong>${item.commandUses.toLocaleString()}</strong><small>${item.commandUsers.toLocaleString()} users / 30d</small></td><td><a class="btn compact" href="/dashboard/${item.id}">Configure</a></td></tr>`;
-      }).join('') : '<tr><td colspan="8">No manageable servers are connected.</td></tr>';
-
-      const body = `<section class="stats-page-hero"><div><span class="eyebrow">SERVER STATISTICS</span><h1>Server Overview</h1><p>Compare the servers you manage without opening each configuration page.</p></div><a class="btn secondary" href="/dashboard">← Your Servers</a></section>
-        <section class="server-stats-summary"><div><strong>${rows.length}</strong><span>Servers</span></div><div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div><div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div><div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div><div><strong>${totals.openTickets}</strong><span>Open Tickets</span></div><div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div></section>
-        <section class="panel statistics-panel"><div class="stats-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Filter server statistics" data-filter-selector="[data-stat-row]" data-filter-attribute="data-stat-search" data-filter-empty="#statisticsSearchEmpty"></label><span>Sorted by member count</span></div><div class="table-wrap"><table class="server-statistics-table"><thead><tr><th>Server</th><th>Members</th><th>Channels</th><th>Roles</th><th>Boosts</th><th>Tickets</th><th>Commands</th><th></th></tr></thead><tbody>${tableRows}</tbody></table></div><div id="statisticsSearchEmpty" class="search-empty-state" hidden>No server statistics match your search.</div></section>`;
-      return res.send(page('Server Statistics • Kryndexa Bot', body, req.session.user));
+      return res.render('dashboard/statistics', {
+        title: 'Server Statistics',
+        user: req.session.user,
+        csrf: req.session.csrf,
+        installUrl: botInstallUrl(),
+        activePage: 'statistics',
+        currentGuild: null,
+        sidebarGuilds,
+        rows,
+        totals,
+      });
     } catch (error) {
       console.error(error);
       return res.status(500).send(page('Statistics error', '<div class="empty">Unable to load server statistics.</div>', req.session.user));
@@ -643,10 +674,12 @@ function startDashboard(client) {
 
   app.get('/dashboard/:guildId', requireAuth, async (req, res) => {
     try {
-      const guilds = await getManagedGuilds(req, client);
-      if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
+      const managedGuilds = await getManagedGuilds(req, client);
+      if (!managedGuilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
+
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
+
       const [settings, tickets, twitchAnnouncements, ticketTypes, featureStates, automationRules] = await Promise.all([
         getGuildSettings(guild.id),
         listGuildTickets(guild.id),
@@ -655,68 +688,38 @@ function startDashboard(client) {
         getGuildFeatures(guild.id),
         listAutomationRules(guild.id),
       ]);
-      const textChannels = [...guild.channels.cache.values()].filter((c) => c.type === ChannelType.GuildText).sort((a, b) => a.name.localeCompare(b.name));
-      const broadcastChannels = [...guild.channels.cache.values()].filter((c) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(c.type)).sort((a, b) => a.name.localeCompare(b.name));
-      const categories = [...guild.channels.cache.values()].filter((c) => c.type === ChannelType.GuildCategory).sort((a, b) => a.name.localeCompare(b.name));
-      const voiceChannels = [...guild.channels.cache.values()].filter((c) => c.type === ChannelType.GuildVoice).sort((a, b) => a.name.localeCompare(b.name));
-      const featureChannels = [...guild.channels.cache.values()].filter((c) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(c.type)).sort((a, b) => a.name.localeCompare(b.name));
-      const roles = [...guild.roles.cache.values()].filter((r) => r.id !== guild.id).sort((a, b) => b.position - a.position);
-      const featureResources = { channels: featureChannels, voiceChannels, categories, roles };
+
+      const textChannels = [...guild.channels.cache.values()]
+        .filter((channel) => channel.type === ChannelType.GuildText)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const broadcastChannels = [...guild.channels.cache.values()]
+        .filter((channel) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const categories = [...guild.channels.cache.values()]
+        .filter((channel) => channel.type === ChannelType.GuildCategory)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const voiceChannels = [...guild.channels.cache.values()]
+        .filter((channel) => channel.type === ChannelType.GuildVoice)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const featureChannels = [...guild.channels.cache.values()]
+        .filter((channel) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const roles = [...guild.roles.cache.values()]
+        .filter((role) => role.id !== guild.id)
+        .sort((a, b) => b.position - a.position);
+
       const priorityRank = { 'Very High': 0, High: 1, Growing: 2, Popular: 3, Differentiator: 4 };
-      const featureCards = [...featureStates]
-        .sort((a, b) => (priorityRank[a.definition.priority] ?? 9) - (priorityRank[b.definition.priority] ?? 9) || a.definition.title.localeCompare(b.definition.title))
-        .map((state) => {
-          const feature = state.definition;
-          const fields = (feature.fields || []).map((field) => featureFieldHtml(field, state.config[field.key], featureResources)).join('');
-          const maturity = feature.maturity === 'core'
-            ? '<span class="feature-status core">Operational</span>'
-            : feature.maturity === 'partial'
-              ? '<span class="feature-status partial">Partial</span>'
-              : feature.maturity === 'foundation'
-                ? '<span class="feature-status foundation">Foundation</span>'
-                : '<span class="feature-status integration">Provider Required</span>';
+      const sortedFeatures = [...featureStates].sort(
+        (a, b) => (priorityRank[a.definition.priority] ?? 9) - (priorityRank[b.definition.priority] ?? 9)
+          || a.definition.title.localeCompare(b.definition.title),
+      );
 
-          const action = feature.link
-            ? `<div class="feature-actions"><button class="btn" type="submit">Save Feature</button><a class="btn secondary feature-open" href="${feature.link}">Open Configuration</a></div>`
-            : `<button class="btn" type="submit">Save Feature</button>`;
-
-          return `<form class="feature-card priority-${escapeHtml(feature.priority.toLowerCase().replace(/[^a-z]+/g, '-'))} ${state.enabled ? 'feature-enabled' : ''}" method="post" action="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}">
-            <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-            <div class="feature-card-head">
-              <div class="feature-icon">${escapeHtml(feature.icon)}</div>
-              <div class="feature-title-wrap">
-                <div class="feature-label-row"><h3>${escapeHtml(feature.title)}</h3>${maturity}</div>
-                <span class="feature-priority">🔥 ${escapeHtml(feature.priority)} priority • ${escapeHtml(feature.category)}</span>
-              </div>
-              ${feature.locked ? '<span class="pill subtle">Always On</span>' : `<label class="feature-toggle"><input class="autosave-toggle" type="checkbox" name="enabled" data-autosave-url="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}/toggle" data-csrf="${escapeHtml(req.session.csrf)}" ${state.enabled ? 'checked' : ''}><span>Enabled</span></label>`}
-            </div>
-            <p class="feature-description">${escapeHtml(feature.description)}</p>
-            ${feature.requirement ? `<div class="feature-requirement">⚙️ ${escapeHtml(feature.requirement)}</div>` : ''}
-            ${fields ? `<div class="feature-fields">${fields}</div>` : ''}
-            <div class="feature-card-footer">${action}</div>
-          </form>`;
-        }).join('');
-
-      const automationCards = automationRules.length
-        ? automationRules.map((rule) => `<article class="automation-rule-card">
-            <div>
-              <strong>${escapeHtml(rule.name)}</strong>
-              <span>${escapeHtml(rule.triggerType)} → ${escapeHtml(rule.actionType)}</span>
-            </div>
-            <div class="automation-rule-detail">
-              ${rule.triggerValue ? `<code>Match: ${escapeHtml(rule.triggerValue)}</code>` : '<code>Any matching event</code>'}
-              ${rule.actionChannelId ? `<code>Channel: #${escapeHtml(guild.channels.cache.get(rule.actionChannelId)?.name || rule.actionChannelId)}</code>` : ''}
-              ${rule.actionRoleId ? `<code>Role: ${escapeHtml(guild.roles.cache.get(rule.actionRoleId)?.name || rule.actionRoleId)}</code>` : ''}
-            </div>
-            <form method="post" action="/dashboard/${guild.id}/automations/${rule.id}/delete">
-              <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-              <button class="icon-btn danger" type="submit" title="Delete automation">×</button>
-            </form>
-          </article>`).join('')
-        : '<div class="empty">No custom automation rules yet.</div>';
-
-      const recentTickets = tickets.slice(0, 20);
       const ticketTypeMap = new Map(ticketTypes.map((type) => [type.key, type]));
+      const recentTickets = tickets.slice(0, 20).map((ticket) => ({
+        ...ticket,
+        typeLabel: ticketTypeMap.get(ticket.ticketTypeKey || 'support')?.label || ticket.ticketTypeKey || 'Support',
+      }));
+
       const ticketStats = {
         total: tickets.length,
         open: tickets.filter((ticket) => ticket.status === 'open').length,
@@ -724,77 +727,14 @@ function startDashboard(client) {
         claimed: tickets.filter((ticket) => ticket.claimedBy).length,
       };
 
-      const ticketTypeCards = ticketTypes.map((type) => `<form class="ticket-module-card ${type.enabled ? 'enabled' : 'disabled'}" method="post" action="/dashboard/${guild.id}/tickets/types/${encodeURIComponent(type.key)}">
-        <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-        <div class="ticket-module-head">
-          <div class="ticket-module-icon">${escapeHtml(type.emoji || '🎫')}</div>
-          <div>
-            <span class="mini-label">Department</span>
-            <h3>${escapeHtml(type.label)}</h3>
-          </div>
-          <label class="switch-label"><input class="autosave-toggle" type="checkbox" name="enabled" data-autosave-url="/dashboard/${guild.id}/tickets/types/${encodeURIComponent(type.key)}/toggle" data-csrf="${escapeHtml(req.session.csrf)}" ${type.enabled ? 'checked' : ''}> Enabled</label>
-        </div>
-        <div class="ticket-module-fields">
-          <label>Display Name
-            <input name="label" maxlength="80" value="${escapeHtml(type.label)}" required>
-          </label>
-          <label>Emoji
-            <input name="emoji" maxlength="32" value="${escapeHtml(type.emoji)}" placeholder="🎫">
-          </label>
-          <label class="wide">Description
-            <textarea name="description" maxlength="200" rows="3" required>${escapeHtml(type.description)}</textarea>
-          </label>
-          <label>Discord Category
-            <select name="categoryId">${selectOptions(categories, type.categoryId, 'Use default ticket category')}</select>
-          </label>
-          <label>Staff Role
-            <select name="staffRoleId">${selectOptions(roles, type.staffRoleId, 'Use default ticket staff role')}</select>
-          </label>
-        </div>
-        <div class="ticket-module-footer">
-          <span>Key: <code>${escapeHtml(type.key)}</code></span>
-          <button class="btn" type="submit">Save Department</button>
-        </div>
-      </form>`).join('');
-
-      const twitchCards = twitchAnnouncements.length
-        ? twitchAnnouncements.map((item) => {
-            const targetChannel = guild.channels.cache.get(item.discordChannelId);
-            const channelName = targetChannel?.name ? `#${targetChannel.name}` : 'Channel unavailable';
-            const lastAnnounced = item.lastAnnouncedAt
-              ? new Date(item.lastAnnouncedAt).toLocaleString()
-              : 'Never';
-            const customMessage = item.customMessage
-              ? escapeHtml(item.customMessage)
-              : 'Using the default rich Twitch embed message';
-
-            return `<article class="twitch-card ${item.isLive ? 'is-live' : ''}">
-              <div class="twitch-card-top">
-                <div class="twitch-avatar">T</div>
-                <div class="twitch-identity">
-                  <a class="twitch-name" href="https://www.twitch.tv/${encodeURIComponent(item.twitchLogin)}" target="_blank" rel="noreferrer">${escapeHtml(item.twitchLogin)}</a>
-                  <span class="status-badge ${item.isLive ? 'live' : 'offline'}"><span class="status-dot"></span>${item.isLive ? 'LIVE' : 'Offline'}</span>
-                </div>
-                <form method="post" action="/dashboard/${guild.id}/twitch/${item.id}/delete" onsubmit="return confirm('Remove this Twitch announcement?')">
-                  <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-                  <button class="icon-btn danger" type="submit" title="Remove Twitch alert">×</button>
-                </form>
-              </div>
-              <div class="twitch-card-grid">
-                <div><span class="mini-label">Discord channel</span><strong>${escapeHtml(channelName)}</strong></div>
-                <div><span class="mini-label">Last announced</span><strong>${escapeHtml(lastAnnounced)}</strong></div>
-              </div>
-              <div class="twitch-message-preview">
-                <span class="mini-label">Announcement message</span>
-                <p>${customMessage}</p>
-              </div>
-              <div class="twitch-card-footer">
-                <span class="pill subtle">${item.enabled ? 'Enabled' : 'Disabled'}</span>
-                <a href="https://www.twitch.tv/${encodeURIComponent(item.twitchLogin)}" target="_blank" rel="noreferrer">Open Twitch ↗</a>
-              </div>
-            </article>`;
-          }).join('')
-        : '<div class="empty twitch-empty">No Twitch live announcements configured yet.</div>';
+      const twitchItems = twitchAnnouncements.map((item) => {
+        const targetChannel = guild.channels.cache.get(item.discordChannelId);
+        return {
+          ...item,
+          channelName: targetChannel?.name ? `#${targetChannel.name}` : 'Channel unavailable',
+          lastAnnouncedLabel: item.lastAnnouncedAt ? new Date(item.lastAnnouncedAt).toLocaleString() : 'Never',
+        };
+      });
 
       const catalog = commandCatalog();
       const commandStates = await getCommandStateObject(guild.id, catalog.map((command) => command.name));
@@ -804,225 +744,62 @@ function startDashboard(client) {
         ...preferredCategories.filter((category) => discoveredCategories.includes(category)),
         ...discoveredCategories.filter((category) => !preferredCategories.includes(category)).sort(),
       ];
-      const commandGroups = categoryOrder.map((category) => {
-        const items = catalog.filter((command) => command.category === category);
-        if (!items.length) return '';
+      const commandGroups = categoryOrder
+        .map((category) => ({ category, items: catalog.filter((command) => command.category === category) }))
+        .filter((group) => group.items.length);
 
-        const cards = items.map((command) => {
-          const subcommands = command.subcommands.length
-            ? `<div class="command-subcommands">${command.subcommands.map((sub) => `<span>/${escapeHtml(command.name)} ${escapeHtml(sub)}</span>`).join('')}</div>`
-            : '';
+      const sidebarGuilds = managedGuilds.map((managed) => {
+        const connectedGuild = client.guilds.cache.get(managed.id);
+        return {
+          id: managed.id,
+          name: managed.name,
+          icon: managed.icon || connectedGuild?.icon || null,
+          memberCount: connectedGuild?.memberCount || 0,
+          channelCount: connectedGuild?.channels.cache.size || 0,
+        };
+      });
 
-          const aliases = command.aliases.length
-            ? `<span class="command-meta">Aliases: ${command.aliases.map((alias) => escapeHtml(alias)).join(', ')}</span>`
-            : '';
+      const featureResources = { channels: featureChannels, voiceChannels, categories, roles };
 
-          return `<article class="command-card ${commandStates[command.name] !== false ? 'enabled' : 'disabled'}">
-            <div class="command-card-head">
-              <code>/${escapeHtml(command.name)}</code>
-              <div class="command-badges">
-                <span class="pill subtle">${command.guildOnly ? 'Server' : 'Global capable'}</span>
-                <span class="pill subtle">${command.prefixBackup ? 'Prefix backup' : 'Slash only'}</span>
-                <label class="command-toggle"><input class="autosave-toggle" type="checkbox" data-autosave-url="/dashboard/${guild.id}/commands/${encodeURIComponent(command.name)}/toggle" data-csrf="${escapeHtml(req.session.csrf)}" ${commandStates[command.name] !== false ? 'checked' : ''}> Enabled</label>
-              </div>
-            </div>
-            <p>${escapeHtml(command.description)}</p>
-            <span class="command-meta">Module: ${escapeHtml(command.modulePath || 'unknown')}</span>
-            ${subcommands}
-            ${aliases}
-          </article>`;
-        }).join('');
-
-        return `<section class="command-category">
-          <div class="category-heading">
-            <h3>${escapeHtml(category)}</h3>
-            <span>${items.length} command${items.length === 1 ? '' : 's'}</span>
-          </div>
-          <div class="command-grid">${cards}</div>
-        </section>`;
-      }).join('');
-      const transcriptRows = recentTickets.length ? recentTickets.map((t) => {
-        const type = ticketTypeMap.get(t.ticketTypeKey || 'support');
-        const transcriptLinks = t.transcriptFile
-          ? [
-              settings.onlineTranscriptsEnabled
-                ? `<a href="/transcripts/${t.id}/view" target="_blank" rel="noreferrer">View Online</a>`
-                : '',
-              `<a href="/transcripts/${t.id}">Download HTML</a>`,
-            ].filter(Boolean).join(' • ')
-          : '—';
-        return `<tr><td>${escapeHtml(t.id.slice(0, 8))}</td><td>${escapeHtml(type?.label || t.ticketTypeKey || 'Support')}</td><td>${escapeHtml(t.status)}</td><td>${t.claimedBy ? `<@${t.claimedBy}>` : 'Unclaimed'}</td><td>${escapeHtml(t.closeReason || '—')}</td><td>${escapeHtml(new Date(t.createdAt).toLocaleString())}</td><td>${transcriptLinks}</td></tr>`;
-      }).join('') : '<tr><td colspan="7">No tickets yet.</td></tr>';
-      const form = `<div class="section-title"><a href="/dashboard">← Servers</a><h1>${escapeHtml(guild.name)}</h1><p>Changes apply immediately; no bot restart is required.</p></div>
-      <nav class="dashboard-jump">
-        <a href="#configuration">Configuration</a>
-        <a href="#features">Feature Center</a>
-        <a href="#ticket-config">Ticket System</a>
-        <a href="#twitch">Twitch</a>
-        <a href="#commands">Commands</a>
-        <a href="#tickets">Tickets</a>
-      </nav>
-      <form id="configuration" class="panel" method="post" action="/dashboard/${guild.id}"><input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}"><div class="form-grid">
-      <label>Prefix<input name="prefix" maxlength="5" value="${escapeHtml(settings.prefix)}"></label>
-      <label>Welcome Channel<select name="welcomeChannelId">${selectOptions(textChannels, settings.welcomeChannelId)}</select></label>
-      <label>Leave Channel<select name="leaveChannelId">${selectOptions(textChannels, settings.leaveChannelId)}</select></label>
-      <label>General Logs Channel<select name="logsChannelId">${selectOptions(textChannels, settings.logsChannelId)}</select></label>
-      <label>Verification Log Channel<select name="verificationLogChannelId">${selectOptions(textChannels, settings.verificationLogChannelId, 'Use General Logs Channel')}</select></label>
-      <label>Role Change Log Channel<select name="roleLogChannelId">${selectOptions(textChannels, settings.roleLogChannelId, 'Use General Logs Channel')}</select></label>
-      <label>Owner Broadcast Channel<select name="broadcastChannelId">${selectOptions(broadcastChannels, settings.broadcastChannelId, 'Automatic channel selection')}</select></label>
-      <label>Verification Channel<select name="verificationChannelId">${selectOptions(textChannels, settings.verificationChannelId)}</select></label>
-      <label>Verified Role<select name="verifiedRoleId">${selectOptions(roles, settings.verifiedRoleId)}</select></label>
-      <label>Unverified Role<select name="unverifiedRoleId">${selectOptions(roles, settings.unverifiedRoleId)}</select></label>
-      <label>Ticket Category<select name="ticketsCategoryId">${selectOptions(categories, settings.ticketsCategoryId)}</select></label>
-      <label>Ticket Panel Channel<select name="ticketPanelChannelId">${selectOptions(textChannels, settings.ticketPanelChannelId)}</select></label>
-      <label>Ticket Staff Role<select name="ticketStaffRoleId">${selectOptions(roles, settings.ticketStaffRoleId)}</select></label>
-      </div><div class="checks">
-      <label><input class="autosave-toggle" type="checkbox" name="loggingEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="loggingEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.loggingEnabled ? 'checked' : ''}> Logging enabled</label>
-      <label><input class="autosave-toggle" type="checkbox" name="welcomeEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="welcomeEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.welcomeEnabled ? 'checked' : ''}> Welcome messages enabled</label>
-      <label><input class="autosave-toggle" type="checkbox" name="verificationEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="verificationEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.verificationEnabled ? 'checked' : ''}> Member verification enabled</label>
-      <label><input class="autosave-toggle" type="checkbox" name="prefixCommandsEnabled" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="prefixCommandsEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.prefixCommandsEnabled ? 'checked' : ''}> Legacy prefix commands enabled</label>
-      </div><button class="btn" type="submit">Save Settings</button></form>
-
-      <section id="features" class="panel feature-center-panel">
-        <div class="panel-heading-row">
-          <div>
-            <span class="eyebrow">MULTIBOT FEATURE CENTER</span>
-            <h2>Advanced Server Features</h2>
-            <p>Enable and configure MultiBot's security, engagement, utility, voice, analytics and integration modules from one place.</p>
-          </div>
-          <span class="command-total">${featureStates.filter((feature) => feature.enabled).length}/${featureStates.length} enabled</span>
-        </div>
-        <div class="feature-grid">${featureCards}</div>
-
-        <div class="automation-builder">
-          <div class="category-heading"><h3>⚡ Custom Automation Rules</h3><span>${automationRules.length} rule${automationRules.length === 1 ? '' : 's'}</span></div>
-          <form class="automation-form" method="post" action="/dashboard/${guild.id}/automations">
-            <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-            <div class="form-grid">
-              <label>Rule Name<input name="name" maxlength="80" placeholder="Welcome helper" required></label>
-              <label>Trigger
-                <select name="triggerType" required>
-                  <option value="member_join">Member joins</option>
-                  <option value="message_contains">Message contains text</option>
-                </select>
-              </label>
-              <label>Trigger Match<input name="triggerValue" maxlength="500" placeholder="Only used for message_contains"></label>
-              <label>Action
-                <select name="actionType" required>
-                  <option value="send_message">Send message</option>
-                  <option value="dm_user">DM user</option>
-                  <option value="add_role">Add role</option>
-                </select>
-              </label>
-              <label>Action Channel<select name="actionChannelId">${selectOptions(featureChannels, '', 'Use event channel / none')}</select></label>
-              <label>Action Role<select name="actionRoleId">${selectOptions(roles, '', 'No role')}</select></label>
-              <label style="grid-column:1/-1">Action Message<input name="actionMessage" maxlength="1500" placeholder="Welcome {user} to {server}!"></label>
-            </div>
-            <div class="token-row"><span>{user}</span><span>{username}</span><span>{server}</span><span>{channel}</span></div>
-            <button class="btn" type="submit">＋ Create Automation</button>
-          </form>
-          <div class="automation-rule-list">${automationCards}</div>
-        </div>
-      </section>
-
-      <section id="ticket-config" class="panel ticket-config-panel">
-        <div class="panel-heading-row">
-          <div>
-            <span class="eyebrow">ADVANCED TICKETS</span>
-            <h2>Ticket Configuration</h2>
-            <p>Configure every department independently. Blank category or staff-role selections inherit the default ticket settings above.</p>
-          </div>
-          <span class="command-total">${ticketTypes.filter((type) => type.enabled).length}/${ticketTypes.length} enabled</span>
-        </div>
-
-        <form class="ticket-behavior-form" method="post" action="/dashboard/${guild.id}/tickets/settings">
-          <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-          <div class="ticket-behavior-grid">
-            <label>Max Open Tickets Per Person
-              <input type="number" name="maxOpenTicketsPerUser" min="1" max="25" value="${escapeHtml(String(settings.maxOpenTicketsPerUser))}" required>
-            </label>
-            <label>Transcript Channel
-              <select name="transcriptChannelId">${selectOptions(textChannels, settings.transcriptChannelId, 'No transcript channel')}</select>
-            </label>
-          </div>
-          <div class="checks ticket-behavior-switches">
-            <label><input class="autosave-toggle" type="checkbox" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="ticketsEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.ticketsEnabled ? 'checked' : ''}> Ticket system enabled</label>
-            <label><input class="autosave-toggle" type="checkbox" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="onlineTranscriptsEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.onlineTranscriptsEnabled ? 'checked' : ''}> Online transcript viewing enabled</label>
-            <label><input class="autosave-toggle" type="checkbox" data-autosave-url="/dashboard/${guild.id}/settings/toggle" data-setting="transcriptAttachmentsEnabled" data-csrf="${escapeHtml(req.session.csrf)}" ${settings.transcriptAttachmentsEnabled ? 'checked' : ''}> Upload .html transcript files</label>
-          </div>
-          <button class="btn" type="submit">Save Ticket Limits & Transcript Channel</button>
-        </form>
-
-        <form class="ticket-panel-publisher" method="post" action="/dashboard/${guild.id}/tickets/panel">
-          <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-          <label>Ticket Panel Channel
-            <select name="ticketPanelChannelId" required>${selectOptions(textChannels, settings.ticketPanelChannelId, 'Choose panel channel')}</select>
-          </label>
-          <div>
-            <span class="mini-label">Publish / Refresh</span>
-            <p>Posts a new advanced ticket selector using all currently enabled departments.</p>
-          </div>
-          <button class="btn" type="submit">Post Ticket Panel</button>
-        </form>
-
-        <div class="ticket-stat-grid">
-          <div><strong>${ticketStats.total}</strong><span>Tracked</span></div>
-          <div><strong>${ticketStats.open}</strong><span>Open</span></div>
-          <div><strong>${ticketStats.claimed}</strong><span>Claimed</span></div>
-          <div><strong>${ticketStats.closed}</strong><span>Closed</span></div>
-        </div>
-        <div class="ticket-module-grid">${ticketTypeCards}</div>
-      </section>
-
-      <section id="twitch" class="panel twitch-panel">
-        <div class="twitch-hero">
-          <div>
-            <span class="eyebrow">LIVE INTEGRATION</span>
-            <h2>Twitch Live Announcements</h2>
-            <p>Automatically post a rich Twitch embed when a configured streamer goes live.</p>
-          </div>
-          <div class="twitch-logo-badge">Twitch</div>
-        </div>
-
-        <form class="twitch-config-form" method="post" action="/dashboard/${guild.id}/twitch">
-          <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-          <div class="form-grid">
-            <label>Twitch Username
-              <input name="twitchLogin" maxlength="25" placeholder="streamername" required>
-            </label>
-            <label>Discord Announcement Channel
-              <select name="discordChannelId" required>${selectOptions(broadcastChannels, '', 'Choose a channel')}</select>
-            </label>
-            <label style="grid-column:1/-1">Custom Embed Message
-              <input name="customMessage" maxlength="500" placeholder="{user} is live playing {game}! {url}">
-            </label>
-          </div>
-          <div class="token-row">
-            <span>{user}</span><span>{game}</span><span>{title}</span><span>{url}</span>
-          </div>
-          <button class="btn twitch-btn" type="submit">＋ Add / Update Streamer</button>
-        </form>
-
-        <div class="twitch-cards">${twitchCards}</div>
-      </section>
-
-      <section id="commands" class="panel command-panel">
-        <div class="panel-heading-row">
-          <div>
-            <span class="eyebrow">COMMAND CENTER</span>
-            <h2>Command Modules</h2>
-            <p>All loaded command modules, grouped by category directly from MultiBot's command registry.</p>
-          </div>
-          <span class="command-total">${catalog.length} loaded</span>
-        </div>
-        ${commandGroups}
-      </section>
-
-      <section id="tickets" class="panel"><h2>Recent Tickets</h2><div class="table-wrap"><table><thead><tr><th>Ticket</th><th>Type</th><th>Status</th><th>Claimed By</th><th>Close Reason</th><th>Created</th><th>Transcript</th></tr></thead><tbody>${transcriptRows}</tbody></table></div></section>`;
-      res.send(page(`${guild.name} Settings`, form, req.session.user));
+      return res.render('dashboard/guild', {
+        title: `${guild.name} • Dashboard`,
+        user: req.session.user,
+        csrf: req.session.csrf,
+        installUrl: botInstallUrl(),
+        activePage: 'guild',
+        currentGuild: {
+          id: guild.id,
+          name: guild.name,
+          icon: guild.icon,
+          memberCount: guild.memberCount,
+          channelCount: guild.channels.cache.size,
+          roleCount: Math.max(0, guild.roles.cache.size - 1),
+        },
+        sidebarGuilds,
+        guild,
+        settings,
+        ticketTypes,
+        ticketStats,
+        recentTickets,
+        twitchItems,
+        sortedFeatures,
+        automationRules,
+        commandGroups,
+        commandStates,
+        catalogCount: catalog.length,
+        textChannels,
+        broadcastChannels,
+        categories,
+        voiceChannels,
+        featureChannels,
+        roles,
+        featureResources,
+        selectOptions,
+        featureFieldHtml,
+      });
     } catch (error) {
       console.error(error);
-      res.status(500).send(page('Dashboard error', `<div class="empty"><strong>Unable to load server settings.</strong><p>${process.env.NODE_ENV === 'production' ? 'Check the MySQL connection and schema.' : escapeHtml(error.message || String(error))}</p></div>`, req.session.user));
+      return res.status(500).send(page('Dashboard error', `<div class="empty"><strong>Unable to load server settings.</strong><p>${process.env.NODE_ENV === 'production' ? 'Check the MySQL connection and schema.' : escapeHtml(error.message || String(error))}</p></div>`, req.session.user));
     }
   });
 

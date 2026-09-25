@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= title %> • Kryndexa Bot</title>
+  <script>
+    (() => {
+      try {
+        const saved = localStorage.getItem('kryndexa-dashboard-theme');
+        const preferred = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = saved || preferred;
+      } catch {}
+    })();
+  </script>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/dashboard-template.css?v=1">
+</head>
+<body class="ddb-body">
+  <div class="ddb-mobile-overlay" data-sidebar-overlay></div>
+  <div class="ddb-shell">
+    <aside class="ddb-sidebar" data-dashboard-sidebar>
+      <%- include('./sidebar') %>
+    </aside>
+    <section class="ddb-main">
+      <header class="ddb-topbar">
+        <button class="ddb-icon-button ddb-mobile-menu" type="button" data-sidebar-toggle aria-label="Open sidebar">☰</button>
+        <div class="ddb-topbar-title">
+          <span><%= currentGuild ? 'Server Dashboard' : 'Kryndexa Dashboard' %></span>
+          <strong><%= currentGuild ? currentGuild.name : title %></strong>
+        </div>
+        <div class="ddb-topbar-actions">
+          <% if (installUrl) { %>
+            <a class="ddb-button ddb-button-primary ddb-hide-small" href="<%= installUrl %>" target="_blank" rel="noreferrer">＋ Add Bot</a>
+          <% } %>
+          <a class="ddb-icon-button" href="/" title="Public website" aria-label="Public website">↗</a>
+          <button class="ddb-icon-button" type="button" data-theme-toggle aria-label="Toggle theme"><span data-theme-icon>◐</span></button>
+        </div>
+      </header>
+      <main class="ddb-content">
