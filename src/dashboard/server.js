@@ -31,6 +31,7 @@ const { getCommandStateObject, setCommandEnabled } = require('../commandSettings
 const { getGuildFeatures, saveFeature } = require('../features/store');
 const { getFeatureDefinition } = require('../features/catalog');
 const { listAutomationRules, createAutomationRule, deleteAutomationRule } = require('../features/automationStore');
+const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encryptedSessionStore');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const GUILD_CACHE_TTL_MS = 60_000;
@@ -353,7 +354,7 @@ function startDashboard(client) {
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(express.static(path.join(process.cwd(), 'public')));
   const MySQLStore = MySQLStoreFactory(session);
-  const sessionStore = new MySQLStore({
+  const mysqlSessionStore = new MySQLStore({
     createDatabaseTable: false,
     schema: {
       tableName: 'web_sessions',
@@ -364,15 +365,20 @@ function startDashboard(client) {
       },
     },
   }, getPool());
+  const sessionStore = new EncryptedSessionStore(mysqlSessionStore);
 
-  if (typeof sessionStore.onReady === 'function') {
-    sessionStore.onReady()
-      .then(() => console.log('MySQL dashboard session store ready.'))
+  migrateLegacySessionRows(getPool())
+    .then((count) => {
+      if (count) console.log(`Encrypted ${count} legacy dashboard session row(s).`);
+    })
+    .catch((error) => console.error('Unable to migrate legacy dashboard sessions:', error));
+
+  if (typeof mysqlSessionStore.onReady === 'function') {
+    mysqlSessionStore.onReady()
+      .then(() => console.log('Encrypted MySQL dashboard session store ready.'))
       .catch((error) => console.error('MySQL dashboard session store failed:', error));
   } else {
-    // Some installed express-mysql-session builds do not expose onReady().
-    // The shared MySQL pool/schema has already been validated by initDatabase().
-    console.log('MySQL dashboard session store initialized.');
+    console.log('Encrypted MySQL dashboard session store initialized.');
   }
 
   app.use(session({
