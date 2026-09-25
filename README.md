@@ -330,3 +330,40 @@ If the server configuration page cannot load:
 - Discord command: `/legal` (prefix fallback: `!legal`) returns buttons linking to both pages.
 
 Set `BASE_URL` to the public HTTPS address of your deployed dashboard so Discord's legal-link buttons point to the correct website.
+
+
+## Backup restore
+
+`/backup restore` can reload a stored MySQL structural backup.
+
+Slash usage:
+
+`/backup restore backup_id:<uuid> confirm:True`
+
+Prefix usage:
+
+`!backup restore <backup-id> confirm`
+
+Before restore starts, MultiBot automatically creates a fresh safety backup. Restore mode is merge-based: matching roles/channels are updated, missing roles/channels are recreated, stored role IDs are remapped into channel permission overwrites, and unrelated current roles/channels are left intact. Managed roles and unsupported channel types are skipped with warnings.
+
+The bot needs **Manage Roles** and **Manage Channels** permissions, and its highest role must be above any role it needs to edit.
+
+## Dashboard search and bot installation
+
+All current dashboard search fields use a shared filter controller:
+
+- Your Servers search
+- Server Statistics search
+- sidebar server switcher search
+
+Each search provides a no-results state when nothing matches.
+
+The dashboard header also includes an **Add Bot to Server** button. Its Discord OAuth URL is generated from `DISCORD_CLIENT_ID` and requests the `bot` + `applications.commands` scopes with Discord Administrator permission (`permissions=8`).
+
+## Shard-aware presence
+
+MultiBot's Discord activity is:
+
+`/help • kryndexabot.xyz • (shard count / 100)`
+
+The activity is refreshed on Client Ready and Shard Ready events.
