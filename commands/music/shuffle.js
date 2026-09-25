@@ -1,0 +1,5 @@
+const { SlashCommandBuilder } = require('discord.js');
+const { musicContext, existingPlayer, sameVoiceChannel, replySlash, replyPrefix } = require('../../src/music/helpers');
+module.exports={name:'shuffle',category:'Music',data:new SlashCommandBuilder().setName('shuffle').setDescription('Shuffle the upcoming queue.'),guildOnly:true,
+async executeSlash(i){const c=await musicContext(i);if(c.error)return replySlash(i,c.error,true);const p=existingPlayer(c.manager,c.guild.id);if(!p||p.queue.length<2)return replySlash(i,'Add at least two queued tracks.',true);if(!sameVoiceChannel(p,i.member))return replySlash(i,'Join the same voice channel as the bot.',true);p.queue.shuffle();return replySlash(i,'🔀 Queue shuffled.');},
+async executePrefix(m){const c=await musicContext(m);if(c.error)return replyPrefix(m,c.error);const p=existingPlayer(c.manager,c.guild.id);if(!p||p.queue.length<2)return replyPrefix(m,'Add at least two queued tracks.');if(!sameVoiceChannel(p,m.member))return replyPrefix(m,'Join the same voice channel as the bot.');p.queue.shuffle();return replyPrefix(m,'🔀 Queue shuffled.');}};
