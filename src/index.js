@@ -59,16 +59,50 @@ async function waitForReady() {
   await new Promise((resolve) => client.once(Events.ClientReady, resolve));
 }
 
+function validateSlashCommandPayloads() {
+  if (!slashCommands.length) {
+    throw new Error('No slash commands were loaded from the commands directory.');
+  }
+
+  if (slashCommands.length > 100) {
+    throw new Error(`Loaded ${slashCommands.length} chat-input commands; Discord allows at most 100 global chat-input commands.`);
+  }
+
+  const seen = new Set();
+  for (const command of slashCommands) {
+    const name = String(command?.name || '').trim().toLowerCase();
+    if (!name || !command?.description) {
+      throw new Error(`Invalid slash-command payload: ${JSON.stringify(command)}`);
+    }
+    if (seen.has(name)) throw new Error(`Duplicate slash-command payload: /${name}`);
+    seen.add(name);
+  }
+}
+
 async function registerGlobalCommands(rest, applicationId) {
-  await rest.put(
+  const registered = await rest.put(
     Routes.applicationCommands(applicationId),
     { body: slashCommands },
   );
-  console.log(`Registered ${slashCommands.length} global slash commands.`);
+
+  const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
+  console.log(`[Slash Commands] Discord accepted ${accepted}/${slashCommands.length} global slash commands.`);
+
+  const remote = await rest.get(Routes.applicationCommands(applicationId));
+  const remoteCount = Array.isArray(remote) ? remote.length : 0;
+  if (remoteCount !== slashCommands.length) {
+    console.warn(
+      `[Slash Commands] Verification mismatch: local=${slashCommands.length}, Discord global=${remoteCount}. `
+      + 'Check startup errors and confirm the bot was invited with the applications.commands scope.',
+    );
+  } else {
+    console.log(`[Slash Commands] Verified ${remoteCount} global commands on application ${applicationId}.`);
+  }
 }
 
 async function registerSlashCommands() {
   await client.application.fetch();
+  validateSlashCommandPayloads();
 
   const applicationId = client.application.id;
   const configuredClientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
@@ -81,37 +115,37 @@ async function registerSlashCommands() {
   }
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  const devGuildId = String(process.env.DEV_GUILD_ID || '').trim();
 
-  if (!devGuildId) {
-    await registerGlobalCommands(rest, applicationId);
-    return;
-  }
+  // Production commands must always be global so every server that installed
+  // the application can see the same command set. DEV_GUILD_ID is only an
+  // optional instant-development mirror; it must never replace global sync.
+  await registerGlobalCommands(rest, applicationId);
+
+  const devGuildId = String(process.env.DEV_GUILD_ID || '').trim();
+  if (!devGuildId) return;
 
   const guild = client.guilds.cache.get(devGuildId);
-
   if (!guild) {
     console.warn(
       `[Slash Commands] DEV_GUILD_ID=${devGuildId} is not a server the bot is currently connected to. `
-      + 'Falling back to global slash-command registration. Clear DEV_GUILD_ID or replace it with a server ID where this bot is installed.',
+      + 'Global commands are registered; skipping the development-guild mirror.',
     );
-    await registerGlobalCommands(rest, applicationId);
     return;
   }
 
   try {
-    await rest.put(
+    const registered = await rest.put(
       Routes.applicationGuildCommands(applicationId, devGuildId),
       { body: slashCommands },
     );
-    console.log(`Registered ${slashCommands.length} slash commands in ${guild.name} (${devGuildId}).`);
+    const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
+    console.log(`[Slash Commands] Mirrored ${accepted} commands into development guild ${guild.name} (${devGuildId}).`);
   } catch (error) {
     if (error?.code === 50001 || error?.status === 403) {
       console.warn(
-        `[Slash Commands] Discord denied guild command registration for ${guild.name} (${devGuildId}) with Missing Access. `
-        + 'Falling back to global command registration instead of stopping MultiBot.',
+        `[Slash Commands] Discord denied development-guild registration for ${guild.name} (${devGuildId}) with Missing Access. `
+        + 'The global command set is still registered and available to installed servers.',
       );
-      await registerGlobalCommands(rest, applicationId);
       return;
     }
     throw error;
