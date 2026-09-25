@@ -1,31 +1,32 @@
 {
-  "name": "MULTIBOT",
-  "version": "2.0.1",
-  "description": "Discord bot using node modules with advanced help commands",
-  "main": "index.js",
+  "name": "discordjs-multibot",
+  "version": "3.0.0",
+  "description": "Multi-purpose Discord bot upgraded to discord.js v14 with a web dashboard, verification, tickets, transcripts, and owner broadcasts.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "check": "node --check src/index.js && node --check src/store.js && node --check src/bot/commands.js && node --check src/bot/broadcast.js && node --check src/bot/verification.js && node --check src/bot/events.js && node --check src/bot/interactions.js && node --check src/dashboard/server.js && node --check src/tickets/ticketService.js && node --check src/utils/html.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
-    "array-sort": "^1.0.0",
-    "bfdapi.js": "^2.0.1",
-    "common-tags": "^1.8.0",
-    "discord-bot-analytics": "^1.0.9",
-    "discord.js": "^11.5.1",
-    "dotenv": "^8.2.0",
-    "fs": "^0.0.1-security",
-    "long": "^4.0.0",
-    "moment": "^2.24.0",
-    "node-fetch": "^2.6.0",
-    "node-superfetch": "^0.1.9",
-    "nodemon": "^1.19.4",
-    "table": "^5.4.6",
-    "utill": "^0.1.3"
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2"
   },
   "devDependencies": {},
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon index.js"
-  },
   "keywords": [
-    "Discordjs"
+    "discord",
+    "discord.js",
+    "dashboard",
+    "verification",
+    "tickets",
+    "transcripts",
+    "broadcast"
   ],
   "author": "OwnerHunter",
   "license": "MIT"
