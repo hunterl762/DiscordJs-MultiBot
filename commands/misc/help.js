@@ -9,7 +9,8 @@ function helpEmbed(prefix = '!') {
     '**Tickets / Community:** `/ticket`, `/verification`, `/apply`, `/suggest`',
     '**Leveling / Economy:** `/rank`, `/leaderboard`, `/balance`, `/daily`',
     '**Giveaways / Utility / Analytics:** `/giveaway`, `/remind`, `/stats`',
-    '**Bot Owner:** `/broadcast`, `/resetcommands`',
+    '**Music:** `/play`, `/pause`, `/resume`, `/skip`, `/stop`, `/queue`, `/nowplaying`, `/volume`, `/shuffle`, `/loop`',
+    '**Bot Owner:** `/broadcast`, `/botanalytics`, `/resetcommands`',
     'Most advanced systems are enabled/configured in the web dashboard Feature Center.',
     `Prefix backups remain available when enabled (current prefix: \`${prefix}\`).`,
   ].join('\n'));
