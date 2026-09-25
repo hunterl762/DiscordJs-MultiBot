@@ -62,11 +62,30 @@ function resolveDashboardFile(filePath) {
 function loadDashboardTlsOptions() {
   if (!envFlag('WEB_SSL_ENABLED')) return null;
 
-  const keyPath = resolveDashboardFile(process.env.WEB_SSL_KEY_FILE);
-  const certPath = resolveDashboardFile(process.env.WEB_SSL_CERT_FILE);
+  const provider = String(process.env.WEB_SSL_PROVIDER || 'standard')
+    .trim()
+    .toLowerCase();
+
+  const cloudflareOrigin = provider === 'cloudflare-origin';
+  const keyPath = resolveDashboardFile(
+    cloudflareOrigin
+      ? process.env.WEB_CLOUDFLARE_ORIGIN_KEY_FILE
+      : process.env.WEB_SSL_KEY_FILE,
+  );
+  const certPath = resolveDashboardFile(
+    cloudflareOrigin
+      ? process.env.WEB_CLOUDFLARE_ORIGIN_CERT_FILE
+      : process.env.WEB_SSL_CERT_FILE,
+  );
   const caPath = resolveDashboardFile(process.env.WEB_SSL_CA_FILE);
 
   if (!keyPath || !certPath) {
+    if (cloudflareOrigin) {
+      throw new Error(
+        'WEB_SSL_PROVIDER=cloudflare-origin requires WEB_CLOUDFLARE_ORIGIN_KEY_FILE and WEB_CLOUDFLARE_ORIGIN_CERT_FILE.',
+      );
+    }
+
     throw new Error(
       'WEB_SSL_ENABLED=true requires WEB_SSL_KEY_FILE and WEB_SSL_CERT_FILE.',
     );
@@ -83,9 +102,15 @@ function loadDashboardTlsOptions() {
   }
 
   return {
-    key: fs.readFileSync(keyPath),
-    cert: fs.readFileSync(certPath),
-    ...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
+    provider,
+    keyPath,
+    certPath,
+    options: {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+      ...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
+      minVersion: 'TLSv1.2',
+    },
   };
 }
 
@@ -1900,14 +1925,22 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  const tlsOptions = loadDashboardTlsOptions();
+  const tlsConfig = loadDashboardTlsOptions();
 
-  if (tlsOptions) {
+  if (tlsConfig) {
     const httpsPort = Number(process.env.WEB_HTTPS_PORT || port || 3443);
-    const server = https.createServer(tlsOptions, app);
+    const server = https.createServer(tlsConfig.options, app);
 
     server.listen(httpsPort, () => {
       const advertisedUrl = process.env.BASE_URL || `https://localhost:${httpsPort}`;
+
+      if (tlsConfig.provider === 'cloudflare-origin') {
+        console.log('[Dashboard SSL] Cloudflare Origin CA certificate enabled.');
+        console.log('[Dashboard SSL] Use Cloudflare SSL/TLS mode: Full (strict).');
+      } else {
+        console.log(`[Dashboard SSL] HTTPS enabled with provider: ${tlsConfig.provider}.`);
+      }
+
       console.log(`[Dashboard SSL] HTTPS enabled on port ${httpsPort}.`);
       console.log(`Dashboard listening securely on ${advertisedUrl}`);
     });
