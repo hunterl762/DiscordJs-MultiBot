@@ -138,8 +138,14 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   await initDatabase();
   await client.login(process.env.DISCORD_TOKEN);
   await waitForReady();
-  await registerSlashCommands();
   startDashboard(client);
+
+  try {
+    await registerSlashCommands();
+  } catch (error) {
+    console.error('[Slash Commands] Registration failed; the bot and dashboard will continue running:', error);
+  }
+
   startTwitchMonitor(client);
   await initMusic(client);
 })().catch((error) => {
