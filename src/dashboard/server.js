@@ -1,6 +1,7 @@
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const https = require('node:https');
 const express = require('express');
 const session = require('express-session');
 const MySQLStoreFactory = require('express-mysql-session');
@@ -44,6 +45,67 @@ const guildListRequests = new Map();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function envFlag(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function resolveDashboardFile(filePath) {
+  const value = String(filePath || '').trim();
+  if (!value) return '';
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
+}
+
+function loadDashboardTlsOptions() {
+  if (!envFlag('WEB_SSL_ENABLED')) return null;
+
+  const keyPath = resolveDashboardFile(process.env.WEB_SSL_KEY_FILE);
+  const certPath = resolveDashboardFile(process.env.WEB_SSL_CERT_FILE);
+  const caPath = resolveDashboardFile(process.env.WEB_SSL_CA_FILE);
+
+  if (!keyPath || !certPath) {
+    throw new Error(
+      'WEB_SSL_ENABLED=true requires WEB_SSL_KEY_FILE and WEB_SSL_CERT_FILE.',
+    );
+  }
+
+  if (!fs.existsSync(keyPath)) {
+    throw new Error(`Dashboard SSL private key not found: ${keyPath}`);
+  }
+  if (!fs.existsSync(certPath)) {
+    throw new Error(`Dashboard SSL certificate not found: ${certPath}`);
+  }
+  if (caPath && !fs.existsSync(caPath)) {
+    throw new Error(`Dashboard SSL CA/chain file not found: ${caPath}`);
+  }
+
+  return {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath),
+    ...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
+  };
+}
+
+function httpsRedirectTarget(req) {
+  const baseUrl = String(process.env.BASE_URL || '').trim();
+
+  if (baseUrl) {
+    try {
+      const base = new URL(baseUrl);
+      base.protocol = 'https:';
+      return new URL(req.originalUrl || req.url || '/', base).toString();
+    } catch {
+      // Fall back to request host.
+    }
+  }
+
+  const host = String(req.headers.host || 'localhost').replace(/:\d+$/, '');
+  const httpsPort = Number(process.env.WEB_HTTPS_PORT || process.env.PORT || 443);
+  const portSuffix = httpsPort === 443 ? '' : `:${httpsPort}`;
+  return `https://${host}${portSuffix}${req.originalUrl || req.url || '/'}`;
 }
 
 function parseCookies(req) {
@@ -481,7 +543,34 @@ function startDashboard(client) {
   const addBotButton = renderAddBotButton();
   const app = express();
   app.disable('x-powered-by');
-  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+
+  // Trust one reverse-proxy hop in production so req.secure honors
+  // X-Forwarded-Proto from Cloudflare, NGINX, Caddy, etc.
+  if (process.env.NODE_ENV === 'production' || envFlag('WEB_TRUST_PROXY')) {
+    app.set('trust proxy', 1);
+  }
+
+  app.use((req, res, next) => {
+    const forwardedProto = String(req.get('x-forwarded-proto') || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    const isSecure = req.secure || forwardedProto === 'https';
+
+    if (isSecure && envFlag('WEB_HSTS_ENABLED', process.env.NODE_ENV === 'production')) {
+      res.setHeader(
+        'Strict-Transport-Security',
+        'max-age=31536000; includeSubDomains',
+      );
+    }
+
+    if (envFlag('WEB_FORCE_HTTPS') && !isSecure) {
+      return res.redirect(308, httpsRedirectTarget(req));
+    }
+
+    return next();
+  });
+
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(express.static(path.join(process.cwd(), 'public')));
   const MySQLStore = MySQLStoreFactory(session);
@@ -1781,7 +1870,39 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  app.listen(port, () => console.log(`Dashboard listening on ${process.env.BASE_URL || `http://localhost:${port}`}`));
+  const tlsOptions = loadDashboardTlsOptions();
+
+  if (tlsOptions) {
+    const httpsPort = Number(process.env.WEB_HTTPS_PORT || port || 3443);
+    const server = https.createServer(tlsOptions, app);
+
+    server.listen(httpsPort, () => {
+      const advertisedUrl = process.env.BASE_URL || `https://localhost:${httpsPort}`;
+      console.log(`[Dashboard SSL] HTTPS enabled on port ${httpsPort}.`);
+      console.log(`Dashboard listening securely on ${advertisedUrl}`);
+    });
+
+    const redirectPort = Number(process.env.WEB_HTTP_REDIRECT_PORT || 0);
+    if (redirectPort > 0 && redirectPort !== httpsPort) {
+      const redirectApp = express();
+      redirectApp.use((req, res) => res.redirect(308, httpsRedirectTarget(req)));
+      redirectApp.listen(redirectPort, () => {
+        console.log(`[Dashboard SSL] HTTP port ${redirectPort} redirects to HTTPS.`);
+      });
+    }
+
+    return server;
+  }
+
+  const server = app.listen(port, () => {
+    const advertisedUrl = process.env.BASE_URL || `http://localhost:${port}`;
+    console.log(`Dashboard listening on ${advertisedUrl}`);
+    if (envFlag('WEB_FORCE_HTTPS')) {
+      console.log('[Dashboard SSL] HTTPS is expected to terminate at the configured reverse proxy.');
+    }
+  });
+
+  return server;
 }
 
 module.exports = { startDashboard };
