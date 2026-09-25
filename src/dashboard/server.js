@@ -65,19 +65,20 @@ function parseCookies(req) {
   return cookies;
 }
 
-function page(title, body, user) {
+function renderAddBotButton() {
   const clientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
-  const installUrl = clientId
-    ? `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=bot%20applications.commands`
-    : '';
+  if (!clientId) return '';
 
+  const installUrl = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=bot%20applications.commands`;
+  return `<a class="btn add-bot-button" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`;
+}
+
+function page(title, body, user) {
   const auth = user
     ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
     : '<a class="btn compact" href="/login">Login with Discord</a>';
 
-  const addBotButton = installUrl
-    ? `<a class="btn add-bot-button" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`
-    : '';
+  const addBotButton = renderAddBotButton();
 
   const cookieNotice = `<div id="cookieNotice" class="cookie-notice" role="dialog" aria-live="polite" aria-label="Cookie consent">
     <div class="cookie-copy">
@@ -364,6 +365,7 @@ function featureFieldHtml(field, value, resources) {
 }
 
 function startDashboard(client) {
+  const addBotButton = renderAddBotButton();
   const app = express();
   app.disable('x-powered-by');
   if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
