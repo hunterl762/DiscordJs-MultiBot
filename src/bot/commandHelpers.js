@@ -8,12 +8,33 @@ function avatarEmbed(user) {
 }
 
 function userInfoEmbed(user, member) {
+  const presence = member?.presence;
+  const statusMap = {
+    online: '🟢 Online',
+    idle: '🌙 Idle',
+    dnd: '⛔ Do Not Disturb',
+    offline: '⚫ Offline',
+  };
+  const status = statusMap[presence?.status] || '⚫ Offline / unavailable';
+  const clientStatus = presence?.clientStatus
+    ? Object.keys(presence.clientStatus).map((client) => client[0].toUpperCase() + client.slice(1)).join(', ')
+    : 'Unavailable';
+  const activities = presence?.activities?.length
+    ? presence.activities.map((activity) => {
+        if (activity.type === 4) return `Custom Status: ${activity.state || 'No text'}`;
+        return [activity.name, activity.details, activity.state].filter(Boolean).join(' • ') || 'Activity';
+      }).slice(0, 5).join('\n')
+    : 'No visible activity';
+
   return new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(user.tag)
     .setThumbnail(user.displayAvatarURL())
     .addFields(
       { name: 'User ID', value: user.id, inline: true },
+      { name: 'Status', value: status, inline: true },
+      { name: 'Client', value: clientStatus, inline: true },
+      { name: 'Activity', value: activities.slice(0, 1024), inline: false },
       { name: 'Account Created', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:F>` },
       { name: 'Joined Server', value: member?.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:F>` : 'Unknown' },
     );
