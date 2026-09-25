@@ -172,3 +172,47 @@ WEB_CLOUDFLARE_ORIGIN_CERT_FILE=
 ```
 
 Those local PEM files are still used for the encrypted **Cloudflare → Kryndexa origin** connection.
+
+
+## Production domain: kryndexabot.xyz
+
+The web panel is configured to use the canonical production domain:
+
+```env
+BASE_URL=https://kryndexabot.xyz
+DISCORD_REDIRECT_URI=https://kryndexabot.xyz/auth/callback
+WEB_CANONICAL_HOST=kryndexabot.xyz
+WEB_CANONICAL_REDIRECT=true
+WEB_FORCE_HTTPS=true
+WEB_TRUST_PROXY=true
+```
+
+Add this exact Discord OAuth redirect in the Discord Developer Portal:
+
+```
+https://kryndexabot.xyz/auth/callback
+```
+
+When `WEB_CANONICAL_REDIRECT=true`, alternate hostnames are redirected with HTTP 308 to `https://kryndexabot.xyz` while preserving the original path and query string.
+
+### Link embeds / metadata
+
+All pages rendered by the web panel now include:
+
+- HTML description metadata
+- canonical URL
+- Open Graph site/title/description/URL/image tags
+- Twitter card/title/description/image tags
+- theme color
+- application name
+- robots directives
+
+Public pages are indexable. Authenticated dashboard/settings pages use `noindex,nofollow,noarchive`.
+
+Set a dedicated social preview image with:
+
+```env
+WEB_META_IMAGE_URL=https://kryndexabot.xyz/path/to/1200x630-image.png
+```
+
+If this is blank, the panel uses `https://kryndexabot.xyz/favicon.ico` as the embed image fallback.
