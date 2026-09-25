@@ -16,6 +16,16 @@ const { startTwitchMonitor, stopTwitchMonitor } = require('./services/twitchMoni
 const { registerFeatureRuntime, stopFeatureRuntime } = require('./features/runtime');
 const { initMusic, stopMusic } = require('./music/manager');
 
+function envFlag(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const required = [
   'DISCORD_TOKEN',
   'DISCORD_CLIENT_ID',
@@ -79,6 +89,24 @@ function validateSlashCommandPayloads() {
   }
 }
 
+function commandNameSet(commands) {
+  return new Set(
+    (Array.isArray(commands) ? commands : [])
+      .map((command) => String(command?.name || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function commandSetsMatch(remoteCommands) {
+  if (!Array.isArray(remoteCommands) || remoteCommands.length !== slashCommands.length) return false;
+
+  const localNames = commandNameSet(slashCommands);
+  const remoteNames = commandNameSet(remoteCommands);
+
+  if (localNames.size !== remoteNames.size) return false;
+  return [...localNames].every((name) => remoteNames.has(name));
+}
+
 async function registerGlobalCommands(rest, applicationId) {
   const registered = await rest.put(
     Routes.applicationCommands(applicationId),
@@ -90,14 +118,74 @@ async function registerGlobalCommands(rest, applicationId) {
 
   const remote = await rest.get(Routes.applicationCommands(applicationId));
   const remoteCount = Array.isArray(remote) ? remote.length : 0;
-  if (remoteCount !== slashCommands.length) {
+
+  if (!commandSetsMatch(remote)) {
+    const localNames = [...commandNameSet(slashCommands)].sort();
+    const remoteNames = [...commandNameSet(remote)].sort();
+
     console.warn(
-      `[Slash Commands] Verification mismatch: local=${slashCommands.length}, Discord global=${remoteCount}. `
-      + 'Check startup errors and confirm the bot was invited with the applications.commands scope.',
+      `[Slash Commands] Global verification mismatch: local=${slashCommands.length}, Discord=${remoteCount}.`,
     );
+    console.warn(`[Slash Commands] Local names: ${localNames.join(', ')}`);
+    console.warn(`[Slash Commands] Discord names: ${remoteNames.join(', ')}`);
   } else {
     console.log(`[Slash Commands] Verified ${remoteCount} global commands on application ${applicationId}.`);
   }
+
+  return remote;
+}
+
+async function syncGuildCommandFallback(rest, applicationId) {
+  const autoDefault = client.guilds.cache.size <= 100;
+  const enabled = envFlag('SLASH_COMMAND_GUILD_FALLBACK', autoDefault);
+
+  if (!enabled) {
+    console.log('[Slash Commands] Guild fallback sync is disabled; using global commands only.');
+    return;
+  }
+
+  console.log(
+    `[Slash Commands] Guild fallback sync enabled for ${client.guilds.cache.size} connected server(s).`,
+  );
+
+  let alreadyCurrent = 0;
+  let updated = 0;
+  let failed = 0;
+
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const existing = await rest.get(
+        Routes.applicationGuildCommands(applicationId, guild.id),
+      );
+
+      if (commandSetsMatch(existing)) {
+        alreadyCurrent += 1;
+        continue;
+      }
+
+      const registered = await rest.put(
+        Routes.applicationGuildCommands(applicationId, guild.id),
+        { body: slashCommands },
+      );
+
+      const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
+      updated += 1;
+      console.log(
+        `[Slash Commands] Synced ${accepted} guild commands to ${guild.name} (${guild.id}).`,
+      );
+
+      await sleep(250);
+    } catch (error) {
+      failed += 1;
+      console.warn(
+        `[Slash Commands] Guild fallback failed for ${guild.name} (${guild.id}): ${error.message || error}`,
+      );
+    }
+  }
+
+  console.log(
+    `[Slash Commands] Guild fallback complete: ${alreadyCurrent} already current, ${updated} updated, ${failed} failed.`,
+  );
 }
 
 async function registerSlashCommands() {
@@ -120,6 +208,7 @@ async function registerSlashCommands() {
   // the application can see the same command set. DEV_GUILD_ID is only an
   // optional instant-development mirror; it must never replace global sync.
   await registerGlobalCommands(rest, applicationId);
+  await syncGuildCommandFallback(rest, applicationId);
 
   const devGuildId = String(process.env.DEV_GUILD_ID || '').trim();
   if (!devGuildId) return;
