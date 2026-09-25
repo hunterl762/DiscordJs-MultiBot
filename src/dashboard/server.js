@@ -96,7 +96,7 @@ function page(title, body, user) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-theme-slash-repair">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-home-spacing-repair">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -110,7 +110,7 @@ function page(title, body, user) {
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
-<footer><div class="footer-inner"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span><nav><a href="/features">Features</a> • <a href="/privacy">Privacy</a> • <a href="/terms">Terms</a></nav></div></footer>
+<footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
 ${cookieNotice}
 <script>(() => {
   const root=document.documentElement;
@@ -422,7 +422,20 @@ function startDashboard(client) {
         <p class="hero-detail">Moderation, tickets, logging, streaming alerts, music, automation, analytics, embeds and server configuration from one responsive dashboard.</p>
         <div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : '<a class="btn" href="/login">Login with Discord</a>'} ${addBotButton}</div>
       </div>
-      <div class="hero-console"><span>COMMAND CENTER</span><strong>Kryndexa Bot</strong><div class="hero-console-grid"><i>Advanced Tickets</i><i>Server Analytics</i><i>Streaming Alerts</i><i>AutoMod</i><i>Music</i><i>Encrypted Settings</i></div></div>
+      <aside class="hero-console" aria-label="Kryndexa Bot feature categories">
+        <div class="hero-console-heading">
+          <span class="hero-console-label">COMMAND CENTER</span>
+          <strong class="hero-console-title">Kryndexa Bot</strong>
+        </div>
+        <div class="hero-console-grid">
+          <span class="hero-category"><b>🎫</b> Advanced Tickets</span>
+          <span class="hero-category"><b>📊</b> Server Analytics</span>
+          <span class="hero-category"><b>📡</b> Streaming Alerts</span>
+          <span class="hero-category"><b>🛡️</b> AutoMod</span>
+          <span class="hero-category"><b>🎵</b> Music</span>
+          <span class="hero-category"><b>🔐</b> Encrypted Settings</span>
+        </div>
+      </aside>
     </section>`;
     res.send(page('Kryndexa Bot', body, req.session.user));
   });
