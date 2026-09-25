@@ -1,6 +1,9 @@
-botconfig.json
-node_modules
+node_modules/
 .env
-dms.js
-idk.txt
-index.html
+npm-debug.log*
+.DS_Store
+
+# Runtime data and generated ticket transcripts
+data/settings.json
+data/tickets.json
+data/transcripts/*.html
