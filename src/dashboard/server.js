@@ -37,6 +37,7 @@ const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encrypte
 const { PROVIDERS, listAiCredentials, saveAiCredential, deleteAiCredential } = require('../aiCredentialStore');
 const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedConfigStore');
 const { getAnalytics } = require('../features/dataStore');
+const { isBotOwner } = require('../bot/broadcast');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
@@ -1301,12 +1302,15 @@ function startDashboard(client) {
       const user = await discordFetch('/users/@me', token.access_token);
       if (!user?.id) throw new Error('Discord did not return a valid user profile.');
 
+      const ownerAccess = await isBotOwner(client, user.id);
+
       // Regenerate the session after authentication to prevent session fixation.
       await regenerateSession(req);
       req.session.user = {
         id: user.id,
         username: user.global_name || user.username,
         avatar: user.avatar,
+        isBotOwner: ownerAccess,
       };
       req.session.accessToken = token.access_token;
       req.session.csrf = crypto.randomBytes(24).toString('hex');
@@ -1334,7 +1338,7 @@ function startDashboard(client) {
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
       const managedGuilds = await getManagedGuilds(req, client);
-      const cloudflareSsl = await getCloudflareCertificatePacks();
+      req.session.user.isBotOwner = await isBotOwner(client, req.session.user.id);
 
       const dashboardStats = await Promise.all(managedGuilds.map(async (managed) => {
         const guild = client.guilds.cache.get(managed.id);
