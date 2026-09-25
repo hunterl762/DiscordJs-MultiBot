@@ -70,33 +70,21 @@ async function resetCommands(client, slashCommands, scope, guildId) {
 
   if (!guildId) throw new Error('A guild ID is required for a guild command reset.');
 
-  // Always remove stale commands from the current guild first.
+  // Force an immediate guild-specific command set. This is useful when
+  // Discord's global command picker has not become visible for this installation.
   await clearGuildCommands(rest, applicationId, guildId);
 
-  // If global commands already exist, refresh the global set instead of
-  // creating a duplicate guild copy. This leaves one visible copy in this server.
-  const existingGlobal = await rest.get(Routes.applicationCommands(applicationId));
-
-  if (Array.isArray(existingGlobal) && existingGlobal.length) {
-    await rest.put(Routes.applicationCommands(applicationId), { body: [] });
-    await rest.put(Routes.applicationCommands(applicationId), { body: slashCommands });
-
-    return [
-      'Cleared the current server\'s stale guild-specific commands.',
-      `Rebuilt the global command set with **${slashCommands.length}** current command(s).`,
-      'This server should now display one copy of each slash command.',
-    ].join('\n');
-  }
-
-  await rest.put(
+  const registered = await rest.put(
     Routes.applicationGuildCommands(applicationId, guildId),
     { body: slashCommands },
   );
 
+  const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
+
   return [
-    'Cleared the previous commands for this server.',
-    `Registered **${slashCommands.length}** current guild command(s).`,
-    'No global command set was present, so only the current server was updated.',
+    'Cleared the previous guild-specific slash commands for this server.',
+    `Registered **${accepted}** current guild command(s) for immediate visibility.`,
+    'The global command set is left intact for other servers.',
   ].join('\n');
 }
 
