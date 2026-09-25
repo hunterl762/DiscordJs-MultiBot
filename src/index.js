@@ -43,11 +43,19 @@ async function registerSlashCommands() {
   }
 }
 
-(async () => {
-  await registerSlashCommands();
-  await client.login(process.env.DISCORD_TOKEN);
+// Start the web dashboard independently from Discord API startup.
+// This keeps the dashboard available even if slash-command registration is
+// temporarily rate-limited, missing guild access, or Discord login fails.
+try {
   startDashboard(client);
-})().catch((error) => {
-  console.error(error);
-  process.exit(1);
+} catch (error) {
+  console.error('Dashboard failed to start:', error);
+}
+
+registerSlashCommands().catch((error) => {
+  console.error('Slash command registration failed:', error);
+});
+
+client.login(process.env.DISCORD_TOKEN).catch((error) => {
+  console.error('Discord bot login failed:', error);
 });
