@@ -15,6 +15,7 @@ const {
 } = require('../store');
 const { getPool, pingDatabase } = require('../database');
 const {
+  normalizeIdentifier,
   listTwitchAnnouncements,
   upsertTwitchAnnouncement,
   deleteTwitchAnnouncement,
@@ -29,9 +30,12 @@ const { escapeHtml } = require('../utils/html');
 const { commandCatalog } = require('../bot/commandRegistry');
 const { getCommandStateObject, setCommandEnabled } = require('../commandSettingsStore');
 const { getGuildFeatures, saveFeature } = require('../features/store');
-const { getFeatureDefinition } = require('../features/catalog');
+const { FEATURE_CATALOG, getFeatureDefinition, isFeatureEnvironmentEnabled } = require('../features/catalog');
 const { listAutomationRules, createAutomationRule, deleteAutomationRule } = require('../features/automationStore');
 const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encryptedSessionStore');
+const { PROVIDERS, listAiCredentials, saveAiCredential, deleteAiCredential } = require('../aiCredentialStore');
+const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedConfigStore');
+const { getAnalytics } = require('../features/dataStore');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const GUILD_CACHE_TTL_MS = 60_000;
@@ -62,9 +66,18 @@ function parseCookies(req) {
 }
 
 function page(title, body, user) {
+  const clientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
+  const installUrl = clientId
+    ? `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=bot%20applications.commands`
+    : '';
+
   const auth = user
-    ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary" href="/logout">Log out</a></div>`
-    : '<a class="btn" href="/login">Login with Discord</a>';
+    ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
+    : '<a class="btn compact" href="/login">Login with Discord</a>';
+
+  const addBotButton = installUrl
+    ? `<a class="btn add-bot-button" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`
+    : '';
 
   const cookieNotice = `<div id="cookieNotice" class="cookie-notice" role="dialog" aria-live="polite" aria-label="Cookie consent">
     <div class="cookie-copy">
@@ -73,96 +86,99 @@ function page(title, body, user) {
     </div>
     <div class="cookie-actions">
       <a class="btn secondary" href="/privacy#cookies">Cookie details</a>
-      <button id="cookieDecline" class="btn secondary" type="button">Decline dashboard cookies</button>
+      <button id="cookieDecline" class="btn secondary" type="button">Decline</button>
       <button id="cookieAccept" class="btn" type="button">Accept essential cookies</button>
     </div>
-  </div>
-  <script>
-    (() => {
-      const notice = document.getElementById('cookieNotice');
-      const accept = document.getElementById('cookieAccept');
-      const decline = document.getElementById('cookieDecline');
-      const title = document.getElementById('cookieTitle');
-      const text = document.getElementById('cookieText');
+  </div>`;
 
-      const getConsent = () => {
-        const match = document.cookie.match(/(?:^|; )multibot_cookie_consent=([^;]+)/);
-        return match ? decodeURIComponent(match[1]) : '';
-      };
+  return `<!doctype html><html lang="en" data-theme="dark"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css">
+</head><body>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/">Kryndexa Bot</a>
+  <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
+  <nav class="site-nav" data-site-nav aria-label="Primary navigation">
+    <a href="/">Home</a><a href="/features">Features</a>
+    ${user ? '<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>' : ''}
+    <a href="/privacy">Privacy</a><a href="/terms">Terms</a>
+  </nav>
+  <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme"><span data-theme-icon>◐</span></button><div class="header-auth">${auth}</div></div>
+</div></header>
+<main>${body}</main>
+<div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
+<footer><div class="footer-inner"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span><nav><a href="/features">Features</a> • <a href="/privacy">Privacy</a> • <a href="/terms">Terms</a></nav></div></footer>
+${cookieNotice}
+<script>(() => {
+  const root=document.documentElement;
+  const themeButton=document.querySelector('[data-theme-toggle]');
+  const themeIcon=document.querySelector('[data-theme-icon]');
+  const refreshTheme=()=>{const dark=root.dataset.theme==='dark';if(themeIcon)themeIcon.textContent=dark?'☀':'☾';};
+  themeButton?.addEventListener('click',()=>{const next=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=next;localStorage.setItem('multibot-theme',next);refreshTheme();});
+  refreshTheme();
 
-      const refresh = () => {
-        const consent = getConsent();
-        const loginNeedsConsent = new URLSearchParams(window.location.search).get('cookie') === 'required';
+  const nav=document.querySelector('[data-site-nav]');
+  document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
 
-        if (loginNeedsConsent) {
-          notice?.classList.remove('is-hidden');
-          if (title) title.textContent = 'Essential cookies required for dashboard sign-in';
-          if (text) text.textContent = 'Accept the essential dashboard cookie to continue with Discord OAuth. You can decline and continue using public pages without signing in.';
-          return;
-        }
+  const notice=document.getElementById('cookieNotice');
+  const getConsent=()=>{const match=document.cookie.match(/(?:^|; )multibot_cookie_consent=([^;]+)/);return match?decodeURIComponent(match[1]):'';};
+  const refreshConsent=()=>{const loginNeedsConsent=new URLSearchParams(location.search).get('cookie')==='required';if(loginNeedsConsent){notice?.classList.remove('is-hidden');return;}if(['essential','declined'].includes(getConsent()))notice?.classList.add('is-hidden');};
+  const setConsent=async(choice)=>{const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin'});if(r.ok)notice?.classList.add('is-hidden');};
+  document.getElementById('cookieAccept')?.addEventListener('click',()=>setConsent('accept'));
+  document.getElementById('cookieDecline')?.addEventListener('click',()=>setConsent('decline'));
+  document.querySelectorAll('a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{if(getConsent()==='essential')return;event.preventDefault();notice?.classList.remove('is-hidden');}));
 
-        if (consent === 'essential' || consent === 'declined') notice?.classList.add('is-hidden');
-      };
+  const toast=document.getElementById('dashboardToast');let toastTimer;
+  const showToast=(message,kind='success')=>{if(!toast)return;toast.textContent=message;toast.className='dashboard-toast is-visible '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.className='dashboard-toast',2300);};
 
-      const setConsent = async (choice) => {
-        const response = await fetch('/cookie-consent/' + choice, { method: 'POST', credentials: 'same-origin' });
-        if (response.ok) notice?.classList.add('is-hidden');
-      };
+  document.querySelectorAll('[data-autosave-url]').forEach(input=>{
+    input.addEventListener('change',async()=>{
+      const previous=!input.checked;input.disabled=true;
+      const card=input.closest('.feature-card,.command-card,.ticket-module-card,.suggestions-panel');
+      card?.classList.add('autosaving');
+      try{
+        const body=new URLSearchParams({_csrf:input.dataset.csrf||'',enabled:input.checked?'1':'0',...(input.dataset.setting?{setting:input.dataset.setting}:{})});
+        const response=await fetch(input.dataset.autosaveUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+        if(!response.ok)throw new Error(await response.text());
+        card?.classList.toggle('feature-enabled',input.checked);card?.classList.toggle('enabled',input.checked);card?.classList.toggle('disabled',!input.checked);
+        showToast('Saved automatically');
+      }catch(error){input.checked=previous;showToast('Unable to save: '+(error.message||error),'error');}
+      finally{input.disabled=false;card?.classList.remove('autosaving');}
+    });
+  });
 
-      accept?.addEventListener('click', () => setConsent('accept'));
-      decline?.addEventListener('click', () => setConsent('decline'));
+  document.querySelectorAll('input[type="search"][data-filter-selector]').forEach(input=>{
+    const apply=()=>{const q=input.value.trim().toLowerCase();const selector=input.dataset.filterSelector;const attr=input.dataset.filterAttribute;let visible=0;if(!selector||!attr)return;
+      document.querySelectorAll(selector).forEach(item=>{const match=!q||String(item.getAttribute(attr)||'').toLowerCase().includes(q);item.hidden=!match;if(match)visible++;});
+      const empty=input.dataset.filterEmpty?document.querySelector(input.dataset.filterEmpty):null;if(empty)empty.hidden=visible!==0;};
+    input.addEventListener('input',apply);input.addEventListener('search',apply);apply();
+  });
 
-      document.querySelectorAll('a[href="/login"]').forEach((link) => {
-        link.addEventListener('click', (event) => {
-          if (getConsent() === 'essential') return;
-          event.preventDefault();
-          notice?.classList.remove('is-hidden');
-          if (title) title.textContent = 'Essential cookies required for dashboard sign-in';
-          if (text) text.textContent = 'Accept the essential dashboard cookie to continue with Discord OAuth. You can decline and continue using public pages without signing in.';
-        });
-      });
+  document.querySelectorAll('[data-stream-platform]').forEach(select=>{
+    const form=select.closest('form');const input=form?.querySelector('[data-stream-identifier]');const help=form?.querySelector('[data-stream-help]');
+    const update=()=>{if(!input||!help)return;if(select.value==='youtube'){input.placeholder='UCxxxxxxxxxxxxxxxxxxxxxx';help.textContent='Use the YouTube channel ID.';}
+      else if(select.value==='kick'){input.placeholder='Broadcaster ID or channel slug';help.textContent='Use a Kick broadcaster ID or channel slug.';}
+      else{input.placeholder='Twitch username';help.textContent='Twitch username without @.';}};
+    select.addEventListener('change',update);update();
+  });
 
-      document.querySelectorAll('[data-autosave-url]').forEach((input) => {
-        input.addEventListener('change', async () => {
-          const previous = !input.checked;
-          input.disabled = true;
-          const card = input.closest('.feature-card, .command-card, .ticket-module-card');
-          card?.classList.add('autosaving');
+  document.querySelectorAll('[data-embed-editor]').forEach(editor=>{
+    const preview=editor.querySelector('[data-embed-preview]');if(!preview)return;
+    const update=()=>{const val=(sel)=>editor.querySelector(sel)?.value||'';preview.style.setProperty('--embed-color',val('[data-embed-color]')||'#5865F2');
+      preview.querySelector('[data-preview-title]').textContent=val('[data-embed-title]')||'Embed title';
+      preview.querySelector('[data-preview-description]').textContent=val('[data-embed-description]')||'Embed description';
+      preview.querySelector('[data-preview-footer]').textContent=val('[data-embed-footer]');
+      const fields=preview.querySelector('[data-preview-fields]');fields.innerHTML='';
+      if(editor.querySelector('[data-embed-fields-enabled]')?.checked){editor.querySelectorAll('.embed-field-row').forEach(row=>{const n=row.querySelector('[data-field-name]')?.value.trim();const v=row.querySelector('[data-field-value]')?.value.trim();if(!n||!v)return;const div=document.createElement('div');div.className='embed-preview-field'+(row.querySelector('[data-field-inline]')?.checked?' inline':'');div.innerHTML='<strong></strong><span></span>';div.querySelector('strong').textContent=n;div.querySelector('span').textContent=v;fields.append(div);});}
+    };
+    editor.querySelectorAll('input,textarea,select').forEach(el=>{el.addEventListener('input',update);el.addEventListener('change',update);});update();
+  });
 
-          try {
-            const body = new URLSearchParams({
-              _csrf: input.dataset.csrf || '',
-              enabled: input.checked ? '1' : '0',
-              ...(input.dataset.setting ? { setting: input.dataset.setting } : {}),
-            });
-            const response = await fetch(input.dataset.autosaveUrl, {
-              method: 'POST',
-              credentials: 'same-origin',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body,
-            });
-            if (!response.ok) throw new Error(await response.text());
-
-            if (card) {
-              card.classList.toggle('feature-enabled', input.checked);
-              card.classList.toggle('enabled', input.checked);
-              card.classList.toggle('disabled', !input.checked);
-            }
-          } catch (error) {
-            input.checked = previous;
-            window.alert('Unable to save this setting: ' + (error.message || error));
-          } finally {
-            input.disabled = false;
-            card?.classList.remove('autosaving');
-          }
-        });
-      });
-
-      refresh();
-    })();
-  </script>`;
-
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/">MultiBot</a>${auth}</header><main>${body}</main><footer>MultiBot • discord.js v14 • <a href="/privacy">Privacy Policy</a> • <a href="/terms">Terms of Service</a> • <a href="/privacy#cookies">Cookie Consent</a></footer>${cookieNotice}</body></html>`;
+  refreshConsent();
+})();</script>
+</body></html>`;
 }
 
 function renderPolicyInline(text) {
