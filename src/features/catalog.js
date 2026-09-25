@@ -77,7 +77,7 @@ const FEATURE_CATALOG = [
     description: 'Staff and department applications with configurable questions and review workflows.',
     maturity: 'core', defaultEnabled: false,
     fields: [
-      { key: 'reviewChannelId', label: 'Review channel', type: 'channel', default: '' },
+      { key: 'reviewChannelId', label: 'Review channel', type: 'channel', required: true, default: '' },
       { key: 'reviewerRoleId', label: 'Reviewer role', type: 'role', default: '' },
       { key: 'questions', label: 'Questions (separate with |)', type: 'text', default: 'Why do you want to apply?|What experience do you have?' },
     ],
@@ -93,7 +93,7 @@ const FEATURE_CATALOG = [
     description: 'Server Q&A, ticket assistance, summaries and FAQ answering when an AI provider is configured.',
     maturity: 'integration', defaultEnabled: false,
     requirement: 'Requires AI provider API credentials.',
-    fields: [{ key: 'channelId', label: 'AI channel', type: 'channel', default: '' }],
+    fields: [{ key: 'channelId', label: 'AI channel', type: 'channel', required: true, default: '' }],
   },
   {
     key: 'analytics', title: 'Analytics', icon: '📊', priority: 'Growing', category: 'Insights',
@@ -105,21 +105,21 @@ const FEATURE_CATALOG = [
     description: 'Join-to-create voice rooms with ownership, limits and cleanup.',
     maturity: 'core', defaultEnabled: false,
     fields: [
-      { key: 'lobbyChannelId', label: 'Join-to-create voice channel', type: 'channel', channelKind: 'voice', default: '' },
+      { key: 'lobbyChannelId', label: 'Join-to-create voice channel', type: 'channel', channelKind: 'voice', required: true, default: '' },
       { key: 'categoryId', label: 'Temporary voice category', type: 'category', default: '' },
     ],
   },
   {
     key: 'stream_alerts', title: 'Twitch / YouTube / Kick Alerts', icon: '📺', priority: 'Popular', category: 'Integrations',
-    description: 'Live notifications with customizable embeds. Twitch is implemented; YouTube/Kick require provider setup.',
-    maturity: 'partial', defaultEnabled: true, link: '#twitch',
-    requirement: 'Twitch works now. YouTube/Kick connectors require API credentials.', fields: [],
+    description: 'Rich live notifications for Twitch, YouTube, and Kick with configurable embeds, announcement channels, and optional live roles.',
+    maturity: 'core', defaultEnabled: true, link: '#twitch',
+    requirement: 'Configure credentials for at least one streaming provider.', fields: [],
   },
   {
     key: 'music', title: 'Music', icon: '🎵', priority: 'Popular', category: 'Voice',
-    description: 'Playlist/autoplay/filter configuration surface for a Lavalink-compatible audio backend.',
-    maturity: 'integration', defaultEnabled: false,
-    requirement: 'Requires a Lavalink-compatible music backend.',
+    description: 'Lavalink-backed music playback with queue, pause/resume, skip, volume, shuffle and loop controls.',
+    maturity: 'integration', defaultEnabled: false, environmentFlag: 'MUSIC_ENABLED',
+    requirement: 'Requires MUSIC_ENABLED=true and a Lavalink-compatible backend.',
     fields: [
       { key: 'defaultVolume', label: 'Default volume', type: 'number', min: 1, max: 200, default: 75 },
       { key: 'autoplay', label: 'Autoplay', type: 'boolean', default: false },
@@ -128,9 +128,9 @@ const FEATURE_CATALOG = [
   {
     key: 'suggestions', title: 'Suggestions / Polls', icon: '💡', priority: 'Popular', category: 'Community',
     description: 'Suggestion embeds, voting buttons/reactions, status workflow and staff responses.',
-    maturity: 'core', defaultEnabled: false,
+    maturity: 'core', defaultEnabled: false, link: '#suggestions',
     fields: [
-      { key: 'channelId', label: 'Suggestion channel', type: 'channel', default: '' },
+      { key: 'channelId', label: 'Suggestion channel', type: 'channel', required: true, default: '' },
       { key: 'staffRoleId', label: 'Suggestion staff role', type: 'role', default: '' },
     ],
   },
@@ -149,7 +149,7 @@ const FEATURE_CATALOG = [
     description: 'Highlight highly reacted-to messages in a configured starboard channel.',
     maturity: 'core', defaultEnabled: false,
     fields: [
-      { key: 'channelId', label: 'Starboard channel', type: 'channel', default: '' },
+      { key: 'channelId', label: 'Starboard channel', type: 'channel', required: true, default: '' },
       { key: 'threshold', label: 'Star threshold', type: 'number', min: 2, max: 50, default: 5 },
     ],
   },
@@ -157,7 +157,7 @@ const FEATURE_CATALOG = [
     key: 'invite_tracking', title: 'Invite Tracking', icon: '🔗', priority: 'Popular', category: 'Insights',
     description: 'Invite counts, join attribution and invite activity logging foundations.',
     maturity: 'core', defaultEnabled: false,
-    fields: [{ key: 'logChannelId', label: 'Invite log channel', type: 'channel', default: '' }],
+    fields: [{ key: 'logChannelId', label: 'Invite log channel', type: 'channel', required: true, default: '' }],
   },
   {
     key: 'reminders', title: 'Reminders / Events', icon: '⏰', priority: 'Popular', category: 'Utility',
@@ -183,4 +183,13 @@ function defaultFeatureConfig(feature) {
   return Object.fromEntries((feature.fields || []).map((field) => [field.key, field.default]));
 }
 
-module.exports = { FEATURE_CATALOG, getFeatureDefinition, defaultFeatureConfig };
+function envFlagEnabled(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
+function isFeatureEnvironmentEnabled(feature) {
+  if (!feature?.environmentFlag) return true;
+  return envFlagEnabled(process.env[feature.environmentFlag]);
+}
+
+module.exports = { FEATURE_CATALOG, getFeatureDefinition, defaultFeatureConfig, isFeatureEnvironmentEnabled };
