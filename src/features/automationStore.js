@@ -1,56 +1,70 @@
+const crypto = require('node:crypto');
 const { getPool } = require('../database');
+const { listSecureRecords, putSecureRecord, deleteSecureRecord } = require('../dashboardSecureStore');
+
+const NS = 'automation';
+
+function toRuntime(item) {
+  return {
+    id: item.id,
+    guild_id: item.guildId,
+    name: item.name,
+    trigger_type: item.triggerType,
+    trigger_value: item.triggerValue || '',
+    action_type: item.actionType,
+    action_channel_id: item.actionChannelId || '',
+    action_role_id: item.actionRoleId || '',
+    action_message: item.actionMessage || '',
+    enabled: Boolean(item.enabled),
+  };
+}
+
+async function migrateLegacy(guildId) {
+  let rows = await listSecureRecords(guildId, NS);
+  if (rows.length) return rows;
+  const [legacy] = await getPool().execute('SELECT * FROM automation_rules WHERE guild_id=?', [guildId]);
+  for (const row of legacy) {
+    await putSecureRecord(guildId, NS, String(row.id), {
+      id: String(row.id), guildId, name: row.name, triggerType: row.trigger_type,
+      triggerValue: row.trigger_value || '', actionType: row.action_type,
+      actionChannelId: row.action_channel_id || '', actionRoleId: row.action_role_id || '',
+      actionMessage: row.action_message || '', enabled: Boolean(row.enabled),
+    });
+  }
+  if (legacy.length) await getPool().execute('DELETE FROM automation_rules WHERE guild_id=?', [guildId]);
+  return listSecureRecords(guildId, NS);
+}
 
 async function listAutomationRules(guildId) {
-  const [rows] = await getPool().execute(
-    `SELECT id,guild_id,name,trigger_type,trigger_value,action_type,action_channel_id,action_role_id,action_message,enabled,created_at,updated_at
-       FROM automation_rules WHERE guild_id=? ORDER BY id DESC`,
-    [guildId],
-  );
-  return rows.map((row) => ({
-    id: String(row.id),
-    guildId: row.guild_id,
-    name: row.name,
-    triggerType: row.trigger_type,
-    triggerValue: row.trigger_value || '',
-    actionType: row.action_type,
-    actionChannelId: row.action_channel_id || '',
-    actionRoleId: row.action_role_id || '',
-    actionMessage: row.action_message || '',
-    enabled: Boolean(row.enabled),
-  }));
+  return (await migrateLegacy(guildId))
+    .map((row) => ({ ...row.payload, id: row.recordKey }))
+    .sort((a, b) => String(b.id).localeCompare(String(a.id)));
 }
 
 async function listEnabledAutomationRules(guildId, triggerType) {
-  const [rows] = await getPool().execute(
-    `SELECT id,name,trigger_type,trigger_value,action_type,action_channel_id,action_role_id,action_message
-       FROM automation_rules WHERE guild_id=? AND enabled=1 AND trigger_type=? ORDER BY id ASC`,
-    [guildId, triggerType],
-  );
-  return rows;
+  return (await listAutomationRules(guildId))
+    .filter((rule) => rule.enabled && rule.triggerType === triggerType)
+    .map(toRuntime);
 }
 
 async function createAutomationRule(guildId, rule) {
-  const [result] = await getPool().execute(
-    `INSERT INTO automation_rules
-      (guild_id,name,trigger_type,trigger_value,action_type,action_channel_id,action_role_id,action_message,enabled)
-     VALUES (?,?,?,?,?,?,?,?,1)`,
-    [
-      guildId,
-      String(rule.name || 'Automation').slice(0, 80),
-      rule.triggerType,
-      String(rule.triggerValue || '').slice(0, 500),
-      rule.actionType,
-      String(rule.actionChannelId || '').slice(0, 32),
-      String(rule.actionRoleId || '').slice(0, 32),
-      String(rule.actionMessage || '').slice(0, 1500),
-    ],
-  );
-  return String(result.insertId);
+  const id = crypto.randomUUID();
+  await putSecureRecord(guildId, NS, id, {
+    id, guildId,
+    name: String(rule.name || 'Automation').slice(0, 80),
+    triggerType: rule.triggerType,
+    triggerValue: String(rule.triggerValue || '').slice(0, 500),
+    actionType: rule.actionType,
+    actionChannelId: String(rule.actionChannelId || '').slice(0, 32),
+    actionRoleId: String(rule.actionRoleId || '').slice(0, 32),
+    actionMessage: String(rule.actionMessage || '').slice(0, 1500),
+    enabled: true,
+  });
+  return id;
 }
 
 async function deleteAutomationRule(guildId, id) {
-  const [result] = await getPool().execute('DELETE FROM automation_rules WHERE guild_id=? AND id=?', [guildId, id]);
-  return result.affectedRows > 0;
+  return deleteSecureRecord(guildId, NS, id);
 }
 
 module.exports = { listAutomationRules, listEnabledAutomationRules, createAutomationRule, deleteAutomationRule };
