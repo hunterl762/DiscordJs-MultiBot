@@ -1255,6 +1255,7 @@ function startDashboard(client) {
       .filter(Boolean);
 
     const ownerCommands = commandCatalog().filter((command) => command.ownerOnly);
+    const paidStreamAccess = await listPaidStreamAlertAccess();
     const ownerCommandCards = ownerCommands.length
       ? ownerCommands.map((command) => {
           const subcommands = command.subcommands.length
@@ -1282,18 +1283,93 @@ function startDashboard(client) {
         }).join('')
       : '<div class="empty">No owner-only commands are currently loaded.</div>';
 
+    const guildOptions = [...client.guilds.cache.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((guild) => `<option value="${guild.id}">${escapeHtml(guild.name)} • ${guild.id}</option>`)
+      .join('');
+
+    const paidAccessCards = paidStreamAccess.length
+      ? paidStreamAccess.map((access) => {
+          const guild = client.guilds.cache.get(access.guildId);
+          return `<article class="paid-access-card">
+            <div><strong>${escapeHtml(guild?.name || 'Unknown / disconnected server')}</strong><span>${escapeHtml(access.guildId)}</span></div>
+            <div><span class="pill subtle">Paid • 15 streamers</span>${access.note ? `<small>${escapeHtml(access.note)}</small>` : ''}</div>
+          </article>`;
+        }).join('')
+      : '<div class="empty">No servers currently have paid Stream Alerts access.</div>';
+
     const body = `<section class="owner-dashboard-shell">
       <section class="owner-dashboard-hero">
         <div>
           <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
           <span class="eyebrow">BOT OWNERS</span>
           <h1>Owner Control Center</h1>
-          <p>Private owner commands and bot-wide tools for Kryndexa Bot.</p>
+          <p>Private owner commands, paid feature access, and bot-wide broadcast controls for Kryndexa Bot.</p>
         </div>
         <div class="owner-dashboard-meta">
           <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
-          <span><strong>${ownerCommands.length.toLocaleString()}</strong> owner command${ownerCommands.length === 1 ? '' : 's'}</span>
+          <span><strong>${paidStreamAccess.length.toLocaleString()}</strong> paid Stream Alert servers</span>
         </div>
+      </section>
+
+      <section class="owner-section owner-broadcast-section">
+        <div class="owner-section-heading">
+          <div>
+            <span class="eyebrow">GLOBAL BROADCAST</span>
+            <h2>Important Announcement Panel</h2>
+            <p>Compose an embed, preview it, then deliver it through each server's configured broadcast channel or Kryndexa's safe fallback channel selection.</p>
+          </div>
+        </div>
+        <form class="owner-broadcast-editor" data-embed-editor method="post" action="/dashboard/owner/broadcast">
+          <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+          <div class="embed-editor-layout">
+            <div class="embed-editor-controls">
+              <label>Announcement Title<input name="title" data-embed-title maxlength="256" value="Important Kryndexa Bot Announcement" required></label>
+              <label>Message<textarea name="message" data-embed-description maxlength="4000" rows="8" placeholder="Write the important announcement here..." required></textarea></label>
+              <div class="form-grid">
+                <label>Embed Color<input name="color" data-embed-color maxlength="7" value="#5865F2"></label>
+                <label>Footer<input name="footer" data-embed-footer maxlength="2048" value="Kryndexa Bot • Owner Broadcast"></label>
+              </div>
+              <div class="form-grid">
+                <label>Image URL<input name="imageUrl" maxlength="1000" placeholder="https://..."></label>
+                <label>Thumbnail URL<input name="thumbnailUrl" maxlength="1000" placeholder="https://..."></label>
+              </div>
+              <div class="checks owner-broadcast-checks">
+                <label><input type="checkbox" name="mentionEveryone" checked> Mention @everyone where permitted</label>
+                <label><input type="checkbox" name="dryRun"> Dry run only — calculate delivery without sending</label>
+              </div>
+              <button class="btn" type="submit" onclick="return confirm('Run this owner broadcast across all connected servers?')">Send / Run Broadcast</button>
+            </div>
+            <div class="embed-preview-card owner-broadcast-preview" data-embed-preview style="--embed-color:#5865F2">
+              <div class="embed-preview-bar"></div>
+              <div class="embed-preview-body">
+                <span class="mini-label">DISCORD PREVIEW</span>
+                <strong data-preview-title>Important Kryndexa Bot Announcement</strong>
+                <p data-preview-description>Write the important announcement here...</p>
+                <div class="embed-preview-fields" data-preview-fields></div>
+                <small data-preview-footer>Kryndexa Bot • Owner Broadcast</small>
+              </div>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="owner-section">
+        <div class="owner-section-heading">
+          <div>
+            <span class="eyebrow">STREAM ALERT ACCESS</span>
+            <h2>Paid Streamer Limits</h2>
+            <p>Free servers can configure 3 streamers. Servers granted paid access can configure up to 15. This entitlement layer is ready for a payment provider to automate later.</p>
+          </div>
+        </div>
+        <form class="paid-access-form" method="post" action="/dashboard/owner/stream-access">
+          <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+          <label>Server<select name="guildId" required><option value="">Choose a connected server</option>${guildOptions}</select></label>
+          <label>Access Tier<select name="tier" required><option value="paid">Paid • 15 streamers</option><option value="free">Free • 3 streamers</option></select></label>
+          <label>Internal Note<input name="note" maxlength="500" placeholder="Payment/order/reference note (optional)"></label>
+          <button class="btn" type="submit">Update Stream Access</button>
+        </form>
+        <div class="paid-access-list">${paidAccessCards}</div>
       </section>
 
       <section class="owner-section">
@@ -1309,11 +1385,7 @@ function startDashboard(client) {
 
       <section class="owner-section">
         <div class="owner-section-heading">
-          <div>
-            <span class="eyebrow">ACCESS</span>
-            <h2>Owner Access</h2>
-            <p>Only configured bot owners can open this page. Direct requests from non-owners return HTTP 403.</p>
-          </div>
+          <div><span class="eyebrow">ACCESS</span><h2>Owner Access</h2><p>Only configured bot owners can open this page. Direct requests from non-owners return HTTP 403.</p></div>
         </div>
         <div class="owner-dashboard-meta">
           <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
@@ -1325,10 +1397,64 @@ function startDashboard(client) {
     return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
       path: '/dashboard/owner',
       private: true,
-      description: 'Restricted Kryndexa Bot owner commands and controls.',
+      description: 'Restricted Kryndexa Bot owner commands, broadcasts, and paid access controls.',
     }));
   });
 
+  app.post('/dashboard/owner/stream-access', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      const guildId = String(req.body.guildId || '').trim();
+      if (!client.guilds.cache.has(guildId)) return res.status(400).send('Choose a connected Discord server.');
+
+      await setStreamAlertPaidAccess(guildId, {
+        paid: String(req.body.tier || '') === 'paid',
+        grantedBy: req.session.user.id,
+        note: req.body.note || '',
+      });
+
+      return res.redirect('/dashboard/owner');
+    } catch (error) {
+      console.error('[Dashboard Owner] Unable to update stream access:', error);
+      return res.status(500).send(page('Owner access error • Kryndexa Bot', `<div class="empty"><strong>Unable to update Stream Alerts access.</strong><p>${escapeHtml(error.message || String(error))}</p></div>`, req.session.user, { private: true }));
+    }
+  });
+
+  app.post('/dashboard/owner/broadcast', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      const title = String(req.body.title || 'Kryndexa Bot Announcement').trim().slice(0, 256);
+      const message = String(req.body.message || '').trim().slice(0, 4000);
+      if (!message) return res.status(400).send('Broadcast message is required.');
+
+      const imageUrl = String(req.body.imageUrl || '').trim();
+      const thumbnailUrl = String(req.body.thumbnailUrl || '').trim();
+      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return res.status(400).send('Image URL must use http:// or https://.');
+      if (thumbnailUrl && !/^https?:\/\//i.test(thumbnailUrl)) return res.status(400).send('Thumbnail URL must use http:// or https://.');
+
+      const owner = await client.users.fetch(req.session.user.id).catch(() => null);
+      const results = await broadcastToGuilds(client, {
+        title,
+        message,
+        owner,
+        dryRun: req.body.dryRun === 'on',
+        color: req.body.color || '#5865F2',
+        footer: req.body.footer || '',
+        imageUrl,
+        thumbnailUrl,
+        mentionEveryone: req.body.mentionEveryone === 'on',
+      });
+      const summary = formatBroadcastSummary(results);
+
+      return res.send(page(
+        'Broadcast result • Kryndexa Bot',
+        `<section class="owner-dashboard-shell"><section class="owner-section"><span class="eyebrow">GLOBAL BROADCAST</span><h1>${results.dryRun ? 'Dry Run Complete' : 'Broadcast Complete'}</h1><pre class="owner-broadcast-result">${escapeHtml(summary)}</pre><p><a class="btn" href="/dashboard/owner">← Back to Bot Owners</a></p></section></section>`,
+        req.session.user,
+        { path: '/dashboard/owner', private: true },
+      ));
+    } catch (error) {
+      console.error('[Dashboard Owner] Broadcast failed:', error);
+      return res.status(500).send(page('Broadcast failed • Kryndexa Bot', `<div class="empty"><strong>Owner broadcast failed.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn secondary" href="/dashboard/owner">Return to Bot Owners</a></p></div>`, req.session.user, { private: true }));
+    }
+  });
   app.get('/dashboard/statistics', requireAuth, async (req, res) => {
     try {
       const managedGuilds = await getManagedGuilds(req, client);
