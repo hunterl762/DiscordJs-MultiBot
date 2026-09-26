@@ -28,7 +28,13 @@ const CATEGORY_LABELS = {
   ai: 'AI Assistant',
 };
 
-const COMMAND_FOLDERS = Object.keys(CATEGORY_LABELS);
+function categoryLabel(folder) {
+  if (CATEGORY_LABELS[folder]) return CATEGORY_LABELS[folder];
+
+  return String(folder || 'Other')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function walkCommandFolder(directory, relative) {
   const files = [];
@@ -50,12 +56,25 @@ function walkCommandFolder(directory, relative) {
 }
 
 function findCommandFiles() {
+  if (!fs.existsSync(commandsDir) || !fs.statSync(commandsDir).isDirectory()) {
+    return [];
+  }
+
   const files = [];
 
-  for (const folder of COMMAND_FOLDERS) {
-    const directory = path.join(commandsDir, folder);
-    if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) continue;
-    files.push(...walkCommandFolder(directory, folder));
+  for (const entry of fs.readdirSync(commandsDir, { withFileTypes: true })) {
+    if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
+
+    const full = path.join(commandsDir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...walkCommandFolder(full, entry.name));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith('.js')) {
+      files.push({ full, rel: entry.name });
+    }
   }
 
   return files;
@@ -68,26 +87,54 @@ for (const file of findCommandFiles().sort((a, b) => a.rel.localeCompare(b.rel))
     throw new Error(`Invalid command module: ${file.rel}`);
   }
 
-  const folder = file.rel.split(path.sep)[0];
-  command.category = command.category || CATEGORY_LABELS[folder] || 'Other';
-  command.modulePath = file.rel.replaceAll(path.sep, '/');
-
-  const commandName = String(command.name).toLowerCase();
-  const existing = commands.get(commandName);
-
-  if (existing) {
+  let payload;
+  try {
+    payload = command.data.toJSON();
+  } catch (error) {
     throw new Error(
-      `Duplicate command name "${commandName}" in ${file.rel}; already loaded from ${existing.modulePath}`,
+      `Unable to serialize slash-command builder in ${file.rel}: ${error.message || error}`,
     );
   }
 
-  command.name = commandName;
-  commands.set(commandName, command);
-  prefixCommands.set(command.name, command);
-  for (const alias of command.aliases || []) prefixCommands.set(alias, command);
+  const moduleName = String(command.name).trim().toLowerCase();
+  const payloadName = String(payload?.name || '').trim().toLowerCase();
+
+  if (!payloadName) {
+    throw new Error(`Slash-command builder in ${file.rel} does not define a command name.`);
+  }
+
+  if (moduleName !== payloadName) {
+    throw new Error(
+      `Command name mismatch in ${file.rel}: module exports "${moduleName}" but SlashCommandBuilder registers "/${payloadName}".`,
+    );
+  }
+
+  const parts = file.rel.split(path.sep);
+  const folder = parts.length > 1 ? parts[0] : 'misc';
+  command.category = command.category || categoryLabel(folder);
+  command.modulePath = file.rel.replaceAll(path.sep, '/');
+  command.ownerOnly = command.ownerOnly === true || folder === 'owner';
+  command.slashPayload = payload;
+
+  const existing = commands.get(moduleName);
+
+  if (existing) {
+    throw new Error(
+      `Duplicate command name "${moduleName}" in ${file.rel}; already loaded from ${existing.modulePath}`,
+    );
+  }
+
+  command.name = moduleName;
+  commands.set(moduleName, command);
+  prefixCommands.set(moduleName, command);
+
+  for (const rawAlias of command.aliases || []) {
+    const alias = String(rawAlias).trim().toLowerCase();
+    if (alias) prefixCommands.set(alias, command);
+  }
 }
 
-const slashCommands = [...commands.values()].map((command) => command.data.toJSON());
+const slashCommands = [...commands.values()].map((command) => command.slashPayload);
 
 function commandCatalog() {
   return [...commands.values()]
@@ -100,6 +147,7 @@ function commandCatalog() {
         aliases: command.aliases || [],
         prefixBackup: typeof command.executePrefix === 'function',
         guildOnly: command.guildOnly !== false,
+        ownerOnly: Boolean(command.ownerOnly),
         defaultMemberPermissions: json.default_member_permissions || null,
         subcommands: (json.options || []).filter((option) => option.type === 1).map((option) => option.name),
         modulePath: command.modulePath,
