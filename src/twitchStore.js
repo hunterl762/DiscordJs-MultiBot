@@ -161,6 +161,19 @@ async function markStreamLiveState(id, { isLive, streamId = null, startedAt = nu
   return true;
 }
 
+async function markStreamRoleState(id, roleGrantedByBot) {
+  const rows = await listSecureNamespace(NS);
+  const record = rows.find((row) => row.recordKey === String(id));
+  if (!record) return false;
+
+  await putSecureRecord(record.guildId, NS, record.recordKey, {
+    ...record.payload,
+    roleGrantedByBot: Boolean(roleGrantedByBot),
+  });
+
+  return true;
+}
+
 function normalizeLogin(value) { return normalizeIdentifier('twitch', value); }
 
 module.exports = {
@@ -173,6 +186,7 @@ module.exports = {
   upsertStreamAnnouncement,
   deleteStreamAnnouncement,
   markStreamLiveState,
+  markStreamRoleState,
   listTwitchAnnouncements: listStreamAnnouncements,
   listEnabledTwitchAnnouncements: listEnabledStreamAnnouncements,
   upsertTwitchAnnouncement: (options) => upsertStreamAnnouncement({ ...options, platform: options.platform || 'twitch', streamerIdentifier: options.streamerIdentifier || options.twitchLogin }),
