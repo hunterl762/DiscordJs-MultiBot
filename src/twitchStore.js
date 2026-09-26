@@ -6,6 +6,7 @@ const {
   putSecureRecord,
   deleteSecureRecord,
 } = require('./dashboardSecureStore');
+const { getStreamAlertAccess } = require('./streamAccessStore');
 
 const PLATFORMS = new Set(['twitch', 'youtube', 'kick']);
 const NS = 'stream_announcement';
@@ -114,8 +115,23 @@ async function upsertStreamAnnouncement({
 }) {
   const normalizedPlatform = normalizePlatform(platform);
   const identifier = normalizeIdentifier(normalizedPlatform, streamerIdentifier || twitchLogin);
-  const existing = (await listStreamAnnouncements(guildId))
+  const currentAnnouncements = await listStreamAnnouncements(guildId);
+  const existing = currentAnnouncements
     .find((item) => item.platform === normalizedPlatform && item.streamerIdentifier === identifier);
+
+  if (!existing) {
+    const access = await getStreamAlertAccess(guildId);
+    if (currentAnnouncements.length >= access.streamerLimit) {
+      const error = new Error(
+        `This server has reached its ${access.tier} Stream Alerts limit of ${access.streamerLimit} configured streamers.`,
+      );
+      error.code = 'STREAMER_LIMIT_REACHED';
+      error.streamerLimit = access.streamerLimit;
+      error.streamerCount = currentAnnouncements.length;
+      error.tier = access.tier;
+      throw error;
+    }
+  }
 
   const id = existing?.id || crypto.randomUUID();
   const userId = String(discordUserId || '').trim().slice(0, 32);
