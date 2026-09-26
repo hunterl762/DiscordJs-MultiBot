@@ -110,7 +110,7 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   try {
     const sync = await registerSlashCommands(client, slashCommands);
     console.log(
-      `[Slash Commands] Startup sync complete: global=${sync.globalRegistered ? 'yes' : 'no'}, guilds=${sync.guildSummary.synced}/${sync.guildSummary.total}, commands=${sync.commandCount}.`,
+      `[Slash Commands] Automatic startup rebuild complete: global=${sync.globalRegistered ? 'yes' : 'no'}, commands=${sync.commandCount}, added=${sync.globalSummary?.added?.length || 0}, stale-removed=${sync.globalSummary?.removed?.length || 0}, guilds=${sync.guildSummary.synced}/${sync.guildSummary.total}.`,
     );
   } catch (error) {
     console.error('[Slash Commands] Registration failed; the bot and dashboard will continue running:', error);
