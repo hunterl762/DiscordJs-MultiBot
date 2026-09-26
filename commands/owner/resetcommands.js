@@ -14,6 +14,10 @@ async function resetCommands(client, slashCommands, scope, guildId) {
 
   if (scope === 'global') {
     const result = await registerSlashCommands(client, slashCommands);
+    if (!result.globalRegistered) {
+      throw new Error(`Global command rebuild failed: ${result.globalError || 'Discord did not accept the global command set.'}`);
+    }
+
     const failed = result.guildSummary.failures.length;
     const added = result.globalSummary?.added || [];
     const removed = result.globalSummary?.removed || [];
