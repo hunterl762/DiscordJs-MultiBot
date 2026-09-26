@@ -1,7 +1,6 @@
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const https = require('node:https');
 const express = require('express');
 const session = require('express-session');
 const MySQLStoreFactory = require('express-mysql-session');
@@ -40,17 +39,9 @@ const { getAnalytics } = require('../features/dataStore');
 const { isBotOwner } = require('../bot/broadcast');
 
 const DISCORD_API = 'https://discord.com/api/v10';
-const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 const GUILD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
-const cloudflareZoneCache = {
-  zoneName: '',
-  zoneId: '',
-  expiresAt: 0,
-  error: '',
-  errorExpiresAt: 0,
-};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -60,362 +51,6 @@ function envFlag(name, fallback = false) {
   const raw = String(process.env[name] ?? '').trim().toLowerCase();
   if (!raw) return fallback;
   return ['1', 'true', 'yes', 'on'].includes(raw);
-}
-
-function resolveDashboardFile(filePath) {
-  const value = String(filePath || '').trim();
-  if (!value) return '';
-  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
-}
-
-function validateTlsKeyPair(keyPem, certPem, keyPath, certPath) {
-  try {
-    const certificate = new crypto.X509Certificate(certPem);
-    const privateKey = crypto.createPrivateKey(keyPem);
-    const certificatePublicKey = certificate.publicKey.export({
-      type: 'spki',
-      format: 'der',
-    });
-    const privateKeyPublicKey = crypto.createPublicKey(privateKey).export({
-      type: 'spki',
-      format: 'der',
-    });
-
-    const matches = certificatePublicKey.length === privateKeyPublicKey.length
-      && crypto.timingSafeEqual(certificatePublicKey, privateKeyPublicKey);
-
-    if (!matches) {
-      const error = new Error(
-        `Dashboard SSL certificate/private key mismatch. The certificate at "${certPath}" was not generated with the private key at "${keyPath}". Replace them with a matching pair from the same certificate issuance.`,
-      );
-      error.code = 'DASHBOARD_SSL_KEY_CERT_MISMATCH';
-      throw error;
-    }
-  } catch (error) {
-    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') throw error;
-
-    const wrapped = new Error(
-      `Dashboard SSL key/certificate validation failed: ${error.message || error}`,
-    );
-    wrapped.code = 'DASHBOARD_SSL_INVALID_CERTIFICATE';
-    wrapped.cause = error;
-    throw wrapped;
-  }
-}
-
-function loadDashboardTlsOptions() {
-  if (!envFlag('WEB_SSL_ENABLED')) return null;
-
-  const provider = String(process.env.WEB_SSL_PROVIDER || 'standard')
-    .trim()
-    .toLowerCase();
-
-  const cloudflareOrigin = provider === 'cloudflare-origin';
-  const keyPath = resolveDashboardFile(
-    cloudflareOrigin
-      ? process.env.WEB_CLOUDFLARE_ORIGIN_KEY_FILE
-      : process.env.WEB_SSL_KEY_FILE,
-  );
-  const certPath = resolveDashboardFile(
-    cloudflareOrigin
-      ? process.env.WEB_CLOUDFLARE_ORIGIN_CERT_FILE
-      : process.env.WEB_SSL_CERT_FILE,
-  );
-  const caPath = resolveDashboardFile(process.env.WEB_SSL_CA_FILE);
-
-  if (!keyPath || !certPath) {
-    if (cloudflareOrigin) {
-      throw new Error(
-        'WEB_SSL_PROVIDER=cloudflare-origin requires WEB_CLOUDFLARE_ORIGIN_KEY_FILE and WEB_CLOUDFLARE_ORIGIN_CERT_FILE.',
-      );
-    }
-
-    throw new Error(
-      'WEB_SSL_ENABLED=true requires WEB_SSL_KEY_FILE and WEB_SSL_CERT_FILE.',
-    );
-  }
-
-  if (!fs.existsSync(keyPath)) {
-    throw new Error(`Dashboard SSL private key not found: ${keyPath}`);
-  }
-  if (!fs.existsSync(certPath)) {
-    throw new Error(`Dashboard SSL certificate not found: ${certPath}`);
-  }
-  if (caPath && !fs.existsSync(caPath)) {
-    throw new Error(`Dashboard SSL CA/chain file not found: ${caPath}`);
-  }
-
-  const key = fs.readFileSync(keyPath);
-  const cert = fs.readFileSync(certPath);
-  validateTlsKeyPair(key, cert, keyPath, certPath);
-
-  return {
-    provider,
-    keyPath,
-    certPath,
-    options: {
-      key,
-      cert,
-      ...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
-      minVersion: 'TLSv1.2',
-    },
-  };
-}
-function cloudflareSslConfig() {
-  return {
-    zoneId: String(process.env.CLOUDFLARE_ZONE_ID || '').trim(),
-    zoneName: String(
-      process.env.CLOUDFLARE_ZONE_NAME
-        || process.env.WEB_CANONICAL_HOST
-        || 'kryndexabot.xyz',
-    ).trim().toLowerCase(),
-    apiToken: String(process.env.CLOUDFLARE_API_TOKEN || '').trim(),
-  };
-}
-
-async function cloudflareJson(endpoint, apiToken) {
-  const response = await fetch(endpoint, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      Accept: 'application/json',
-    },
-    signal: AbortSignal.timeout(8_000),
-  });
-
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  return { response, payload };
-}
-
-function cloudflareErrorMessage(payload, fallback = '') {
-  const detail = Array.isArray(payload?.errors)
-    ? payload.errors.map((item) => item?.message).filter(Boolean).join('; ')
-    : '';
-
-  return detail || fallback;
-}
-
-function isInvalidCloudflareZone(response, payload) {
-  if (response?.status !== 403) return false;
-
-  const detail = cloudflareErrorMessage(payload).toLowerCase();
-  return detail.includes('invalid zone identifier')
-    || detail.includes('zone identifier');
-}
-
-async function resolveCloudflareZoneId(zoneName, apiToken, force = false) {
-  const normalizedName = String(zoneName || '').trim().toLowerCase();
-  if (!normalizedName || !apiToken) return null;
-
-  const now = Date.now();
-
-  if (
-    !force
-    && cloudflareZoneCache.zoneName === normalizedName
-    && cloudflareZoneCache.zoneId
-    && cloudflareZoneCache.expiresAt > now
-  ) {
-    return cloudflareZoneCache.zoneId;
-  }
-
-  if (
-    !force
-    && cloudflareZoneCache.zoneName === normalizedName
-    && cloudflareZoneCache.error
-    && cloudflareZoneCache.errorExpiresAt > now
-  ) {
-    return null;
-  }
-
-  const endpoint = `${CLOUDFLARE_API}/zones?name=${encodeURIComponent(normalizedName)}&status=active&per_page=50`;
-  const { response, payload } = await cloudflareJson(endpoint, apiToken);
-
-  if (!response.ok || !payload?.success) {
-    const detail = cloudflareErrorMessage(
-      payload,
-      `Cloudflare zone lookup failed with HTTP ${response.status}`,
-    );
-
-    cloudflareZoneCache.zoneName = normalizedName;
-    cloudflareZoneCache.zoneId = '';
-    cloudflareZoneCache.expiresAt = 0;
-    cloudflareZoneCache.error = detail;
-    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
-
-    return null;
-  }
-
-  const matches = Array.isArray(payload.result) ? payload.result : [];
-  const exact = matches.find(
-    (zone) => String(zone?.name || '').trim().toLowerCase() === normalizedName,
-  );
-
-  if (!exact?.id) {
-    const detail = `No active Cloudflare zone named "${normalizedName}" was visible to this API token.`;
-
-    cloudflareZoneCache.zoneName = normalizedName;
-    cloudflareZoneCache.zoneId = '';
-    cloudflareZoneCache.expiresAt = 0;
-    cloudflareZoneCache.error = detail;
-    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
-
-    return null;
-  }
-
-  cloudflareZoneCache.zoneName = normalizedName;
-  cloudflareZoneCache.zoneId = String(exact.id);
-  cloudflareZoneCache.expiresAt = now + 6 * 60 * 60_000;
-  cloudflareZoneCache.error = '';
-  cloudflareZoneCache.errorExpiresAt = 0;
-
-  console.log(
-    `[Cloudflare SSL] Resolved Cloudflare zone "${normalizedName}" to ${cloudflareZoneCache.zoneId}.`,
-  );
-
-  return cloudflareZoneCache.zoneId;
-}
-
-async function getCloudflareCertificatePacks() {
-  const {
-    zoneId: configuredZoneId,
-    zoneName,
-    apiToken,
-  } = cloudflareSslConfig();
-
-  if (!apiToken) {
-    return {
-      configured: false,
-      zoneId: configuredZoneId,
-      zoneName,
-      endpoint: null,
-      packs: [],
-      activeCertificates: 0,
-      pendingCertificates: 0,
-      hosts: [],
-      error: null,
-    };
-  }
-
-  let zoneId = configuredZoneId;
-
-  if (!zoneId) {
-    zoneId = await resolveCloudflareZoneId(zoneName, apiToken);
-
-    if (!zoneId) {
-      return {
-        configured: true,
-        zoneId: '',
-        zoneName,
-        endpoint: null,
-        packs: [],
-        activeCertificates: 0,
-        pendingCertificates: 0,
-        hosts: [],
-        error: cloudflareZoneCache.error
-          || `Unable to resolve Cloudflare zone "${zoneName}". Give the token Zone Read access or set CLOUDFLARE_ZONE_ID to the zone's actual Zone ID.`,
-      };
-    }
-  }
-
-  let endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
-
-  try {
-    let { response, payload } = await cloudflareJson(endpoint, apiToken);
-
-    if (isInvalidCloudflareZone(response, payload)) {
-      const resolvedZoneId = await resolveCloudflareZoneId(zoneName, apiToken, true);
-
-      if (resolvedZoneId && resolvedZoneId !== zoneId) {
-        console.warn(
-          `[Cloudflare SSL] Configured CLOUDFLARE_ZONE_ID "${zoneId}" is invalid for this token; using resolved zone "${resolvedZoneId}" for ${zoneName}.`,
-        );
-
-        zoneId = resolvedZoneId;
-        endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
-        ({ response, payload } = await cloudflareJson(endpoint, apiToken));
-      } else {
-        const detail = cloudflareZoneCache.error
-          || cloudflareErrorMessage(payload, 'Invalid zone identifier');
-
-        return {
-          configured: true,
-          zoneId,
-          zoneName,
-          endpoint,
-          packs: [],
-          activeCertificates: 0,
-          pendingCertificates: 0,
-          hosts: [],
-          error: `${detail}. Replace CLOUDFLARE_ZONE_ID with the Zone ID for ${zoneName}, or leave CLOUDFLARE_ZONE_ID blank and allow automatic lookup.`,
-        };
-      }
-    }
-
-    if (!response.ok || !payload?.success) {
-      const detail = cloudflareErrorMessage(payload);
-      throw new Error(
-        `Cloudflare certificate-pack request failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
-      );
-    }
-
-    const packs = Array.isArray(payload.result) ? payload.result : [];
-    const certificates = packs.flatMap((pack) =>
-      Array.isArray(pack?.certificates) ? pack.certificates : [],
-    );
-
-    const activeCertificates = certificates.filter((cert) =>
-      String(cert?.status || '').toLowerCase() === 'active',
-    ).length;
-
-    const pendingCertificates = certificates.filter((cert) => {
-      const status = String(cert?.status || '').toLowerCase();
-      return status && status !== 'active' && status !== 'deleted';
-    }).length;
-
-    const hosts = [...new Set(
-      packs.flatMap((pack) => {
-        const packHosts = Array.isArray(pack?.hosts) ? pack.hosts : [];
-        const certHosts = (Array.isArray(pack?.certificates) ? pack.certificates : [])
-          .flatMap((cert) => Array.isArray(cert?.hosts) ? cert.hosts : []);
-        return [...packHosts, ...certHosts].map(String);
-      }),
-    )].sort();
-
-    return {
-      configured: true,
-      zoneId,
-      zoneName,
-      endpoint,
-      packs,
-      activeCertificates,
-      pendingCertificates,
-      hosts,
-      error: null,
-    };
-  } catch (error) {
-    console.warn(
-      '[Cloudflare SSL] Certificate-pack status unavailable:',
-      error.message || error,
-    );
-
-    return {
-      configured: true,
-      zoneId,
-      zoneName,
-      endpoint,
-      packs: [],
-      activeCertificates: 0,
-      pendingCertificates: 0,
-      hosts: [],
-      error: error.message || String(error),
-    };
-  }
 }
 
 function publicBaseUrl() {
@@ -498,25 +133,6 @@ function pageMeta(title, meta = {}) {
   };
 }
 
-function httpsRedirectTarget(req) {
-  const baseUrl = String(process.env.BASE_URL || '').trim();
-
-  if (baseUrl) {
-    try {
-      const base = new URL(baseUrl);
-      base.protocol = 'https:';
-      return new URL(req.originalUrl || req.url || '/', base).toString();
-    } catch {
-      // Fall back to request host.
-    }
-  }
-
-  const host = String(req.headers.host || 'localhost').replace(/:\d+$/, '');
-  const httpsPort = Number(process.env.WEB_HTTPS_PORT || process.env.PORT || 443);
-  const portSuffix = httpsPort === 443 ? '' : `:${httpsPort}`;
-  return `https://${host}${portSuffix}${req.originalUrl || req.url || '/'}`;
-}
-
 function parseCookies(req) {
   const cookies = {};
   const header = String(req.headers.cookie || '');
@@ -587,7 +203,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-owner-dashboard">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260926-no-ssl">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
@@ -972,9 +588,7 @@ function startDashboard(client) {
   const app = express();
   app.disable('x-powered-by');
 
-  // Trust one reverse-proxy hop in production so req.secure honors
-  // X-Forwarded-Proto from Cloudflare, NGINX, Caddy, etc.
-  if (process.env.NODE_ENV === 'production' || envFlag('WEB_TRUST_PROXY')) {
+  if (process.env.NODE_ENV === 'production') {
     app.set('trust proxy', 1);
   }
 
@@ -988,27 +602,6 @@ function startDashboard(client) {
 
     const destination = new URL(req.originalUrl || req.url || '/', `https://${expectedHost}`);
     return res.redirect(308, destination.toString());
-  });
-
-  app.use((req, res, next) => {
-    const forwardedProto = String(req.get('x-forwarded-proto') || '')
-      .split(',')[0]
-      .trim()
-      .toLowerCase();
-    const isSecure = req.secure || forwardedProto === 'https';
-
-    if (isSecure && envFlag('WEB_HSTS_ENABLED', process.env.NODE_ENV === 'production')) {
-      res.setHeader(
-        'Strict-Transport-Security',
-        'max-age=31536000; includeSubDomains',
-      );
-    }
-
-    if (envFlag('WEB_FORCE_HTTPS') && !isSecure) {
-      return res.redirect(308, httpsRedirectTarget(req));
-    }
-
-    return next();
   });
 
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
@@ -1526,85 +1119,42 @@ function startDashboard(client) {
   };
 
   app.get('/dashboard/owner', requireAuth, requireBotOwner, async (req, res) => {
-    try {
-      const cloudflareSsl = await getCloudflareCertificatePacks();
-      const ownerIds = String(process.env.BOT_OWNER_IDS || '')
-        .split(',')
-        .map((id) => id.trim())
-        .filter(Boolean);
+    const ownerIds = String(process.env.BOT_OWNER_IDS || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
 
-      const body = `<section class="owner-dashboard-shell">
-        <section class="owner-dashboard-hero">
+    const body = `<section class="owner-dashboard-shell">
+      <section class="owner-dashboard-hero">
+        <div>
+          <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
+          <span class="eyebrow">BOT OWNERS</span>
+          <h1>Owner Control Center</h1>
+          <p>Private owner tools for Kryndexa Bot.</p>
+        </div>
+        <div class="owner-dashboard-meta">
+          <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
+          <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
+        </div>
+      </section>
+
+      <section class="owner-section">
+        <div class="owner-section-heading">
           <div>
-            <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
-            <span class="eyebrow">BOT OWNERS</span>
-            <h1>Owner Control Center</h1>
-            <p>Private infrastructure, application and service controls for Kryndexa Bot owners.</p>
+            <span class="eyebrow">OWNER TOOLS</span>
+            <h2>Private Controls</h2>
+            <p>Owner-only modules will appear here when configured.</p>
           </div>
-          <div class="owner-dashboard-meta">
-            <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
-            <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
-          </div>
-        </section>
+        </div>
+        <div class="empty">No owner-only modules are currently configured.</div>
+      </section>
+    </section>`;
 
-        <section class="owner-section">
-          <div class="owner-section-heading">
-            <div>
-              <span class="eyebrow">INFRASTRUCTURE</span>
-              <h2>Cloudflare SSL</h2>
-              <p>Certificate monitoring is restricted to bot owners and is not included in regular administrator dashboards.</p>
-            </div>
-          </div>
-
-          <section class="cloudflare-ssl-card owner-cloudflare-card" aria-label="Cloudflare SSL status">
-            <div class="cloudflare-ssl-head">
-              <div class="cloudflare-ssl-title">
-                <span class="cloudflare-logo" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M7.2 17h10.9a3.4 3.4 0 0 0 .4-6.8A5.4 5.4 0 0 0 8.2 8.8 4.2 4.2 0 0 0 7.2 17Z"/><path d="M4.8 17H4a2.5 2.5 0 1 1 .6-4.9"/></svg>
-                </span>
-                <div>
-                  <span class="eyebrow">CLOUDFLARE SSL</span>
-                  <h3>Certificate Packs</h3>
-                  <p>Edge certificate status for the configured Cloudflare zone.</p>
-                </div>
-              </div>
-              <span class="cloudflare-status ${!cloudflareSsl.configured ? 'unconfigured' : cloudflareSsl.error ? 'error' : 'ok'}">
-                <i></i>
-                ${!cloudflareSsl.configured ? 'Not Configured' : cloudflareSsl.error ? 'API Error' : 'Connected'}
-              </span>
-            </div>
-            <div class="cloudflare-ssl-metrics">
-              <div><span>Packs</span><strong>${cloudflareSsl.packs.length.toLocaleString()}</strong></div>
-              <div><span>Active Certificates</span><strong>${cloudflareSsl.activeCertificates.toLocaleString()}</strong></div>
-              <div><span>Pending / Other</span><strong>${cloudflareSsl.pendingCertificates.toLocaleString()}</strong></div>
-              <div><span>Hosts</span><strong>${cloudflareSsl.hosts.length.toLocaleString()}</strong></div>
-            </div>
-            <div class="cloudflare-ssl-foot">
-              <span>${cloudflareSsl.error
-                ? escapeHtml(cloudflareSsl.error)
-                : cloudflareSsl.configured
-                  ? `Zone ${escapeHtml(cloudflareSsl.zoneId)} • Full (strict) recommended`
-                  : 'Set CLOUDFLARE_ZONE_NAME / CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable certificate monitoring.'}</span>
-              <a class="btn secondary compact" href="/api/cloudflare/ssl" target="_blank" rel="noreferrer">View SSL JSON</a>
-            </div>
-          </section>
-        </section>
-      </section>`;
-
-      return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
-        path: '/dashboard/owner',
-        private: true,
-        description: 'Restricted Kryndexa Bot owner infrastructure dashboard.',
-      }));
-    } catch (error) {
-      console.error('[Dashboard Owner] Owner dashboard failed:', error);
-      return res.status(500).send(page(
-        'Owner dashboard error • Kryndexa Bot',
-        '<div class="empty"><strong>Owner dashboard unavailable.</strong><p>The private owner control center could not be loaded.</p></div>',
-        req.session.user,
-        { path: '/dashboard/owner', private: true },
-      ));
-    }
+    return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
+      path: '/dashboard/owner',
+      private: true,
+      description: 'Restricted Kryndexa Bot owner dashboard.',
+    }));
   });
 
   app.get('/dashboard/statistics', requireAuth, async (req, res) => {
@@ -2460,41 +2010,6 @@ function startDashboard(client) {
     }
   });
 
-  app.get('/api/cloudflare/ssl', requireAuth, requireBotOwner, async (_req, res) => {
-    const status = await getCloudflareCertificatePacks();
-
-    if (!status.configured) {
-      return res.status(503).json({
-        ok: false,
-        configured: false,
-        message: 'Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable Cloudflare SSL monitoring.',
-        endpoint: status.endpoint,
-      });
-    }
-
-    if (status.error) {
-      return res.status(502).json({
-        ok: false,
-        configured: true,
-        zoneId: status.zoneId,
-        endpoint: status.endpoint,
-        error: status.error,
-      });
-    }
-
-    return res.json({
-      ok: true,
-      configured: true,
-      zoneId: status.zoneId,
-      endpoint: status.endpoint,
-      packCount: status.packs.length,
-      activeCertificates: status.activeCertificates,
-      pendingCertificates: status.pendingCertificates,
-      hosts: status.hosts,
-      packs: status.packs,
-    });
-  });
-
   app.get('/health', async (_req, res) => {
     let database = false;
     try {
@@ -2511,137 +2026,23 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  let tlsConfig = null;
-  let tlsConfigError = null;
+  const server = app.listen(port);
 
-  try {
-    tlsConfig = loadDashboardTlsOptions();
-  } catch (error) {
-    tlsConfigError = error;
+  server.once('listening', () => {
+    console.log(`Dashboard listening on http://127.0.0.1:${port}`);
+  });
 
-    console.error('[Dashboard SSL] TLS configuration is invalid:', error.message || error);
-
-    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') {
-      console.error('[Dashboard SSL] The private key and certificate are from different certificate issuances.');
-      console.error('[Dashboard SSL] For Cloudflare Origin CA, create/download a new Origin Certificate and save the private key generated with that same certificate.');
+  server.on('error', (error) => {
+    if (error?.code === 'EADDRINUSE') {
+      console.error(`[Dashboard] Cannot start web panel: port ${port} is already in use.`);
+      console.error('[Dashboard] Change PORT or stop the process using that port.');
+      return;
     }
 
-    if (envFlag('WEB_SSL_STRICT_STARTUP')) throw error;
+    console.error('[Dashboard] HTTP server error:', error);
+  });
 
-    console.warn('[Dashboard SSL] Direct HTTPS is disabled for this run; Kryndexa will use the internal HTTP listener for reverse-proxy mode.');
-  }
-
-  const startHttpApp = (listenPort, reason = '') => {
-    const httpServer = app.listen(listenPort);
-
-    httpServer.once('listening', () => {
-      const advertisedUrl = process.env.BASE_URL || `http://localhost:${listenPort}`;
-      console.log(`Dashboard listening internally on http://127.0.0.1:${listenPort}`);
-
-      if (reason) console.warn(`[Dashboard SSL] ${reason}`);
-
-      if (envFlag('WEB_FORCE_HTTPS') || process.env.NODE_ENV === 'production') {
-        console.log(`[Dashboard SSL] Public URL remains ${advertisedUrl}.`);
-        console.log('[Dashboard SSL] The service currently owning port 443 must reverse-proxy HTTPS traffic to this internal dashboard port.');
-      }
-    });
-
-    httpServer.on('error', (error) => {
-      if (error?.code === 'EADDRINUSE') {
-        console.error(`[Dashboard] Cannot start internal web panel: port ${listenPort} is already in use.`);
-        console.error('[Dashboard] Change PORT / WEB_INTERNAL_PORT or stop the process using that port.');
-        return;
-      }
-
-      console.error('[Dashboard] HTTP server error:', error);
-    });
-
-    return httpServer;
-  };
-
-  if (tlsConfig) {
-    const httpsPort = Number(process.env.WEB_HTTPS_PORT || 443);
-    const internalPort = Number(process.env.WEB_INTERNAL_PORT || port || 3000);
-    const allowPortConflictFallback = envFlag('WEB_SSL_PORT_CONFLICT_FALLBACK', true);
-    const server = https.createServer(tlsConfig.options, app);
-    let fallbackStarted = false;
-
-    server.once('listening', () => {
-      const advertisedUrl = process.env.BASE_URL || `https://localhost:${httpsPort}`;
-
-      if (tlsConfig.provider === 'cloudflare-origin') {
-        console.log('[Dashboard SSL] Cloudflare Origin CA certificate enabled.');
-        console.log('[Dashboard SSL] Use Cloudflare SSL/TLS mode: Full (strict).');
-      } else {
-        console.log(`[Dashboard SSL] HTTPS enabled with provider: ${tlsConfig.provider}.`);
-      }
-
-      console.log(`[Dashboard SSL] HTTPS enabled on port ${httpsPort}.`);
-      console.log(`Dashboard listening securely on ${advertisedUrl}`);
-
-      const redirectPort = Number(process.env.WEB_HTTP_REDIRECT_PORT || 0);
-      if (redirectPort > 0 && redirectPort !== httpsPort) {
-        const redirectApp = express();
-        redirectApp.use((req, res) => res.redirect(308, httpsRedirectTarget(req)));
-
-        const redirectServer = redirectApp.listen(redirectPort, () => {
-          console.log(`[Dashboard SSL] HTTP port ${redirectPort} redirects to HTTPS.`);
-        });
-
-        redirectServer.on('error', (error) => {
-          if (error?.code === 'EADDRINUSE') {
-            console.warn(`[Dashboard SSL] HTTP redirect port ${redirectPort} is already in use; HTTPS will continue without the built-in redirect listener.`);
-            return;
-          }
-          console.error('[Dashboard SSL] HTTP redirect listener error:', error);
-        });
-      }
-    });
-
-    server.on('error', (error) => {
-      if (error?.code === 'EADDRINUSE') {
-        console.warn(`[Dashboard SSL] HTTPS port ${httpsPort} is already in use by another process.`);
-
-        if (!allowPortConflictFallback) {
-          console.error('[Dashboard SSL] Automatic fallback is disabled. Set WEB_SSL_PORT_CONFLICT_FALLBACK=true or free the HTTPS port.');
-          return;
-        }
-
-        if (fallbackStarted) return;
-        fallbackStarted = true;
-
-        if (internalPort === httpsPort) {
-          console.error(`[Dashboard SSL] WEB_INTERNAL_PORT/PORT is also ${httpsPort}; choose a different internal port such as 3000.`);
-          return;
-        }
-
-        startHttpApp(
-          internalPort,
-          `Port ${httpsPort} is occupied, so Kryndexa switched to reverse-proxy mode on internal port ${internalPort}.`,
-        );
-        return;
-      }
-
-      if (error?.code === 'EACCES') {
-        console.error(`[Dashboard SSL] Permission denied while binding HTTPS port ${httpsPort}. Use an elevated account, a higher port, or reverse-proxy mode.`);
-        return;
-      }
-
-      console.error('[Dashboard SSL] HTTPS server error:', error);
-    });
-
-    server.listen(httpsPort);
-    return server;
-  }
-
-  return startHttpApp(
-    Number(process.env.WEB_INTERNAL_PORT || port),
-    tlsConfigError
-      ? `Direct SSL could not start: ${tlsConfigError.message || tlsConfigError}. Use a matching certificate/key pair or terminate HTTPS at the reverse proxy.`
-      : envFlag('WEB_FORCE_HTTPS')
-        ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
-        : '',
-  );
+  return server;
 }
 
 module.exports = { startDashboard };
