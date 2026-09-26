@@ -6,7 +6,9 @@ let kazagumo = null;
 let initialized = false;
 const manualStopUntil = new Map();
 const playerEndReasons = new WeakMap();
+const playerExceptions = new WeakMap();
 const playerStarted = new WeakSet();
+const playbackFallbackAttempts = new WeakMap();
 
 const connectionState = {
   state: 'idle',
@@ -175,6 +177,94 @@ async function probeLavalinkInfo() {
       `[Music] Unable to read Lavalink /v4/info diagnostics: ${error?.message || error}`,
     );
     return null;
+  }
+}
+
+function playbackFallbackEnabled() {
+  const raw = String(process.env.MUSIC_PLAYBACK_FALLBACK_ENABLED || 'true').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function playbackFallbackEngine() {
+  const raw = String(process.env.MUSIC_PLAYBACK_FALLBACK_ENGINE || 'soundcloud').trim().toLowerCase();
+  return ['soundcloud', 'youtube', 'youtube_music'].includes(raw) ? raw : 'soundcloud';
+}
+
+function exceptionSummary(data) {
+  const exception = data?.exception || data || {};
+  return {
+    message: String(exception?.message || '').trim(),
+    cause: String(exception?.cause || '').trim(),
+    severity: String(exception?.severity || '').trim(),
+  };
+}
+
+async function tryPlaybackFallback(player, failedTrack) {
+  if (!playbackFallbackEnabled() || !failedTrack) return false;
+
+  const sourceName = String(failedTrack?.sourceName || '').toLowerCase();
+  const engine = playbackFallbackEngine();
+
+  // Do not retry into the same source after that source has already failed.
+  if (engine === 'soundcloud' && sourceName === 'soundcloud') return false;
+
+  let attempted = playbackFallbackAttempts.get(player);
+  if (!attempted) {
+    attempted = new Set();
+    playbackFallbackAttempts.set(player, attempted);
+  }
+
+  const key = [
+    String(failedTrack?.identifier || ''),
+    String(failedTrack?.title || ''),
+    engine,
+  ].join('|');
+
+  if (attempted.has(key)) return false;
+  attempted.add(key);
+
+  const query = [failedTrack?.title, failedTrack?.author]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+
+  if (!query) return false;
+
+  console.warn(
+    `[Music] Trying ${engine} playback fallback for "${failedTrack.title || query}" in guild ${player.guildId}.`,
+  );
+
+  try {
+    const result = await player.search(query, {
+      requester: failedTrack.requester,
+      engine,
+    });
+
+    const fallbackTrack = result?.tracks?.[0];
+    if (!fallbackTrack) {
+      console.warn(
+        `[Music] ${engine} playback fallback returned no tracks for "${query}".`,
+      );
+      return false;
+    }
+
+    player.queue.add(fallbackTrack);
+    await player.play();
+
+    console.log(
+      `[Music] Playback fallback queued via ${engine}: "${fallbackTrack.title}" by ${fallbackTrack.author || 'Unknown'}.`,
+    );
+
+    const channel = player.kazagumo?.KazagumoOptions
+      ? null
+      : null;
+
+    return true;
+  } catch (error) {
+    console.warn(
+      `[Music] ${engine} playback fallback failed: ${error?.message || error}`,
+    );
+    return false;
   }
 }
 
@@ -359,6 +449,14 @@ async function initMusic(client, { waitForReady = true } = {}) {
     // Capture Lavalink's raw end reason before Kazagumo processes it so we can
     // distinguish an actual empty queue from a failed track load.
     if (typeof player?.shoukaku?.prependListener === 'function') {
+      player.shoukaku.prependListener('exception', (data) => {
+        const summary = exceptionSummary(data);
+        playerExceptions.set(player, summary);
+        console.error(
+          `[Music] Lavalink track exception in guild ${player.guildId}: severity=${summary.severity || 'unknown'}; message=${summary.message || 'unknown'}; cause=${summary.cause || 'unknown'}.`,
+        );
+      });
+
       player.shoukaku.prependListener('end', (data) => {
         playerEndReasons.set(player, String(data?.reason || 'unknown'));
       });
@@ -368,6 +466,7 @@ async function initMusic(client, { waitForReady = true } = {}) {
   kazagumo.on('playerStart', (player, track) => {
     playerStarted.add(player);
     playerEndReasons.delete(player);
+    playerExceptions.delete(player);
     const channel = client.channels.cache.get(player.textId);
     if (!channel?.isTextBased()) return;
     channel.send({
@@ -406,12 +505,30 @@ async function initMusic(client, { waitForReady = true } = {}) {
     const channel = client.channels.cache.get(player.textId);
 
     if (endReason === 'loadFailed' || (!hadStarted && endReason !== 'finished')) {
+      const exception = playerExceptions.get(player) || {};
+      const failedTrack = player.queue?.previous?.[0] || null;
+
       console.warn(
-        `[Music] Track playback failed in guild ${guildId}. Lavalink end reason=${endReason}; started=${hadStarted}.`,
+        `[Music] Track playback failed in guild ${guildId}. Lavalink end reason=${endReason}; exception=${exception.message || 'none'}; cause=${exception.cause || 'none'}.`,
       );
+
+      const fallbackStarted = await tryPlaybackFallback(player, failedTrack);
+
+      if (fallbackStarted) {
+        if (channel?.isTextBased()) {
+          channel.send(
+            `⚠️ YouTube playback failed, so Kryndexa is trying the same song through ${playbackFallbackEngine()}.`,
+          ).catch(() => null);
+        }
+        playerEndReasons.delete(player);
+        playerExceptions.delete(player);
+        return;
+      }
+
       if (channel?.isTextBased()) {
+        const detail = exception.message || exception.cause || 'Lavalink could not open the audio stream.';
         channel.send(
-          '⚠️ Lavalink found the track but failed to start playback. Check the Lavalink console/YouTube source plugin, or try another result.',
+          `⚠️ Lavalink found the track but playback failed: ${String(detail).slice(0, 1200)}`,
         ).catch(() => null);
       }
     } else if (channel?.isTextBased()) {
@@ -419,6 +536,7 @@ async function initMusic(client, { waitForReady = true } = {}) {
     }
 
     playerEndReasons.delete(player);
+    playerExceptions.delete(player);
 
     // Only destroy the player if this event still belongs to the active player.
     if (!currentPlayer || currentPlayer === player) {
