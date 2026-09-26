@@ -211,7 +211,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-stream-owner-tools">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-command-rebuild-broadcast-link">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -296,7 +296,9 @@ ${cookieNotice}
   document.querySelectorAll('[data-embed-editor]').forEach(editor=>{
     const preview=editor.querySelector('[data-embed-preview]');if(!preview)return;
     const update=()=>{const val=(sel)=>editor.querySelector(sel)?.value||'';preview.style.setProperty('--embed-color',val('[data-embed-color]')||'#5865F2');
-      preview.querySelector('[data-preview-title]').textContent=val('[data-embed-title]')||'Embed title';
+      const previewTitle=preview.querySelector('[data-preview-title]');const titleValue=val('[data-embed-title]')||'Embed title';const titleUrl=val('[data-embed-title-url]').trim();
+      previewTitle.textContent=titleValue;
+      if(previewTitle.tagName==='A'){if(/^https?:\/\//i.test(titleUrl)){previewTitle.href=titleUrl;previewTitle.classList.add('has-link');}else{previewTitle.removeAttribute('href');previewTitle.classList.remove('has-link');}}
       preview.querySelector('[data-preview-description]').textContent=val('[data-embed-description]')||'Embed description';
       preview.querySelector('[data-preview-footer]').textContent=val('[data-embed-footer]');
       const fields=preview.querySelector('[data-preview-fields]');fields.innerHTML='';
@@ -1327,6 +1329,7 @@ function startDashboard(client) {
           <div class="embed-editor-layout">
             <div class="embed-editor-controls">
               <label>Announcement Title<input name="title" data-embed-title maxlength="256" value="Important Kryndexa Bot Announcement" required></label>
+              <label>Title Link <small>(optional clickable embed title)</small><input name="titleUrl" data-embed-title-url maxlength="1000" placeholder="https://example.com/announcement"></label>
               <label>Message<textarea name="message" data-embed-description maxlength="4000" rows="8" placeholder="Write the important announcement here..." required></textarea></label>
               <div class="form-grid">
                 <label>Embed Color<input name="color" data-embed-color maxlength="7" value="#5865F2"></label>
@@ -1346,7 +1349,7 @@ function startDashboard(client) {
               <div class="embed-preview-bar"></div>
               <div class="embed-preview-body">
                 <span class="mini-label">DISCORD PREVIEW</span>
-                <strong data-preview-title>Important Kryndexa Bot Announcement</strong>
+                <a data-preview-title class="embed-preview-title-link" target="_blank" rel="noreferrer">Important Kryndexa Bot Announcement</a>
                 <p data-preview-description>Write the important announcement here...</p>
                 <div class="embed-preview-fields" data-preview-fields></div>
                 <small data-preview-footer>Kryndexa Bot • Owner Broadcast</small>
@@ -1441,14 +1444,17 @@ function startDashboard(client) {
       const message = String(req.body.message || '').trim().slice(0, 4000);
       if (!message) return res.status(400).send('Broadcast message is required.');
 
+      const titleUrl = String(req.body.titleUrl || '').trim();
       const imageUrl = String(req.body.imageUrl || '').trim();
       const thumbnailUrl = String(req.body.thumbnailUrl || '').trim();
+      if (titleUrl && !/^https?:\/\//i.test(titleUrl)) return res.status(400).send('Title link must use http:// or https://.');
       if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return res.status(400).send('Image URL must use http:// or https://.');
       if (thumbnailUrl && !/^https?:\/\//i.test(thumbnailUrl)) return res.status(400).send('Thumbnail URL must use http:// or https://.');
 
       const owner = await client.users.fetch(req.session.user.id).catch(() => null);
       const results = await broadcastToGuilds(client, {
         title,
+        titleUrl,
         message,
         owner,
         dryRun: req.body.dryRun === 'on',
