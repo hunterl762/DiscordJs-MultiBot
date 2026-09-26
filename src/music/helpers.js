@@ -1,6 +1,14 @@
 const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { getFeature } = require('../features/store');
-const { getMusicManager, musicGloballyEnabled, lavalinkConfigured, formatDuration } = require('./manager');
+const {
+  getMusicManager,
+  getMusicStatus,
+  isMusicReady,
+  musicUnavailableMessage,
+  musicGloballyEnabled,
+  lavalinkConfigured,
+  formatDuration,
+} = require('./manager');
 
 async function musicContext(source) {
   const guild = source.guild;
@@ -26,8 +34,14 @@ async function musicContext(source) {
   }
 
   const manager = getMusicManager();
-  if (!manager) return { error: 'The Lavalink music service is not connected.' };
-  return { guild, member, channel, feature, manager };
+  if (!manager || !isMusicReady()) {
+    return {
+      error: musicUnavailableMessage(),
+      lavalinkStatus: getMusicStatus(),
+    };
+  }
+
+  return { guild, member, channel, feature, manager, lavalinkStatus: getMusicStatus() };
 }
 
 function existingPlayer(manager, guildId) { return manager?.players?.get(guildId) || null; }
