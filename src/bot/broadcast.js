@@ -102,6 +102,7 @@ function safeHttpUrl(value) {
 function buildBroadcastPayload(channel, options = {}) {
   const {
     title = 'Kryndexa Bot Announcement',
+    titleUrl = '',
     message,
     owner,
     color = '#5865F2',
@@ -119,6 +120,7 @@ function buildBroadcastPayload(channel, options = {}) {
   const sentUnix = Math.floor(sentAt.getTime() / 1000);
   const ownerName = ownerDisplayName(owner);
   const ownerAvatar = owner?.displayAvatarURL?.({ size: 128 }) || null;
+  const cleanedTitleUrl = safeHttpUrl(titleUrl);
   const cleanedImageUrl = safeHttpUrl(imageUrl);
   const cleanedThumbnailUrl = safeHttpUrl(thumbnailUrl);
 
@@ -157,6 +159,7 @@ function buildBroadcastPayload(channel, options = {}) {
     })
     .setTimestamp(sentAt);
 
+  if (cleanedTitleUrl) embed.setURL(cleanedTitleUrl);
   if (cleanedThumbnailUrl) embed.setThumbnail(cleanedThumbnailUrl);
   else if (ownerAvatar) embed.setThumbnail(ownerAvatar);
   if (cleanedImageUrl) embed.setImage(cleanedImageUrl);
@@ -182,6 +185,7 @@ function sleep(ms) {
 
 async function broadcastToGuilds(client, {
   title = 'Kryndexa Bot Announcement',
+  titleUrl = '',
   message,
   dryRun = false,
   owner = null,
@@ -221,6 +225,7 @@ async function broadcastToGuilds(client, {
       if (!dryRun) {
         await withTimeout(channel.send(buildBroadcastPayload(channel, {
           title,
+          titleUrl,
           message,
           owner,
           color,
