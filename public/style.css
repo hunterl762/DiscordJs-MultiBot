@@ -2449,3 +2449,36 @@ html[data-theme="light"] .owner-broadcast-result{background:#f8fafc;color:#33415
   .stream-plan-summary,.paid-access-form,.owner-broadcast-checks{grid-template-columns:1fr}
   .embed-field-row{grid-template-columns:1fr}
 }
+
+
+/* Clickable broadcast embed-title preview */
+.embed-preview-title-link{
+  display:block;
+  margin:4px 0 9px;
+  color:#fff;
+  font-size:16px;
+  font-weight:800;
+  line-height:1.3;
+  text-decoration:none;
+  overflow-wrap:anywhere;
+  cursor:default;
+}
+.embed-preview-title-link.has-link{
+  color:#7c8cff;
+  text-decoration:underline;
+  text-decoration-color:rgba(124,140,255,.45);
+  text-underline-offset:2px;
+  cursor:pointer;
+}
+.embed-preview-title-link.has-link:hover{
+  color:#a8b2ff;
+}
+html[data-theme="light"] .embed-preview-title-link{
+  color:#172033;
+}
+html[data-theme="light"] .embed-preview-title-link.has-link{
+  color:#4f5ddd;
+}
+html[data-theme="light"] .embed-preview-title-link.has-link:hover{
+  color:#3544c7;
+}
