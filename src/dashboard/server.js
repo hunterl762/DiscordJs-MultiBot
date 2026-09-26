@@ -149,6 +149,17 @@ function parseCookies(req) {
   return cookies;
 }
 
+function cookieSecureForRequest(req) {
+  if (req?.secure) return true;
+
+  const forwardedProto = String(req?.get?.('x-forwarded-proto') || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+
+  return forwardedProto === 'https';
+}
+
 function configuredWebIconUrl() {
   const raw = String(process.env.WEB_ICON_URL || '').trim();
   if (!raw || raw === '/favicon.ico') return '';
@@ -179,8 +190,8 @@ function page(title, body, user, meta = {}) {
 
   const cookieNotice = `<div id="cookieNotice" class="cookie-notice" role="dialog" aria-live="polite" aria-label="Cookie consent">
     <div class="cookie-copy">
-      <strong id="cookieTitle">Cookie consent</strong>
-      <p id="cookieText">MultiBot uses an essential session cookie for Discord dashboard sign-in, OAuth security, and CSRF protection. No advertising cookies are used.</p>
+      <strong id="cookieTitle">Essential dashboard cookies</strong>
+      <p id="cookieText">Kryndexa uses only the essential cookies needed for Discord sign-in, session security, and CSRF protection. No advertising or tracking cookies are used.</p>
     </div>
     <div class="cookie-actions">
       <a class="btn secondary" href="/privacy#cookies">Cookie details</a>
@@ -211,7 +222,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-command-rebuild-broadcast-link">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-cookie-textarea-repair">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -239,15 +250,31 @@ ${cookieNotice}
   document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
 
   const notice=document.getElementById('cookieNotice');
+  const cookieText=document.getElementById('cookieText');
   const getConsent=()=>{const match=document.cookie.match(/(?:^|; )multibot_cookie_consent=([^;]+)/);return match?decodeURIComponent(match[1]):'';};
-  const refreshConsent=()=>{const loginNeedsConsent=new URLSearchParams(location.search).get('cookie')==='required';if(loginNeedsConsent){notice?.classList.remove('is-hidden');return;}if(['essential','declined'].includes(getConsent()))notice?.classList.add('is-hidden');};
+  const showCookieNotice=()=>{notice?.classList.add('is-visible');notice?.classList.remove('is-hidden');};
+  const hideCookieNotice=()=>{notice?.classList.remove('is-visible');notice?.classList.add('is-hidden');};
+  const refreshConsent=()=>{
+    const loginNeedsConsent=new URLSearchParams(location.search).get('cookie')==='required';
+    const consent=getConsent();
+    if(loginNeedsConsent||!['essential','declined'].includes(consent))showCookieNotice();
+    else hideCookieNotice();
+  };
   let continueToLogin=new URLSearchParams(location.search).get('continue')==='login';
   const setConsent=async(choice)=>{
-    const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin'});
-    if(!r.ok)return;
-    notice?.classList.add('is-hidden');
-    if(choice==='accept'&&continueToLogin){
-      location.assign('/login');
+    const accept=document.getElementById('cookieAccept');
+    const decline=document.getElementById('cookieDecline');
+    if(accept)accept.disabled=true;if(decline)decline.disabled=true;
+    try{
+      const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin',headers:{'Accept':'application/json'}});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      hideCookieNotice();
+      if(choice==='accept'&&continueToLogin)location.assign('/login');
+    }catch(error){
+      if(cookieText)cookieText.textContent='Unable to save your cookie preference. Please try again.';
+      showCookieNotice();
+    }finally{
+      if(accept)accept.disabled=false;if(decline)decline.disabled=false;
     }
   };
   document.getElementById('cookieAccept')?.addEventListener('click',()=>setConsent('accept'));
@@ -256,7 +283,7 @@ ${cookieNotice}
     if(getConsent()==='essential')return;
     event.preventDefault();
     continueToLogin=true;
-    notice?.classList.remove('is-hidden');
+    showCookieNotice();
   }));
 
   const toast=document.getElementById('dashboardToast');let toastTimer;
@@ -868,23 +895,27 @@ function startDashboard(client) {
     res.cookie('multibot_cookie_consent', 'essential', {
       httpOnly: false,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: cookieSecureForRequest(req),
+      path: '/',
       maxAge: 365 * 24 * 60 * 60 * 1000,
     });
     return res.status(204).end();
   });
 
   app.post('/cookie-consent/decline', (req, res) => {
+    const secure = cookieSecureForRequest(req);
     const finish = () => {
       res.clearCookie('multibot.sid', {
         httpOnly: true,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure,
+        path: '/',
       });
       res.cookie('multibot_cookie_consent', 'declined', {
         httpOnly: false,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure,
+        path: '/',
         maxAge: 365 * 24 * 60 * 60 * 1000,
       });
       return res.status(204).end();
