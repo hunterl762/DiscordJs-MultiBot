@@ -12,6 +12,8 @@ const connectionState = {
   endpoint: '',
   secure: false,
   lastError: '',
+  sourceManagers: [],
+  plugins: [],
   changedAt: null,
 };
 
@@ -115,6 +117,62 @@ function musicUnavailableMessage() {
   }
 
   return 'The Lavalink music service has not finished initializing yet.';
+}
+
+async function probeLavalinkInfo() {
+  const node = lavalinkNode();
+  const protocol = node.secure ? 'https' : 'http';
+  const endpoint = `${protocol}://${node.url}/v4/info`;
+
+  try {
+    const response = await fetch(endpoint, {
+      headers: {
+        Authorization: node.auth,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(5_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const info = await response.json();
+    const sourceManagers = Array.isArray(info?.sourceManagers)
+      ? info.sourceManagers.map((item) => String(item))
+      : [];
+    const plugins = Array.isArray(info?.plugins)
+      ? info.plugins.map((plugin) => ({
+          name: String(plugin?.name || 'unknown'),
+          version: String(plugin?.version || ''),
+        }))
+      : [];
+
+    setConnectionState(connectionState.state, {
+      sourceManagers,
+      plugins,
+    });
+
+    console.log(
+      `[Music] Lavalink sources: ${sourceManagers.length ? sourceManagers.join(', ') : 'none reported'}.`,
+    );
+    console.log(
+      `[Music] Lavalink plugins: ${plugins.length ? plugins.map((plugin) => `${plugin.name}${plugin.version ? `@${plugin.version}` : ''}`).join(', ') : 'none reported'}.`,
+    );
+
+    if (!sourceManagers.some((source) => source.toLowerCase().includes('youtube'))) {
+      console.warn(
+        '[Music] YouTube source is not loaded in Lavalink. YouTube names/URLs will return no playable tracks until the official youtube-source plugin is configured.',
+      );
+    }
+
+    return info;
+  } catch (error) {
+    console.warn(
+      `[Music] Unable to read Lavalink /v4/info diagnostics: ${error?.message || error}`,
+    );
+    return null;
+  }
 }
 
 function formatDuration(ms) {
@@ -224,6 +282,7 @@ async function initMusic(client, { waitForReady = true } = {}) {
     console.log(
       `[Music] Lavalink node ${name || node.name} ready at ${endpoint}${reconnected ? ' (reconnected)' : ''}.`,
     );
+    probeLavalinkInfo().catch(() => null);
   });
 
   kazagumo.shoukaku.on('error', (name, error) => {
@@ -342,6 +401,7 @@ module.exports = {
   stopMusic,
   getMusicManager,
   getMusicStatus,
+  probeLavalinkInfo,
   isMusicReady,
   musicUnavailableMessage,
   musicGloballyEnabled,
