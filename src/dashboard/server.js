@@ -1596,7 +1596,7 @@ function startDashboard(client) {
         <a href="#configuration">Configuration</a>
         <a href="#features">Feature Center</a>
         <a href="#ticket-config">Ticket System</a>
-        <a href="#twitch">Twitch</a>
+        <a href="#stream-alerts">Stream Alerts</a>
         <a href="#commands">Commands</a>
         <a href="#tickets">Tickets</a>
       </nav>
@@ -1712,36 +1712,69 @@ function startDashboard(client) {
         <div class="ticket-module-grid">${ticketTypeCards}</div>
       </section>
 
-      <section id="twitch" class="panel twitch-panel">
-        <div class="twitch-hero">
+      <section id="stream-alerts" class="panel stream-alert-panel">
+        <div class="stream-alert-hero">
           <div>
             <span class="eyebrow">LIVE INTEGRATION</span>
-            <h2>Twitch Live Announcements</h2>
-            <p>Automatically post a rich Twitch embed when a configured streamer goes live.</p>
+            <h2>Twitch / YouTube / Kick Stream Alerts</h2>
+            <p>Configure multi-platform go-live alerts, Discord live roles, announcement channels, and provider-specific embed templates.</p>
           </div>
-          <div class="twitch-logo-badge">Twitch</div>
+          <div class="stream-provider-badges"><span class="provider-chip twitch">Twitch</span><span class="provider-chip youtube">YouTube</span><span class="provider-chip kick">Kick</span></div>
         </div>
 
-        <form class="twitch-config-form" method="post" action="/dashboard/${guild.id}/twitch">
+        <div class="stream-plan-summary">
+          <div><span class="mini-label">Access tier</span><strong>${streamAccess.paid ? 'Paid' : 'Free'}</strong></div>
+          <div><span class="mini-label">Configured streamers</span><strong>${streamAnnouncements.length} / ${streamAccess.streamerLimit}</strong></div>
+          <div><span class="mini-label">Free limit</span><strong>3 streamers</strong></div>
+          <div><span class="mini-label">Paid limit</span><strong>15 streamers</strong></div>
+        </div>
+
+        <form class="stream-config-form" method="post" action="/dashboard/${guild.id}/streams">
           <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
           <div class="form-grid">
-            <label>Twitch Username
-              <input name="twitchLogin" maxlength="25" placeholder="streamername" required>
+            <label>Streaming Platform
+              <select name="platform" data-stream-platform required>
+                <option value="twitch">Twitch</option>
+                <option value="youtube">YouTube</option>
+                <option value="kick">Kick</option>
+              </select>
+            </label>
+            <label>Streamer / Channel
+              <input name="streamerIdentifier" data-stream-identifier maxlength="64" placeholder="Twitch username" required>
+              <small data-stream-help>Twitch username without @.</small>
             </label>
             <label>Discord Announcement Channel
               <select name="discordChannelId" required>${selectOptions(broadcastChannels, '', 'Choose a channel')}</select>
             </label>
-            <label style="grid-column:1/-1">Custom Embed Message
-              <input name="customMessage" maxlength="500" placeholder="{user} is live playing {game}! {url}">
+            <label>Discord User ID <small>(optional live-role binding)</small>
+              <input name="discordUserId" maxlength="32" placeholder="123456789012345678">
+            </label>
+            <label>Live Role <small>(optional)</small>
+              <select name="liveRoleId">${selectOptions(roles, '', 'No live role')}</select>
+            </label>
+            <label style="grid-column:1/-1">Custom Description Override <small>(optional)</small>
+              <textarea name="customMessage" maxlength="1000" rows="3" placeholder="{user} is live on {platform} playing {game}! {url}"></textarea>
             </label>
           </div>
-          <div class="token-row">
-            <span>{user}</span><span>{game}</span><span>{title}</span><span>{url}</span>
+          <div class="token-row"><span>{user}</span><span>{game}</span><span>{title}</span><span>{url}</span><span>{platform}</span></div>
+          <div class="stream-form-footer">
+            <span>${streamAnnouncements.length >= streamAccess.streamerLimit ? 'This server is at its current streamer limit. Updating an existing matching streamer is still allowed.' : `You can add ${streamAccess.streamerLimit - streamAnnouncements.length} more streamer${streamAccess.streamerLimit - streamAnnouncements.length === 1 ? '' : 's'}.`}</span>
+            <button class="btn twitch-btn" type="submit">＋ Add / Update Streamer</button>
           </div>
-          <button class="btn twitch-btn" type="submit">＋ Add / Update Streamer</button>
         </form>
 
-        <div class="twitch-cards">${twitchCards}</div>
+        <div class="twitch-cards">${streamCards}</div>
+
+        <div class="stream-embed-section">
+          <div class="panel-heading-row">
+            <div>
+              <span class="eyebrow">EMBED MODULES</span>
+              <h3>Go-Live Embed Builder</h3>
+              <p>Customize the Discord embed sent for each streaming provider. Changes are used by the live monitor immediately.</p>
+            </div>
+          </div>
+          <div class="stream-embed-grid">${streamEmbedEditors}</div>
+        </div>
       </section>
 
       <section id="commands" class="panel command-panel">
