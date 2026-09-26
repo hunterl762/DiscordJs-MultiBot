@@ -35,6 +35,8 @@ const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encrypte
 const { PROVIDERS, listAiCredentials, saveAiCredential, deleteAiCredential } = require('../aiCredentialStore');
 const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedConfigStore');
 const {
+  FREE_STREAMER_LIMIT,
+  PAID_STREAMER_LIMIT,
   getStreamAlertAccess,
   listPaidStreamAlertAccess,
   setStreamAlertPaidAccess,
@@ -1359,13 +1361,13 @@ function startDashboard(client) {
           <div>
             <span class="eyebrow">STREAM ALERT ACCESS</span>
             <h2>Paid Streamer Limits</h2>
-            <p>Free servers can configure 3 streamers. Servers granted paid access can configure up to 15. This entitlement layer is ready for a payment provider to automate later.</p>
+            <p>Free servers can configure ${FREE_STREAMER_LIMIT} streamers. Servers granted paid access can configure up to ${PAID_STREAMER_LIMIT}. This entitlement layer is ready for a payment provider to automate later.</p>
           </div>
         </div>
         <form class="paid-access-form" method="post" action="/dashboard/owner/stream-access">
           <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
           <label>Server<select name="guildId" required><option value="">Choose a connected server</option>${guildOptions}</select></label>
-          <label>Access Tier<select name="tier" required><option value="paid">Paid • 15 streamers</option><option value="free">Free • 3 streamers</option></select></label>
+          <label>Access Tier<select name="tier" required><option value="paid">Paid • ${PAID_STREAMER_LIMIT} streamers</option><option value="free">Free • ${FREE_STREAMER_LIMIT} streamers</option></select></label>
           <label>Internal Note<input name="note" maxlength="500" placeholder="Payment/order/reference note (optional)"></label>
           <button class="btn" type="submit">Update Stream Access</button>
         </form>
@@ -1406,8 +1408,22 @@ function startDashboard(client) {
       const guildId = String(req.body.guildId || '').trim();
       if (!client.guilds.cache.has(guildId)) return res.status(400).send('Choose a connected Discord server.');
 
+      const paid = String(req.body.tier || '') === 'paid';
+
+      if (!paid) {
+        const configuredStreamers = await listStreamAnnouncements(guildId);
+        if (configuredStreamers.length > FREE_STREAMER_LIMIT) {
+          return res.status(409).send(page(
+            'Cannot downgrade Stream Alerts • Kryndexa Bot',
+            `<div class="empty"><strong>This server still has ${configuredStreamers.length} configured streamers.</strong><p>Reduce the server to ${FREE_STREAMER_LIMIT} or fewer streamers before switching it back to free access.</p><p><a class="btn secondary" href="/dashboard/owner">Return to Bot Owners</a></p></div>`,
+            req.session.user,
+            { private: true },
+          ));
+        }
+      }
+
       await setStreamAlertPaidAccess(guildId, {
-        paid: String(req.body.tier || '') === 'paid',
+        paid,
         grantedBy: req.session.user.id,
         note: req.body.note || '',
       });
@@ -1851,8 +1867,8 @@ function startDashboard(client) {
         <div class="stream-plan-summary">
           <div><span class="mini-label">Access tier</span><strong>${streamAccess.paid ? 'Paid' : 'Free'}</strong></div>
           <div><span class="mini-label">Configured streamers</span><strong>${streamAnnouncements.length} / ${streamAccess.streamerLimit}</strong></div>
-          <div><span class="mini-label">Free limit</span><strong>3 streamers</strong></div>
-          <div><span class="mini-label">Paid limit</span><strong>15 streamers</strong></div>
+          <div><span class="mini-label">Free limit</span><strong>${FREE_STREAMER_LIMIT} streamers</strong></div>
+          <div><span class="mini-label">Paid limit</span><strong>${PAID_STREAMER_LIMIT} streamers</strong></div>
         </div>
 
         <form class="stream-config-form" method="post" action="/dashboard/${guild.id}/streams">
