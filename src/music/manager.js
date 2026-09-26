@@ -255,10 +255,6 @@ async function tryPlaybackFallback(player, failedTrack) {
       `[Music] Playback fallback queued via ${engine}: "${fallbackTrack.title}" by ${fallbackTrack.author || 'Unknown'}.`,
     );
 
-    const channel = player.kazagumo?.KazagumoOptions
-      ? null
-      : null;
-
     return true;
   } catch (error) {
     console.warn(
