@@ -139,6 +139,17 @@ function parseCookies(req) {
   return cookies;
 }
 
+function configuredWebIconUrl() {
+  const raw = String(process.env.WEB_ICON_URL || '').trim();
+  if (!raw || raw === '/favicon.ico') return '';
+
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) {
+    return raw;
+  }
+
+  return `/${raw.replace(/^\.?\//, '')}`;
+}
+
 function renderAddBotButton() {
   const clientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
   if (!clientId) return '';
@@ -154,6 +165,7 @@ function page(title, body, user, meta = {}) {
     : '<a class="btn compact" href="/login">Login with Discord</a>';
 
   const addBotButton = renderAddBotButton();
+  const webIcon = configuredWebIconUrl() || '/favicon.ico';
 
   const cookieNotice = `<div id="cookieNotice" class="cookie-notice" role="dialog" aria-live="polite" aria-label="Cookie consent">
     <div class="cookie-copy">
@@ -189,10 +201,10 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260926-dashboard-access">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-configurable-icon">
 </head><body>
 <header class="site-header"><div class="header-inner">
-  <a class="brand" href="/"><img class="brand-avatar" src="/favicon.ico" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
+  <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
     <a href="/">Home</a><a href="/features">Features</a>
@@ -618,8 +630,11 @@ function startDashboard(client) {
   }));
 
   app.get('/favicon.ico', (_req, res) => {
+    const configuredIcon = configuredWebIconUrl();
+    if (configuredIcon) return res.redirect(302, configuredIcon);
+
     if (!client.user) return res.status(204).end();
-    return res.redirect(302, client.user.displayAvatarURL({ extension: 'png', size: 64 }));
+    return res.redirect(302, client.user.displayAvatarURL({ extension: 'png', size: 128 }));
   });
 
   app.get('/', (req, res) => {
