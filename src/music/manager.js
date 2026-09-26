@@ -144,7 +144,7 @@ async function waitForMusicReady(timeoutMs) {
   return connectionState.ready;
 }
 
-async function initMusic(client) {
+async function initMusic(client, { waitForReady = true } = {}) {
   if (initialized) return kazagumo;
   initialized = true;
 
@@ -284,25 +284,38 @@ async function initMusic(client) {
     player.destroy();
   });
 
-  console.log('[Music] Kazagumo/Shoukaku runtime initialized; waiting for Lavalink node readiness.');
+  console.log('[Music] Kazagumo/Shoukaku runtime initialized; waiting for Discord clientReady before node connection.');
 
-  const ready = await waitForMusicReady(connectTimeoutMs);
+  if (!waitForReady) return kazagumo;
+
+  await waitForMusicConnection(connectTimeoutMs);
+  return kazagumo;
+}
+
+async function waitForMusicConnection(timeoutMs = null) {
+  if (!kazagumo) return false;
+  if (connectionState.ready) return true;
+
+  const effectiveTimeout = Math.max(
+    1_000,
+    Number(timeoutMs || process.env.LAVALINK_CONNECT_TIMEOUT_MS || 15_000),
+  );
+
+  const ready = await waitForMusicReady(effectiveTimeout);
 
   if (!ready) {
     if (connectionState.state === 'connecting') {
       setConnectionState('timeout', {
-        nodeName: node.name,
-        endpoint,
-        lastError: `Node did not emit ready within ${connectTimeoutMs}ms.`,
+        lastError: `Node did not emit ready within ${effectiveTimeout}ms after Discord clientReady.`,
       });
     }
 
     console.warn(
-      `[Music] Lavalink node is not ready after startup wait. State=${connectionState.state}; endpoint=${endpoint}; lastError=${connectionState.lastError || 'none'}.`,
+      `[Music] Lavalink node is not ready after startup wait. State=${connectionState.state}; endpoint=${connectionState.endpoint || 'unknown'}; lastError=${connectionState.lastError || 'none'}.`,
     );
   }
 
-  return kazagumo;
+  return ready;
 }
 
 function stopMusic() {
@@ -325,6 +338,7 @@ function stopMusic() {
 
 module.exports = {
   initMusic,
+  waitForMusicConnection,
   stopMusic,
   getMusicManager,
   getMusicStatus,
