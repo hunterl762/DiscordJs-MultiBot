@@ -59,10 +59,6 @@ MYSQL_DATABASE=multibot
 MYSQL_CONNECTION_LIMIT=10
 MYSQL_AUTO_MIGRATE=true
 
-MYSQL_SSL=false
-MYSQL_SSL_REJECT_UNAUTHORIZED=true
-MYSQL_SSL_CA_FILE=
-
 TWITCH_CLIENT_ID=
 TWITCH_CLIENT_SECRET=
 YOUTUBE_API_KEY=
@@ -77,7 +73,6 @@ LAVALINK_SECURE=false
 MUSIC_DEFAULT_SEARCH_ENGINE=youtube
 ```
 
-For remote/cloud MySQL, enable TLS when your provider supports or requires it.
 
 ## Install
 
