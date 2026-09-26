@@ -8,6 +8,7 @@ const { buildConfiguredEmbed } = require('../embedRuntime');
 const {
   listEnabledStreamAnnouncements,
   markStreamLiveState,
+  markStreamRoleState,
 } = require('../twitchStore');
 const { getFeature } = require('../features/store');
 
@@ -16,7 +17,9 @@ let twitchTokenExpiresAt = 0;
 let kickToken = null;
 let kickTokenExpiresAt = 0;
 let timer = null;
+let roleTimer = null;
 let running = false;
+let roleCheckRunning = false;
 
 function providerConfigured(platform) {
   if (platform === 'twitch') return Boolean(process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CLIENT_SECRET);
@@ -263,17 +266,79 @@ async function checkStreamingAnnouncements(client) {
   }
 }
 
+async function checkStreamRoles(client) {
+  if (roleCheckRunning) return;
+  roleCheckRunning = true;
+
+  try {
+    const watchers = await listEnabledStreamAnnouncements();
+
+    for (const watcher of watchers) {
+      if (!watcher.discordUserId || !watcher.liveRoleId) continue;
+
+      try {
+        const feature = await getFeature(watcher.guildId, 'stream_alerts');
+        const shouldHaveRole = feature?.enabled === false ? false : Boolean(watcher.isLive);
+        const roleGrantedByBot = await reconcileLiveRole(client, watcher, shouldHaveRole);
+
+        if (roleGrantedByBot !== watcher.roleGrantedByBot) {
+          await markStreamRoleState(watcher.id, roleGrantedByBot);
+        }
+      } catch (error) {
+        console.warn(
+          `[StreamRole] ${watcher.platform} ${watcher.streamerIdentifier}: ${error.message || error}`,
+        );
+      }
+    }
+  } finally {
+    roleCheckRunning = false;
+  }
+}
+
 function startTwitchMonitor(client) {
-  const intervalMs = Math.max(60_000, Number(process.env.STREAM_ALERT_CHECK_INTERVAL_MS || process.env.TWITCH_CHECK_INTERVAL_MS || 120_000));
+  const intervalMs = Math.max(
+    60_000,
+    Number(process.env.STREAM_ALERT_CHECK_INTERVAL_MS || process.env.TWITCH_CHECK_INTERVAL_MS || 120_000),
+  );
+  const roleIntervalMs = Math.max(
+    60_000,
+    Number(process.env.STREAM_ROLE_CHECK_INTERVAL_MS || 120_000),
+  );
+
   checkStreamingAnnouncements(client).catch(console.error);
-  timer = setInterval(() => checkStreamingAnnouncements(client).catch(console.error), intervalMs);
+  checkStreamRoles(client).catch(console.error);
+
+  timer = setInterval(
+    () => checkStreamingAnnouncements(client).catch(console.error),
+    intervalMs,
+  );
+  roleTimer = setInterval(
+    () => checkStreamRoles(client).catch(console.error),
+    roleIntervalMs,
+  );
+
   timer.unref?.();
-  console.log(`[StreamAlert] Twitch/YouTube/Kick monitor started every ${Math.round(intervalMs / 1000)}s.`);
+  roleTimer.unref?.();
+
+  console.log(
+    `[StreamAlert] Twitch/YouTube/Kick monitor started every ${Math.round(intervalMs / 1000)}s.`,
+  );
+  console.log(
+    `[StreamRole] Live-role reconciliation started every ${Math.round(roleIntervalMs / 1000)}s.`,
+  );
 }
 
 function stopTwitchMonitor() {
   if (timer) clearInterval(timer);
+  if (roleTimer) clearInterval(roleTimer);
   timer = null;
+  roleTimer = null;
 }
 
-module.exports = { startTwitchMonitor, stopTwitchMonitor, checkTwitchAnnouncements: checkStreamingAnnouncements, checkStreamingAnnouncements };
+module.exports = {
+  startTwitchMonitor,
+  stopTwitchMonitor,
+  checkTwitchAnnouncements: checkStreamingAnnouncements,
+  checkStreamingAnnouncements,
+  checkStreamRoles,
+};

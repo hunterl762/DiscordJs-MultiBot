@@ -1,17 +1,9 @@
-const fs = require('node:fs');
 const mysql = require('mysql2/promise');
 
 function envBool(name, fallback = false) {
   const value = process.env[name];
   if (value == null || value === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
-}
-
-function buildSslOptions() {
-  if (!envBool('MYSQL_SSL', false)) return undefined;
-  const ssl = { rejectUnauthorized: envBool('MYSQL_SSL_REJECT_UNAUTHORIZED', true) };
-  if (process.env.MYSQL_SSL_CA_FILE) ssl.ca = fs.readFileSync(process.env.MYSQL_SSL_CA_FILE, 'utf8');
-  return ssl;
 }
 
 const pool = mysql.createPool({
@@ -26,7 +18,6 @@ const pool = mysql.createPool({
   charset: 'utf8mb4',
   supportBigNumbers: true,
   bigNumberStrings: true,
-  ssl: buildSslOptions(),
 });
 
 const schemaStatements = [

@@ -1,7 +1,6 @@
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const https = require('node:https');
 const express = require('express');
 const session = require('express-session');
 const MySQLStoreFactory = require('express-mysql-session');
@@ -16,10 +15,9 @@ const {
 } = require('../store');
 const { getPool, pingDatabase } = require('../database');
 const {
-  normalizeIdentifier,
-  listTwitchAnnouncements,
-  upsertTwitchAnnouncement,
-  deleteTwitchAnnouncement,
+  listStreamAnnouncements,
+  upsertStreamAnnouncement,
+  deleteStreamAnnouncement,
 } = require('../twitchStore');
 const {
   DEFAULT_TICKET_TYPES,
@@ -36,386 +34,27 @@ const { listAutomationRules, createAutomationRule, deleteAutomationRule } = requ
 const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encryptedSessionStore');
 const { PROVIDERS, listAiCredentials, saveAiCredential, deleteAiCredential } = require('../aiCredentialStore');
 const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedConfigStore');
+const {
+  FREE_STREAMER_LIMIT,
+  PAID_STREAMER_LIMIT,
+  getStreamAlertAccess,
+  listPaidStreamAlertAccess,
+  setStreamAlertPaidAccess,
+} = require('../streamAccessStore');
 const { getAnalytics } = require('../features/dataStore');
-const { isBotOwner } = require('../bot/broadcast');
+const {
+  isBotOwner,
+  broadcastToGuilds,
+  formatBroadcastSummary,
+} = require('../bot/broadcast');
 
 const DISCORD_API = 'https://discord.com/api/v10';
-const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 const GUILD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
-const cloudflareZoneCache = {
-  zoneName: '',
-  zoneId: '',
-  expiresAt: 0,
-  error: '',
-  errorExpiresAt: 0,
-};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function envFlag(name, fallback = false) {
-  const raw = String(process.env[name] ?? '').trim().toLowerCase();
-  if (!raw) return fallback;
-  return ['1', 'true', 'yes', 'on'].includes(raw);
-}
-
-function resolveDashboardFile(filePath) {
-  const value = String(filePath || '').trim();
-  if (!value) return '';
-  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
-}
-
-function validateTlsKeyPair(keyPem, certPem, keyPath, certPath) {
-  try {
-    const certificate = new crypto.X509Certificate(certPem);
-    const privateKey = crypto.createPrivateKey(keyPem);
-    const certificatePublicKey = certificate.publicKey.export({
-      type: 'spki',
-      format: 'der',
-    });
-    const privateKeyPublicKey = crypto.createPublicKey(privateKey).export({
-      type: 'spki',
-      format: 'der',
-    });
-
-    const matches = certificatePublicKey.length === privateKeyPublicKey.length
-      && crypto.timingSafeEqual(certificatePublicKey, privateKeyPublicKey);
-
-    if (!matches) {
-      const error = new Error(
-        `Dashboard SSL certificate/private key mismatch. The certificate at "${certPath}" was not generated with the private key at "${keyPath}". Replace them with a matching pair from the same certificate issuance.`,
-      );
-      error.code = 'DASHBOARD_SSL_KEY_CERT_MISMATCH';
-      throw error;
-    }
-  } catch (error) {
-    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') throw error;
-
-    const wrapped = new Error(
-      `Dashboard SSL key/certificate validation failed: ${error.message || error}`,
-    );
-    wrapped.code = 'DASHBOARD_SSL_INVALID_CERTIFICATE';
-    wrapped.cause = error;
-    throw wrapped;
-  }
-}
-
-function loadDashboardTlsOptions() {
-  if (!envFlag('WEB_SSL_ENABLED')) return null;
-
-  const provider = String(process.env.WEB_SSL_PROVIDER || 'standard')
-    .trim()
-    .toLowerCase();
-
-  const cloudflareOrigin = provider === 'cloudflare-origin';
-  const keyPath = resolveDashboardFile(
-    cloudflareOrigin
-      ? process.env.WEB_CLOUDFLARE_ORIGIN_KEY_FILE
-      : process.env.WEB_SSL_KEY_FILE,
-  );
-  const certPath = resolveDashboardFile(
-    cloudflareOrigin
-      ? process.env.WEB_CLOUDFLARE_ORIGIN_CERT_FILE
-      : process.env.WEB_SSL_CERT_FILE,
-  );
-  const caPath = resolveDashboardFile(process.env.WEB_SSL_CA_FILE);
-
-  if (!keyPath || !certPath) {
-    if (cloudflareOrigin) {
-      throw new Error(
-        'WEB_SSL_PROVIDER=cloudflare-origin requires WEB_CLOUDFLARE_ORIGIN_KEY_FILE and WEB_CLOUDFLARE_ORIGIN_CERT_FILE.',
-      );
-    }
-
-    throw new Error(
-      'WEB_SSL_ENABLED=true requires WEB_SSL_KEY_FILE and WEB_SSL_CERT_FILE.',
-    );
-  }
-
-  if (!fs.existsSync(keyPath)) {
-    throw new Error(`Dashboard SSL private key not found: ${keyPath}`);
-  }
-  if (!fs.existsSync(certPath)) {
-    throw new Error(`Dashboard SSL certificate not found: ${certPath}`);
-  }
-  if (caPath && !fs.existsSync(caPath)) {
-    throw new Error(`Dashboard SSL CA/chain file not found: ${caPath}`);
-  }
-
-  const key = fs.readFileSync(keyPath);
-  const cert = fs.readFileSync(certPath);
-  validateTlsKeyPair(key, cert, keyPath, certPath);
-
-  return {
-    provider,
-    keyPath,
-    certPath,
-    options: {
-      key,
-      cert,
-      ...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
-      minVersion: 'TLSv1.2',
-    },
-  };
-}
-function cloudflareSslConfig() {
-  return {
-    zoneId: String(process.env.CLOUDFLARE_ZONE_ID || '').trim(),
-    zoneName: String(
-      process.env.CLOUDFLARE_ZONE_NAME
-        || process.env.WEB_CANONICAL_HOST
-        || 'kryndexabot.xyz',
-    ).trim().toLowerCase(),
-    apiToken: String(process.env.CLOUDFLARE_API_TOKEN || '').trim(),
-  };
-}
-
-async function cloudflareJson(endpoint, apiToken) {
-  const response = await fetch(endpoint, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      Accept: 'application/json',
-    },
-    signal: AbortSignal.timeout(8_000),
-  });
-
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  return { response, payload };
-}
-
-function cloudflareErrorMessage(payload, fallback = '') {
-  const detail = Array.isArray(payload?.errors)
-    ? payload.errors.map((item) => item?.message).filter(Boolean).join('; ')
-    : '';
-
-  return detail || fallback;
-}
-
-function isInvalidCloudflareZone(response, payload) {
-  if (response?.status !== 403) return false;
-
-  const detail = cloudflareErrorMessage(payload).toLowerCase();
-  return detail.includes('invalid zone identifier')
-    || detail.includes('zone identifier');
-}
-
-async function resolveCloudflareZoneId(zoneName, apiToken, force = false) {
-  const normalizedName = String(zoneName || '').trim().toLowerCase();
-  if (!normalizedName || !apiToken) return null;
-
-  const now = Date.now();
-
-  if (
-    !force
-    && cloudflareZoneCache.zoneName === normalizedName
-    && cloudflareZoneCache.zoneId
-    && cloudflareZoneCache.expiresAt > now
-  ) {
-    return cloudflareZoneCache.zoneId;
-  }
-
-  if (
-    !force
-    && cloudflareZoneCache.zoneName === normalizedName
-    && cloudflareZoneCache.error
-    && cloudflareZoneCache.errorExpiresAt > now
-  ) {
-    return null;
-  }
-
-  const endpoint = `${CLOUDFLARE_API}/zones?name=${encodeURIComponent(normalizedName)}&status=active&per_page=50`;
-  const { response, payload } = await cloudflareJson(endpoint, apiToken);
-
-  if (!response.ok || !payload?.success) {
-    const detail = cloudflareErrorMessage(
-      payload,
-      `Cloudflare zone lookup failed with HTTP ${response.status}`,
-    );
-
-    cloudflareZoneCache.zoneName = normalizedName;
-    cloudflareZoneCache.zoneId = '';
-    cloudflareZoneCache.expiresAt = 0;
-    cloudflareZoneCache.error = detail;
-    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
-
-    return null;
-  }
-
-  const matches = Array.isArray(payload.result) ? payload.result : [];
-  const exact = matches.find(
-    (zone) => String(zone?.name || '').trim().toLowerCase() === normalizedName,
-  );
-
-  if (!exact?.id) {
-    const detail = `No active Cloudflare zone named "${normalizedName}" was visible to this API token.`;
-
-    cloudflareZoneCache.zoneName = normalizedName;
-    cloudflareZoneCache.zoneId = '';
-    cloudflareZoneCache.expiresAt = 0;
-    cloudflareZoneCache.error = detail;
-    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
-
-    return null;
-  }
-
-  cloudflareZoneCache.zoneName = normalizedName;
-  cloudflareZoneCache.zoneId = String(exact.id);
-  cloudflareZoneCache.expiresAt = now + 6 * 60 * 60_000;
-  cloudflareZoneCache.error = '';
-  cloudflareZoneCache.errorExpiresAt = 0;
-
-  console.log(
-    `[Cloudflare SSL] Resolved Cloudflare zone "${normalizedName}" to ${cloudflareZoneCache.zoneId}.`,
-  );
-
-  return cloudflareZoneCache.zoneId;
-}
-
-async function getCloudflareCertificatePacks() {
-  const {
-    zoneId: configuredZoneId,
-    zoneName,
-    apiToken,
-  } = cloudflareSslConfig();
-
-  if (!apiToken) {
-    return {
-      configured: false,
-      zoneId: configuredZoneId,
-      zoneName,
-      endpoint: null,
-      packs: [],
-      activeCertificates: 0,
-      pendingCertificates: 0,
-      hosts: [],
-      error: null,
-    };
-  }
-
-  let zoneId = configuredZoneId;
-
-  if (!zoneId) {
-    zoneId = await resolveCloudflareZoneId(zoneName, apiToken);
-
-    if (!zoneId) {
-      return {
-        configured: true,
-        zoneId: '',
-        zoneName,
-        endpoint: null,
-        packs: [],
-        activeCertificates: 0,
-        pendingCertificates: 0,
-        hosts: [],
-        error: cloudflareZoneCache.error
-          || `Unable to resolve Cloudflare zone "${zoneName}". Give the token Zone Read access or set CLOUDFLARE_ZONE_ID to the zone's actual Zone ID.`,
-      };
-    }
-  }
-
-  let endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
-
-  try {
-    let { response, payload } = await cloudflareJson(endpoint, apiToken);
-
-    if (isInvalidCloudflareZone(response, payload)) {
-      const resolvedZoneId = await resolveCloudflareZoneId(zoneName, apiToken, true);
-
-      if (resolvedZoneId && resolvedZoneId !== zoneId) {
-        console.warn(
-          `[Cloudflare SSL] Configured CLOUDFLARE_ZONE_ID "${zoneId}" is invalid for this token; using resolved zone "${resolvedZoneId}" for ${zoneName}.`,
-        );
-
-        zoneId = resolvedZoneId;
-        endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
-        ({ response, payload } = await cloudflareJson(endpoint, apiToken));
-      } else {
-        const detail = cloudflareZoneCache.error
-          || cloudflareErrorMessage(payload, 'Invalid zone identifier');
-
-        return {
-          configured: true,
-          zoneId,
-          zoneName,
-          endpoint,
-          packs: [],
-          activeCertificates: 0,
-          pendingCertificates: 0,
-          hosts: [],
-          error: `${detail}. Replace CLOUDFLARE_ZONE_ID with the Zone ID for ${zoneName}, or leave CLOUDFLARE_ZONE_ID blank and allow automatic lookup.`,
-        };
-      }
-    }
-
-    if (!response.ok || !payload?.success) {
-      const detail = cloudflareErrorMessage(payload);
-      throw new Error(
-        `Cloudflare certificate-pack request failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
-      );
-    }
-
-    const packs = Array.isArray(payload.result) ? payload.result : [];
-    const certificates = packs.flatMap((pack) =>
-      Array.isArray(pack?.certificates) ? pack.certificates : [],
-    );
-
-    const activeCertificates = certificates.filter((cert) =>
-      String(cert?.status || '').toLowerCase() === 'active',
-    ).length;
-
-    const pendingCertificates = certificates.filter((cert) => {
-      const status = String(cert?.status || '').toLowerCase();
-      return status && status !== 'active' && status !== 'deleted';
-    }).length;
-
-    const hosts = [...new Set(
-      packs.flatMap((pack) => {
-        const packHosts = Array.isArray(pack?.hosts) ? pack.hosts : [];
-        const certHosts = (Array.isArray(pack?.certificates) ? pack.certificates : [])
-          .flatMap((cert) => Array.isArray(cert?.hosts) ? cert.hosts : []);
-        return [...packHosts, ...certHosts].map(String);
-      }),
-    )].sort();
-
-    return {
-      configured: true,
-      zoneId,
-      zoneName,
-      endpoint,
-      packs,
-      activeCertificates,
-      pendingCertificates,
-      hosts,
-      error: null,
-    };
-  } catch (error) {
-    console.warn(
-      '[Cloudflare SSL] Certificate-pack status unavailable:',
-      error.message || error,
-    );
-
-    return {
-      configured: true,
-      zoneId,
-      zoneName,
-      endpoint,
-      packs: [],
-      activeCertificates: 0,
-      pendingCertificates: 0,
-      hosts: [],
-      error: error.message || String(error),
-    };
-  }
 }
 
 function publicBaseUrl() {
@@ -446,14 +85,6 @@ function absoluteWebUrl(pathname = '/') {
   } catch {
     return `${base}/`;
   }
-}
-
-function canonicalHost() {
-  return String(process.env.WEB_CANONICAL_HOST || 'kryndexabot.xyz')
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/.*$/, '');
 }
 
 function metaDescriptionForTitle(title) {
@@ -498,25 +129,6 @@ function pageMeta(title, meta = {}) {
   };
 }
 
-function httpsRedirectTarget(req) {
-  const baseUrl = String(process.env.BASE_URL || '').trim();
-
-  if (baseUrl) {
-    try {
-      const base = new URL(baseUrl);
-      base.protocol = 'https:';
-      return new URL(req.originalUrl || req.url || '/', base).toString();
-    } catch {
-      // Fall back to request host.
-    }
-  }
-
-  const host = String(req.headers.host || 'localhost').replace(/:\d+$/, '');
-  const httpsPort = Number(process.env.WEB_HTTPS_PORT || process.env.PORT || 443);
-  const portSuffix = httpsPort === 443 ? '' : `:${httpsPort}`;
-  return `https://${host}${portSuffix}${req.originalUrl || req.url || '/'}`;
-}
-
 function parseCookies(req) {
   const cookies = {};
   const header = String(req.headers.cookie || '');
@@ -537,6 +149,33 @@ function parseCookies(req) {
   return cookies;
 }
 
+function cookieSecureForRequest(req) {
+  if (req?.secure) return true;
+
+  const forwardedProto = String(req?.get?.('x-forwarded-proto') || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+
+  return forwardedProto === 'https';
+}
+
+function configuredWebIconUrl() {
+  const raw = String(process.env.WEB_ICON_URL || '').trim();
+  if (!raw || raw === '/favicon.ico') return '';
+
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) {
+    return raw;
+  }
+
+  return `/${raw.replace(/^\.?\//, '')}`;
+}
+
+function renderDiscordLoginButton(label = 'Log in with Discord', extraClass = '') {
+  const classes = ['btn', 'discord-login-button', extraClass].filter(Boolean).join(' ');
+  return `<a class="${classes}" href="/login" data-discord-login><span class="discord-login-mark" aria-hidden="true">◈</span><span>${escapeHtml(label)}</span></a>`;
+}
+
 function renderAddBotButton() {
   const clientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
   if (!clientId) return '';
@@ -549,14 +188,15 @@ function page(title, body, user, meta = {}) {
   const seo = pageMeta(title, meta);
   const auth = user
     ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
-    : '<a class="btn compact" href="/login">Login with Discord</a>';
+    : renderDiscordLoginButton('Log in with Discord', 'compact');
 
   const addBotButton = renderAddBotButton();
+  const webIcon = configuredWebIconUrl() || '/favicon.ico';
 
   const cookieNotice = `<div id="cookieNotice" class="cookie-notice" role="dialog" aria-live="polite" aria-label="Cookie consent">
     <div class="cookie-copy">
-      <strong id="cookieTitle">Cookie consent</strong>
-      <p id="cookieText">MultiBot uses an essential session cookie for Discord dashboard sign-in, OAuth security, and CSRF protection. No advertising cookies are used.</p>
+      <strong id="cookieTitle">Essential dashboard cookies</strong>
+      <p id="cookieText">Kryndexa uses only the essential cookies needed for Discord sign-in, session security, and CSRF protection. No advertising or tracking cookies are used.</p>
     </div>
     <div class="cookie-actions">
       <a class="btn secondary" href="/privacy#cookies">Cookie details</a>
@@ -586,18 +226,18 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:description" content="${escapeHtml(seo.description)}">
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
-<script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-owner-dashboard">
+<script>(()=>{try{const legacy=localStorage.getItem('multibot-theme');const saved=localStorage.getItem('kryndexa-theme')||legacy;const valid=saved==='light'||saved==='dark'?saved:null;const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';const theme=valid||preferred;document.documentElement.dataset.theme=theme;if(legacy&&!localStorage.getItem('kryndexa-theme'))localStorage.setItem('kryndexa-theme',theme);}catch{document.documentElement.dataset.theme='dark';}})();</script>
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-login-lightmode-repair">
 </head><body>
 <header class="site-header"><div class="header-inner">
-  <a class="brand" href="/">Kryndexa Bot</a>
+  <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
     <a href="/">Home</a><a href="/features">Features</a>
     ${user ? `<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
     <a href="/privacy">Privacy</a><a href="/terms">Terms</a>
   </nav>
-  <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme"><span data-theme-icon>◐</span></button><div class="header-auth">${auth}</div></div>
+  <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false"><span class="theme-toggle-icon" data-theme-icon aria-hidden="true">☀</span><span class="theme-toggle-label" data-theme-label>Light Mode</span></button><div class="header-auth">${auth}</div></div>
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
@@ -607,32 +247,68 @@ ${cookieNotice}
   const root=document.documentElement;
   const themeButton=document.querySelector('[data-theme-toggle]');
   const themeIcon=document.querySelector('[data-theme-icon]');
-  const refreshTheme=()=>{const dark=root.dataset.theme==='dark';if(themeIcon)themeIcon.textContent=dark?'☀':'☾';};
-  themeButton?.addEventListener('click',()=>{const next=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=next;localStorage.setItem('multibot-theme',next);refreshTheme();});
+  const themeLabel=document.querySelector('[data-theme-label]');
+  const themeMeta=document.querySelector('meta[name="theme-color"]');
+  const refreshTheme=()=>{
+    const dark=root.dataset.theme==='dark';
+    if(themeIcon)themeIcon.textContent=dark?'☀':'☾';
+    if(themeLabel)themeLabel.textContent=dark?'Light Mode':'Dark Mode';
+    if(themeButton){
+      themeButton.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+      themeButton.setAttribute('aria-pressed',dark?'false':'true');
+      themeButton.title=dark?'Switch to light mode':'Switch to dark mode';
+    }
+    if(themeMeta)themeMeta.setAttribute('content',dark?'#111318':'#f4f7fe');
+  };
+  themeButton?.addEventListener('click',()=>{
+    const next=root.dataset.theme==='dark'?'light':'dark';
+    root.dataset.theme=next;
+    try{
+      localStorage.setItem('kryndexa-theme',next);
+      localStorage.removeItem('multibot-theme');
+    }catch{}
+    refreshTheme();
+  });
   refreshTheme();
 
   const nav=document.querySelector('[data-site-nav]');
   document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
 
   const notice=document.getElementById('cookieNotice');
+  const cookieText=document.getElementById('cookieText');
   const getConsent=()=>{const match=document.cookie.match(/(?:^|; )multibot_cookie_consent=([^;]+)/);return match?decodeURIComponent(match[1]):'';};
-  const refreshConsent=()=>{const loginNeedsConsent=new URLSearchParams(location.search).get('cookie')==='required';if(loginNeedsConsent){notice?.classList.remove('is-hidden');return;}if(['essential','declined'].includes(getConsent()))notice?.classList.add('is-hidden');};
+  const showCookieNotice=()=>{notice?.classList.add('is-visible');notice?.classList.remove('is-hidden');};
+  const hideCookieNotice=()=>{notice?.classList.remove('is-visible');notice?.classList.add('is-hidden');};
+  const refreshConsent=()=>{
+    const loginNeedsConsent=new URLSearchParams(location.search).get('cookie')==='required';
+    const consent=getConsent();
+    if(loginNeedsConsent||!['essential','declined'].includes(consent))showCookieNotice();
+    else hideCookieNotice();
+  };
   let continueToLogin=new URLSearchParams(location.search).get('continue')==='login';
   const setConsent=async(choice)=>{
-    const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin'});
-    if(!r.ok)return;
-    notice?.classList.add('is-hidden');
-    if(choice==='accept'&&continueToLogin){
-      location.assign('/login');
+    const accept=document.getElementById('cookieAccept');
+    const decline=document.getElementById('cookieDecline');
+    if(accept)accept.disabled=true;if(decline)decline.disabled=true;
+    try{
+      const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin',headers:{'Accept':'application/json'}});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      hideCookieNotice();
+      if(choice==='accept'&&continueToLogin)location.assign('/login');
+    }catch(error){
+      if(cookieText)cookieText.textContent='Unable to save your cookie preference. Please try again.';
+      showCookieNotice();
+    }finally{
+      if(accept)accept.disabled=false;if(decline)decline.disabled=false;
     }
   };
   document.getElementById('cookieAccept')?.addEventListener('click',()=>setConsent('accept'));
   document.getElementById('cookieDecline')?.addEventListener('click',()=>{continueToLogin=false;setConsent('decline');});
-  document.querySelectorAll('a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{
+  document.querySelectorAll('[data-discord-login],a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{
     if(getConsent()==='essential')return;
     event.preventDefault();
     continueToLogin=true;
-    notice?.classList.remove('is-hidden');
+    showCookieNotice();
   }));
 
   const toast=document.getElementById('dashboardToast');let toastTimer;
@@ -663,16 +339,26 @@ ${cookieNotice}
 
   document.querySelectorAll('[data-stream-platform]').forEach(select=>{
     const form=select.closest('form');const input=form?.querySelector('[data-stream-identifier]');const help=form?.querySelector('[data-stream-help]');
-    const update=()=>{if(!input||!help)return;if(select.value==='youtube'){input.placeholder='UCxxxxxxxxxxxxxxxxxxxxxx';help.textContent='Use the YouTube channel ID.';}
-      else if(select.value==='kick'){input.placeholder='Broadcaster ID or channel slug';help.textContent='Use a Kick broadcaster ID or channel slug.';}
-      else{input.placeholder='Twitch username';help.textContent='Twitch username without @.';}};
+    const update=()=>{
+      const provider=select.value||'twitch';
+      if(input&&help){
+        if(provider==='youtube'){input.placeholder='UCxxxxxxxxxxxxxxxxxxxxxx';help.textContent='Use the YouTube channel ID.';}
+        else if(provider==='kick'){input.placeholder='Broadcaster ID or channel slug';help.textContent='Use a Kick broadcaster ID or channel slug.';}
+        else{input.placeholder='Twitch username';help.textContent='Twitch username without @.';}
+      }
+      document.querySelectorAll('[data-stream-embed-panel]').forEach(panel=>{panel.hidden=panel.dataset.streamEmbedPanel!==provider;});
+      const heading=document.querySelector('[data-stream-embed-heading]');
+      if(heading)heading.textContent=provider==='youtube'?'YouTube':provider==='kick'?'Kick':'Twitch';
+    };
     select.addEventListener('change',update);update();
   });
 
   document.querySelectorAll('[data-embed-editor]').forEach(editor=>{
     const preview=editor.querySelector('[data-embed-preview]');if(!preview)return;
     const update=()=>{const val=(sel)=>editor.querySelector(sel)?.value||'';preview.style.setProperty('--embed-color',val('[data-embed-color]')||'#5865F2');
-      preview.querySelector('[data-preview-title]').textContent=val('[data-embed-title]')||'Embed title';
+      const previewTitle=preview.querySelector('[data-preview-title]');const titleValue=val('[data-embed-title]')||'Embed title';const titleUrl=val('[data-embed-title-url]').trim();
+      previewTitle.textContent=titleValue;
+      if(previewTitle.tagName==='A'){if(/^https?:\/\//i.test(titleUrl)){previewTitle.href=titleUrl;previewTitle.classList.add('has-link');}else{previewTitle.removeAttribute('href');previewTitle.classList.remove('has-link');}}
       preview.querySelector('[data-preview-description]').textContent=val('[data-embed-description]')||'Embed description';
       preview.querySelector('[data-preview-footer]').textContent=val('[data-embed-footer]');
       const fields=preview.querySelector('[data-preview-fields]');fields.innerHTML='';
@@ -966,50 +652,112 @@ function featureFieldHtml(field, value, resources) {
   return `<label>${escapeHtml(field.label)}<input type="text" name="cfg_${escapeHtml(field.key)}" value="${escapeHtml(String(safeValue))}"></label>`;
 }
 
+function streamPlatformMeta(platform, identifier = '') {
+  const value = String(identifier || '').trim();
+
+  if (platform === 'youtube') {
+    return {
+      label: 'YouTube',
+      short: 'YT',
+      css: 'youtube',
+      embedKey: 'youtube_live',
+      url: value ? `https://www.youtube.com/channel/${encodeURIComponent(value)}` : 'https://www.youtube.com/',
+    };
+  }
+
+  if (platform === 'kick') {
+    return {
+      label: 'Kick',
+      short: 'K',
+      css: 'kick',
+      embedKey: 'kick_live',
+      url: value ? `https://kick.com/${encodeURIComponent(value)}` : 'https://kick.com/',
+    };
+  }
+
+  return {
+    label: 'Twitch',
+    short: 'T',
+    css: 'twitch',
+    embedKey: 'twitch_live',
+    url: value ? `https://www.twitch.tv/${encodeURIComponent(value)}` : 'https://www.twitch.tv/',
+  };
+}
+
+function renderStreamEmbedEditor(guildId, config, csrf) {
+  const fields = [...(config.fields || [])];
+  while (fields.length < 5) fields.push({ name: '', value: '', inline: false });
+
+  const rows = fields.slice(0, 5).map((field, index) => `
+    <div class="embed-field-row">
+      <input name="fieldName_${index}" data-field-name maxlength="256" value="${escapeHtml(field.name || '')}" placeholder="Field name">
+      <input name="fieldValue_${index}" data-field-value maxlength="1024" value="${escapeHtml(field.value || '')}" placeholder="Field value">
+      <label><input type="checkbox" name="fieldInline_${index}" data-field-inline ${field.inline ? 'checked' : ''}> Inline</label>
+    </div>`
+  ).join('');
+
+  const meta = streamPlatformMeta(config.key.replace('_live', ''));
+
+  return `<form class="stream-embed-editor" data-embed-editor method="post" action="/dashboard/${guildId}/streams/embed/${encodeURIComponent(config.key)}">
+    <input type="hidden" name="_csrf" value="${escapeHtml(csrf)}">
+    <div class="stream-embed-editor-head">
+      <div>
+        <span class="eyebrow">${escapeHtml(meta.label.toUpperCase())} EMBED</span>
+        <h3>${escapeHtml(config.label)}</h3>
+      </div>
+      <span class="provider-chip ${meta.css}">${escapeHtml(meta.label)}</span>
+    </div>
+    <div class="embed-editor-layout">
+      <div class="embed-editor-controls">
+        <label>Title
+          <input name="title" data-embed-title maxlength="256" value="${escapeHtml(config.title)}">
+        </label>
+        <label>Description
+          <textarea name="description" data-embed-description maxlength="4000" rows="4">${escapeHtml(config.description)}</textarea>
+        </label>
+        <div class="form-grid">
+          <label>Color
+            <input name="color" data-embed-color maxlength="7" value="${escapeHtml(config.color)}" placeholder="#5865F2">
+          </label>
+          <label>Footer
+            <input name="footer" data-embed-footer maxlength="2048" value="${escapeHtml(config.footer)}">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>Image URL
+            <input name="imageUrl" maxlength="1000" value="${escapeHtml(config.imageUrl || '')}" placeholder="https://...">
+          </label>
+          <label>Thumbnail URL
+            <input name="thumbnailUrl" maxlength="1000" value="${escapeHtml(config.thumbnailUrl || '')}" placeholder="https://...">
+          </label>
+        </div>
+        <label class="feature-check"><input type="checkbox" name="fieldsEnabled" data-embed-fields-enabled ${config.fieldsEnabled ? 'checked' : ''}> Show custom embed fields</label>
+        <div class="embed-fields-editor">${rows}</div>
+        <div class="token-row"><span>{user}</span><span>{title}</span><span>{game}</span><span>{viewers}</span><span>{started}</span><span>{url}</span><span>{platform}</span></div>
+        <button class="btn" type="submit">Save ${escapeHtml(meta.label)} Embed</button>
+      </div>
+      <div class="embed-preview-card" data-embed-preview style="--embed-color:${escapeHtml(config.color)}">
+        <div class="embed-preview-bar"></div>
+        <div class="embed-preview-body">
+          <strong data-preview-title>${escapeHtml(config.title)}</strong>
+          <p data-preview-description>${escapeHtml(config.description)}</p>
+          <div class="embed-preview-fields" data-preview-fields></div>
+          <small data-preview-footer>${escapeHtml(config.footer)}</small>
+        </div>
+      </div>
+    </div>
+  </form>`;
+}
+
 function startDashboard(client) {
   console.log(`[Dashboard OAuth] Signed OAuth state v${DASHBOARD_OAUTH_STATE_VERSION} enabled.`);
   const addBotButton = renderAddBotButton();
   const app = express();
   app.disable('x-powered-by');
 
-  // Trust one reverse-proxy hop in production so req.secure honors
-  // X-Forwarded-Proto from Cloudflare, NGINX, Caddy, etc.
-  if (process.env.NODE_ENV === 'production' || envFlag('WEB_TRUST_PROXY')) {
+  if (process.env.NODE_ENV === 'production') {
     app.set('trust proxy', 1);
   }
-
-  app.use((req, res, next) => {
-    if (!envFlag('WEB_CANONICAL_REDIRECT')) return next();
-
-    const expectedHost = canonicalHost();
-    const receivedHost = String(req.hostname || '').trim().toLowerCase();
-
-    if (!expectedHost || !receivedHost || receivedHost === expectedHost) return next();
-
-    const destination = new URL(req.originalUrl || req.url || '/', `https://${expectedHost}`);
-    return res.redirect(308, destination.toString());
-  });
-
-  app.use((req, res, next) => {
-    const forwardedProto = String(req.get('x-forwarded-proto') || '')
-      .split(',')[0]
-      .trim()
-      .toLowerCase();
-    const isSecure = req.secure || forwardedProto === 'https';
-
-    if (isSecure && envFlag('WEB_HSTS_ENABLED', process.env.NODE_ENV === 'production')) {
-      res.setHeader(
-        'Strict-Transport-Security',
-        'max-age=31536000; includeSubDomains',
-      );
-    }
-
-    if (envFlag('WEB_FORCE_HTTPS') && !isSecure) {
-      return res.redirect(308, httpsRedirectTarget(req));
-    }
-
-    return next();
-  });
 
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(express.static(path.join(process.cwd(), 'public')));
@@ -1051,8 +799,11 @@ function startDashboard(client) {
   }));
 
   app.get('/favicon.ico', (_req, res) => {
+    const configuredIcon = configuredWebIconUrl();
+    if (configuredIcon) return res.redirect(302, configuredIcon);
+
     if (!client.user) return res.status(204).end();
-    return res.redirect(302, client.user.displayAvatarURL({ extension: 'png', size: 64 }));
+    return res.redirect(302, client.user.displayAvatarURL({ extension: 'png', size: 128 }));
   });
 
   app.get('/', (req, res) => {
@@ -1062,7 +813,7 @@ function startDashboard(client) {
         <h1>Your Discord server, under control.</h1>
         <p class="hero-slogan"><strong>One Bot. Every Tool. Total Control. The Command Center for Your Discord Server.</strong></p>
         <p class="hero-detail">Moderation, tickets, logging, streaming alerts, music, automation, analytics, embeds and server configuration from one responsive dashboard.</p>
-        <div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : '<a class="btn" href="/login">Login with Discord</a>'} ${addBotButton}</div>
+        <div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div>
       </div>
       <aside class="hero-console" aria-label="Kryndexa Bot feature categories">
         <div class="hero-console-heading">
@@ -1092,7 +843,7 @@ function startDashboard(client) {
       return `<section class="public-feature-section"><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${features.length} module${features.length === 1 ? '' : 's'}</span></div><div class="public-feature-grid">${features.map((feature) => `<article class="public-feature-card"><div class="public-feature-top"><div class="feature-icon">${escapeHtml(feature.icon)}</div><div><span class="mini-label">${escapeHtml(feature.priority)} priority</span><h3>${escapeHtml(feature.title)}</h3></div></div><p>${escapeHtml(feature.description)}</p><div class="public-feature-meta"><span>${feature.locked ? 'Always enabled' : feature.defaultEnabled ? 'Enabled by default' : 'Server configurable'}</span><small>${escapeHtml(feature.requirement || 'Configured directly from the server dashboard.')}</small></div></article>`).join('')}</div></section>`;
     }).join('');
 
-    const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : '<a class="btn" href="/login">Login to Dashboard</a>'} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
+    const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
     return res.send(page('Features • Kryndexa Bot', body, req.session.user, {
       path: '/features',
       description: 'Explore Kryndexa Bot modules for moderation, tickets, logging, verification, music, automations, streaming alerts, analytics and Discord community management.',
@@ -1177,23 +928,32 @@ function startDashboard(client) {
     res.cookie('multibot_cookie_consent', 'essential', {
       httpOnly: false,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: cookieSecureForRequest(req),
+      path: '/',
       maxAge: 365 * 24 * 60 * 60 * 1000,
     });
+
+    if (String(req.query.continue || '') === 'login') {
+      return res.redirect(303, '/login');
+    }
+
     return res.status(204).end();
   });
 
   app.post('/cookie-consent/decline', (req, res) => {
+    const secure = cookieSecureForRequest(req);
     const finish = () => {
       res.clearCookie('multibot.sid', {
         httpOnly: true,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure,
+        path: '/',
       });
       res.cookie('multibot_cookie_consent', 'declined', {
         httpOnly: false,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure,
+        path: '/',
         maxAge: 365 * 24 * 60 * 60 * 1000,
       });
       return res.status(204).end();
@@ -1206,7 +966,36 @@ function startDashboard(client) {
   app.get('/login', async (req, res) => {
     try {
       const consent = parseCookies(req).multibot_cookie_consent;
-      if (consent !== 'essential') return res.redirect('/?cookie=required&continue=login');
+      if (consent !== 'essential') {
+        const body = `<section class="login-consent-shell">
+          <div class="login-consent-card panel">
+            <span class="discord-login-logo" aria-hidden="true">◈</span>
+            <span class="eyebrow">DISCORD SIGN-IN</span>
+            <h1>Continue with Discord</h1>
+            <p>Kryndexa needs its essential dashboard session cookie to securely complete Discord OAuth, protect the login state, and keep you signed in.</p>
+            <div class="login-consent-points">
+              <span>Essential session cookie only</span>
+              <span>No advertising cookies</span>
+              <span>No tracking cookie requirement</span>
+            </div>
+            <form method="post" action="/cookie-consent/accept?continue=login">
+              <button class="btn discord-login-button login-consent-submit" type="submit"><span class="discord-login-mark" aria-hidden="true">◈</span><span>Accept Essentials & Continue with Discord</span></button>
+            </form>
+            <div class="login-consent-links"><a href="/privacy#cookies">Cookie details</a><a href="/">Return Home</a></div>
+          </div>
+        </section>`;
+
+        return res.status(200).send(page(
+          'Log in with Discord • Kryndexa Bot',
+          body,
+          req.session.user,
+          {
+            path: '/login',
+            private: true,
+            description: 'Secure Discord login for the Kryndexa Bot dashboard.',
+          },
+        ));
+      }
 
       const redirectUri = resolveOAuthRedirectUri(req);
       const state = createOAuthState(redirectUri);
@@ -1340,20 +1129,54 @@ function startDashboard(client) {
       const managedGuilds = await getManagedGuilds(req, client);
       req.session.user.isBotOwner = await isBotOwner(client, req.session.user.id);
 
-      const dashboardStats = await Promise.all(managedGuilds.map(async (managed) => {
-        const guild = client.guilds.cache.get(managed.id);
-        if (!guild) return null;
+      // The Your Servers overview must reflect only the signed-in user's dashboard access.
+      // Deduplicate Discord's guild list by ID before calculating any totals.
+      const accessibleGuilds = [...new Map(
+        managedGuilds.map((guild) => [String(guild.id), guild]),
+      ).values()];
 
-        const [tickets, analytics] = await Promise.all([
+      const dashboardStats = await Promise.all(accessibleGuilds.map(async (managed) => {
+        const guild = client.guilds.cache.get(managed.id);
+        if (!guild) {
+          return {
+            id: managed.id,
+            name: managed.name,
+            icon: managed.icon || null,
+            members: 0,
+            channels: 0,
+            roles: 0,
+            openTickets: 0,
+            commandUses: 0,
+          };
+        }
+
+        const [ticketsResult, analyticsResult] = await Promise.allSettled([
           listGuildTickets(guild.id),
           getAnalytics(guild.id),
         ]);
+
+        const tickets = ticketsResult.status === 'fulfilled' ? ticketsResult.value : [];
+        const analytics = analyticsResult.status === 'fulfilled'
+          ? analyticsResult.value
+          : { uses: 0 };
+
+        if (ticketsResult.status === 'rejected') {
+          console.warn(
+            `[Dashboard] Ticket total unavailable for ${guild.name} (${guild.id}): ${ticketsResult.reason?.message || ticketsResult.reason}`,
+          );
+        }
+
+        if (analyticsResult.status === 'rejected') {
+          console.warn(
+            `[Dashboard] Command usage unavailable for ${guild.name} (${guild.id}): ${analyticsResult.reason?.message || analyticsResult.reason}`,
+          );
+        }
 
         return {
           id: managed.id,
           name: managed.name,
           icon: managed.icon || guild.icon || null,
-          members: guild.memberCount,
+          members: Number(guild.memberCount || 0),
           channels: guild.channels.cache.size,
           roles: Math.max(0, guild.roles.cache.size - 1),
           openTickets: tickets.filter((ticket) => ticket.status === 'open').length,
@@ -1361,14 +1184,16 @@ function startDashboard(client) {
         };
       }));
 
-      const rows = dashboardStats.filter(Boolean);
+      const rows = dashboardStats;
       const totals = rows.reduce((sum, item) => ({
+        servers: sum.servers + 1,
         members: sum.members + item.members,
         channels: sum.channels + item.channels,
         roles: sum.roles + item.roles,
         openTickets: sum.openTickets + item.openTickets,
         commandUses: sum.commandUses + item.commandUses,
       }), {
+        servers: 0,
         members: 0,
         channels: 0,
         roles: 0,
@@ -1377,7 +1202,7 @@ function startDashboard(client) {
       });
 
       const rowById = new Map(rows.map((item) => [item.id, item]));
-      const cards = managedGuilds.length ? managedGuilds.map((managed) => {
+      const cards = accessibleGuilds.length ? accessibleGuilds.map((managed) => {
         const stats = rowById.get(managed.id);
         const icon = managed.icon
           ? `<img src="https://cdn.discordapp.com/icons/${managed.id}/${managed.icon}.png?size=128" alt="">`
@@ -1428,7 +1253,7 @@ function startDashboard(client) {
             <span class="summary-icon summary-icon-servers" aria-hidden="true">
               <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01M12 7h5M12 17h5"/></svg>
             </span>
-            <div><strong>${rows.length.toLocaleString()}</strong><span>Servers</span></div>
+            <div><strong>${totals.servers.toLocaleString()}</strong><span>Servers</span></div>
           </div>
           <div class="summary-card">
             <span class="summary-icon summary-icon-members" aria-hidden="true">
@@ -1469,7 +1294,7 @@ function startDashboard(client) {
               <h2>Choose a server</h2>
               <p>Open a server to configure Kryndexa or review its statistics.</p>
             </div>
-            <span class="managed-server-count">${managedGuilds.length} managed</span>
+            <span class="managed-server-count">${totals.servers.toLocaleString()} managed</span>
           </div>
 
           <div class="dashboard-toolbar">
@@ -1526,87 +1351,230 @@ function startDashboard(client) {
   };
 
   app.get('/dashboard/owner', requireAuth, requireBotOwner, async (req, res) => {
-    try {
-      const cloudflareSsl = await getCloudflareCertificatePacks();
-      const ownerIds = String(process.env.BOT_OWNER_IDS || '')
-        .split(',')
-        .map((id) => id.trim())
-        .filter(Boolean);
+    const ownerIds = String(process.env.BOT_OWNER_IDS || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
 
-      const body = `<section class="owner-dashboard-shell">
-        <section class="owner-dashboard-hero">
-          <div>
-            <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
-            <span class="eyebrow">BOT OWNERS</span>
-            <h1>Owner Control Center</h1>
-            <p>Private infrastructure, application and service controls for Kryndexa Bot owners.</p>
-          </div>
-          <div class="owner-dashboard-meta">
-            <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
-            <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
-          </div>
-        </section>
+    const ownerCommands = commandCatalog().filter((command) => command.ownerOnly);
+    const paidStreamAccess = await listPaidStreamAlertAccess();
+    const ownerCommandCards = ownerCommands.length
+      ? ownerCommands.map((command) => {
+          const subcommands = command.subcommands.length
+            ? `<div class="command-subcommands">${command.subcommands.map((sub) => `<span>/${escapeHtml(command.name)} ${escapeHtml(sub)}</span>`).join('')}</div>`
+            : '';
 
-        <section class="owner-section">
-          <div class="owner-section-heading">
-            <div>
-              <span class="eyebrow">INFRASTRUCTURE</span>
-              <h2>Cloudflare SSL</h2>
-              <p>Certificate monitoring is restricted to bot owners and is not included in regular administrator dashboards.</p>
-            </div>
-          </div>
+          const aliases = command.aliases.length
+            ? `<span class="command-meta">Aliases: ${command.aliases.map((alias) => escapeHtml(alias)).join(', ')}</span>`
+            : '';
 
-          <section class="cloudflare-ssl-card owner-cloudflare-card" aria-label="Cloudflare SSL status">
-            <div class="cloudflare-ssl-head">
-              <div class="cloudflare-ssl-title">
-                <span class="cloudflare-logo" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M7.2 17h10.9a3.4 3.4 0 0 0 .4-6.8A5.4 5.4 0 0 0 8.2 8.8 4.2 4.2 0 0 0 7.2 17Z"/><path d="M4.8 17H4a2.5 2.5 0 1 1 .6-4.9"/></svg>
-                </span>
-                <div>
-                  <span class="eyebrow">CLOUDFLARE SSL</span>
-                  <h3>Certificate Packs</h3>
-                  <p>Edge certificate status for the configured Cloudflare zone.</p>
-                </div>
+          return `<article class="command-card enabled owner-command-card">
+            <div class="command-card-head">
+              <code>/${escapeHtml(command.name)}</code>
+              <div class="command-badges">
+                <span class="pill subtle">Owner only</span>
+                <span class="pill subtle">${command.guildOnly ? 'Server' : 'Global capable'}</span>
+                <span class="pill subtle">${command.prefixBackup ? 'Prefix backup' : 'Slash only'}</span>
               </div>
-              <span class="cloudflare-status ${!cloudflareSsl.configured ? 'unconfigured' : cloudflareSsl.error ? 'error' : 'ok'}">
-                <i></i>
-                ${!cloudflareSsl.configured ? 'Not Configured' : cloudflareSsl.error ? 'API Error' : 'Connected'}
-              </span>
             </div>
-            <div class="cloudflare-ssl-metrics">
-              <div><span>Packs</span><strong>${cloudflareSsl.packs.length.toLocaleString()}</strong></div>
-              <div><span>Active Certificates</span><strong>${cloudflareSsl.activeCertificates.toLocaleString()}</strong></div>
-              <div><span>Pending / Other</span><strong>${cloudflareSsl.pendingCertificates.toLocaleString()}</strong></div>
-              <div><span>Hosts</span><strong>${cloudflareSsl.hosts.length.toLocaleString()}</strong></div>
-            </div>
-            <div class="cloudflare-ssl-foot">
-              <span>${cloudflareSsl.error
-                ? escapeHtml(cloudflareSsl.error)
-                : cloudflareSsl.configured
-                  ? `Zone ${escapeHtml(cloudflareSsl.zoneId)} • Full (strict) recommended`
-                  : 'Set CLOUDFLARE_ZONE_NAME / CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable certificate monitoring.'}</span>
-              <a class="btn secondary compact" href="/api/cloudflare/ssl" target="_blank" rel="noreferrer">View SSL JSON</a>
-            </div>
-          </section>
-        </section>
-      </section>`;
+            <p>${escapeHtml(command.description)}</p>
+            <span class="command-meta">Module: ${escapeHtml(command.modulePath || 'unknown')}</span>
+            ${subcommands}
+            ${aliases}
+          </article>`;
+        }).join('')
+      : '<div class="empty">No owner-only commands are currently loaded.</div>';
 
-      return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
-        path: '/dashboard/owner',
-        private: true,
-        description: 'Restricted Kryndexa Bot owner infrastructure dashboard.',
-      }));
+    const guildOptions = [...client.guilds.cache.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((guild) => `<option value="${guild.id}">${escapeHtml(guild.name)} • ${guild.id}</option>`)
+      .join('');
+
+    const paidAccessCards = paidStreamAccess.length
+      ? paidStreamAccess.map((access) => {
+          const guild = client.guilds.cache.get(access.guildId);
+          return `<article class="paid-access-card">
+            <div><strong>${escapeHtml(guild?.name || 'Unknown / disconnected server')}</strong><span>${escapeHtml(access.guildId)}</span></div>
+            <div><span class="pill subtle">Paid • 15 streamers</span>${access.note ? `<small>${escapeHtml(access.note)}</small>` : ''}</div>
+          </article>`;
+        }).join('')
+      : '<div class="empty">No servers currently have paid Stream Alerts access.</div>';
+
+    const body = `<section class="owner-dashboard-shell">
+      <section class="owner-dashboard-hero">
+        <div>
+          <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
+          <span class="eyebrow">BOT OWNERS</span>
+          <h1>Owner Control Center</h1>
+          <p>Private owner commands, paid feature access, and bot-wide broadcast controls for Kryndexa Bot.</p>
+        </div>
+        <div class="owner-dashboard-meta">
+          <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
+          <span><strong>${paidStreamAccess.length.toLocaleString()}</strong> paid Stream Alert servers</span>
+        </div>
+      </section>
+
+      <section class="owner-section owner-broadcast-section">
+        <div class="owner-section-heading">
+          <div>
+            <span class="eyebrow">GLOBAL BROADCAST</span>
+            <h2>Important Announcement Panel</h2>
+            <p>Compose an embed, preview it, then deliver it through each server's configured broadcast channel or Kryndexa's safe fallback channel selection.</p>
+          </div>
+        </div>
+        <form class="owner-broadcast-editor" data-embed-editor method="post" action="/dashboard/owner/broadcast">
+          <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+          <div class="embed-editor-layout">
+            <div class="embed-editor-controls">
+              <label>Announcement Title<input name="title" data-embed-title maxlength="256" value="Important Kryndexa Bot Announcement" required></label>
+              <label>Title Link <small>(optional clickable embed title)</small><input name="titleUrl" data-embed-title-url maxlength="1000" placeholder="https://example.com/announcement"></label>
+              <label>Message<textarea name="message" data-embed-description maxlength="4000" rows="8" placeholder="Write the important announcement here..." required></textarea></label>
+              <div class="form-grid">
+                <label>Embed Color<input name="color" data-embed-color maxlength="7" value="#5865F2"></label>
+                <label>Footer<input name="footer" data-embed-footer maxlength="2048" value="Kryndexa Bot • Owner Broadcast"></label>
+              </div>
+              <div class="form-grid">
+                <label>Image URL<input name="imageUrl" maxlength="1000" placeholder="https://..."></label>
+                <label>Thumbnail URL<input name="thumbnailUrl" maxlength="1000" placeholder="https://..."></label>
+              </div>
+              <div class="checks owner-broadcast-checks">
+                <label><input type="checkbox" name="mentionEveryone" checked> Mention @everyone where permitted</label>
+                <label><input type="checkbox" name="dryRun"> Dry run only — calculate delivery without sending</label>
+              </div>
+              <button class="btn" type="submit" onclick="return confirm('Run this owner broadcast across all connected servers?')">Send / Run Broadcast</button>
+            </div>
+            <div class="embed-preview-card owner-broadcast-preview" data-embed-preview style="--embed-color:#5865F2">
+              <div class="embed-preview-bar"></div>
+              <div class="embed-preview-body">
+                <span class="mini-label">DISCORD PREVIEW</span>
+                <a data-preview-title class="embed-preview-title-link" target="_blank" rel="noreferrer">Important Kryndexa Bot Announcement</a>
+                <p data-preview-description>Write the important announcement here...</p>
+                <div class="embed-preview-fields" data-preview-fields></div>
+                <small data-preview-footer>Kryndexa Bot • Owner Broadcast</small>
+              </div>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="owner-section">
+        <div class="owner-section-heading">
+          <div>
+            <span class="eyebrow">STREAM ALERT ACCESS</span>
+            <h2>Paid Streamer Limits</h2>
+            <p>Free servers can configure ${FREE_STREAMER_LIMIT} streamers. Servers granted paid access can configure up to ${PAID_STREAMER_LIMIT}. This entitlement layer is ready for a payment provider to automate later.</p>
+          </div>
+        </div>
+        <form class="paid-access-form" method="post" action="/dashboard/owner/stream-access">
+          <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+          <label>Server<select name="guildId" required><option value="">Choose a connected server</option>${guildOptions}</select></label>
+          <label>Access Tier<select name="tier" required><option value="paid">Paid • ${PAID_STREAMER_LIMIT} streamers</option><option value="free">Free • ${FREE_STREAMER_LIMIT} streamers</option></select></label>
+          <label>Internal Note<input name="note" maxlength="500" placeholder="Payment/order/reference note (optional)"></label>
+          <button class="btn" type="submit">Update Stream Access</button>
+        </form>
+        <div class="paid-access-list">${paidAccessCards}</div>
+      </section>
+
+      <section class="owner-section">
+        <div class="owner-section-heading">
+          <div>
+            <span class="eyebrow">OWNER COMMANDS</span>
+            <h2>Bot Owner Command Center</h2>
+            <p>These commands are hidden from normal server dashboards and remain restricted by server-side bot-owner checks when executed.</p>
+          </div>
+        </div>
+        <div class="command-grid">${ownerCommandCards}</div>
+      </section>
+
+      <section class="owner-section">
+        <div class="owner-section-heading">
+          <div><span class="eyebrow">ACCESS</span><h2>Owner Access</h2><p>Only configured bot owners can open this page. Direct requests from non-owners return HTTP 403.</p></div>
+        </div>
+        <div class="owner-dashboard-meta">
+          <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
+          <span><strong>${ownerCommands.filter((command) => command.prefixBackup).length}</strong> prefix backup${ownerCommands.filter((command) => command.prefixBackup).length === 1 ? '' : 's'}</span>
+        </div>
+      </section>
+    </section>`;
+
+    return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
+      path: '/dashboard/owner',
+      private: true,
+      description: 'Restricted Kryndexa Bot owner commands, broadcasts, and paid access controls.',
+    }));
+  });
+
+  app.post('/dashboard/owner/stream-access', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      const guildId = String(req.body.guildId || '').trim();
+      if (!client.guilds.cache.has(guildId)) return res.status(400).send('Choose a connected Discord server.');
+
+      const paid = String(req.body.tier || '') === 'paid';
+
+      if (!paid) {
+        const configuredStreamers = await listStreamAnnouncements(guildId);
+        if (configuredStreamers.length > FREE_STREAMER_LIMIT) {
+          return res.status(409).send(page(
+            'Cannot downgrade Stream Alerts • Kryndexa Bot',
+            `<div class="empty"><strong>This server still has ${configuredStreamers.length} configured streamers.</strong><p>Reduce the server to ${FREE_STREAMER_LIMIT} or fewer streamers before switching it back to free access.</p><p><a class="btn secondary" href="/dashboard/owner">Return to Bot Owners</a></p></div>`,
+            req.session.user,
+            { private: true },
+          ));
+        }
+      }
+
+      await setStreamAlertPaidAccess(guildId, {
+        paid,
+        grantedBy: req.session.user.id,
+        note: req.body.note || '',
+      });
+
+      return res.redirect('/dashboard/owner');
     } catch (error) {
-      console.error('[Dashboard Owner] Owner dashboard failed:', error);
-      return res.status(500).send(page(
-        'Owner dashboard error • Kryndexa Bot',
-        '<div class="empty"><strong>Owner dashboard unavailable.</strong><p>The private owner control center could not be loaded.</p></div>',
-        req.session.user,
-        { path: '/dashboard/owner', private: true },
-      ));
+      console.error('[Dashboard Owner] Unable to update stream access:', error);
+      return res.status(500).send(page('Owner access error • Kryndexa Bot', `<div class="empty"><strong>Unable to update Stream Alerts access.</strong><p>${escapeHtml(error.message || String(error))}</p></div>`, req.session.user, { private: true }));
     }
   });
 
+  app.post('/dashboard/owner/broadcast', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      const title = String(req.body.title || 'Kryndexa Bot Announcement').trim().slice(0, 256);
+      const message = String(req.body.message || '').trim().slice(0, 4000);
+      if (!message) return res.status(400).send('Broadcast message is required.');
+
+      const titleUrl = String(req.body.titleUrl || '').trim();
+      const imageUrl = String(req.body.imageUrl || '').trim();
+      const thumbnailUrl = String(req.body.thumbnailUrl || '').trim();
+      if (titleUrl && !/^https?:\/\//i.test(titleUrl)) return res.status(400).send('Title link must use http:// or https://.');
+      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return res.status(400).send('Image URL must use http:// or https://.');
+      if (thumbnailUrl && !/^https?:\/\//i.test(thumbnailUrl)) return res.status(400).send('Thumbnail URL must use http:// or https://.');
+
+      const owner = await client.users.fetch(req.session.user.id).catch(() => null);
+      const results = await broadcastToGuilds(client, {
+        title,
+        titleUrl,
+        message,
+        owner,
+        dryRun: req.body.dryRun === 'on',
+        color: req.body.color || '#5865F2',
+        footer: req.body.footer || '',
+        imageUrl,
+        thumbnailUrl,
+        mentionEveryone: req.body.mentionEveryone === 'on',
+      });
+      const summary = formatBroadcastSummary(results);
+
+      return res.send(page(
+        'Broadcast result • Kryndexa Bot',
+        `<section class="owner-dashboard-shell"><section class="owner-section"><span class="eyebrow">GLOBAL BROADCAST</span><h1>${results.dryRun ? 'Dry Run Complete' : 'Broadcast Complete'}</h1><pre class="owner-broadcast-result">${escapeHtml(summary)}</pre><p><a class="btn" href="/dashboard/owner">← Back to Bot Owners</a></p></section></section>`,
+        req.session.user,
+        { path: '/dashboard/owner', private: true },
+      ));
+    } catch (error) {
+      console.error('[Dashboard Owner] Broadcast failed:', error);
+      return res.status(500).send(page('Broadcast failed • Kryndexa Bot', `<div class="empty"><strong>Owner broadcast failed.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn secondary" href="/dashboard/owner">Return to Bot Owners</a></p></div>`, req.session.user, { private: true }));
+    }
+  });
   app.get('/dashboard/statistics', requireAuth, async (req, res) => {
     try {
       const managedGuilds = await getManagedGuilds(req, client);
@@ -1655,13 +1623,15 @@ function startDashboard(client) {
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
       const guild = client.guilds.cache.get(req.params.guildId);
       if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
-      const [settings, tickets, twitchAnnouncements, ticketTypes, featureStates, automationRules] = await Promise.all([
+      const [settings, tickets, streamAnnouncements, ticketTypes, featureStates, automationRules, embedConfigs, streamAccess] = await Promise.all([
         getGuildSettings(guild.id),
         listGuildTickets(guild.id),
-        listTwitchAnnouncements(guild.id),
+        listStreamAnnouncements(guild.id),
         listTicketTypes(guild.id),
         getGuildFeatures(guild.id),
         listAutomationRules(guild.id),
+        listEmbedConfigs(guild.id),
+        getStreamAlertAccess(guild.id),
       ]);
       const textChannels = [...guild.channels.cache.values()].filter((c) => c.type === ChannelType.GuildText).sort((a, b) => a.name.localeCompare(b.name));
       const broadcastChannels = [...guild.channels.cache.values()].filter((c) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(c.type)).sort((a, b) => a.name.localeCompare(b.name));
@@ -1765,48 +1735,51 @@ function startDashboard(client) {
         </div>
       </form>`).join('');
 
-      const twitchCards = twitchAnnouncements.length
-        ? twitchAnnouncements.map((item) => {
+      const streamCards = streamAnnouncements.length
+        ? streamAnnouncements.map((item) => {
+            const meta = streamPlatformMeta(item.platform, item.streamerIdentifier);
             const targetChannel = guild.channels.cache.get(item.discordChannelId);
             const channelName = targetChannel?.name ? `#${targetChannel.name}` : 'Channel unavailable';
             const lastAnnounced = item.lastAnnouncedAt
               ? new Date(item.lastAnnouncedAt).toLocaleString()
               : 'Never';
-            const customMessage = item.customMessage
-              ? escapeHtml(item.customMessage)
-              : 'Using the default rich Twitch embed message';
 
-            return `<article class="twitch-card ${item.isLive ? 'is-live' : ''}">
-              <div class="twitch-card-top">
-                <div class="twitch-avatar">T</div>
-                <div class="twitch-identity">
-                  <a class="twitch-name" href="https://www.twitch.tv/${encodeURIComponent(item.twitchLogin)}" target="_blank" rel="noreferrer">${escapeHtml(item.twitchLogin)}</a>
-                  <span class="status-badge ${item.isLive ? 'live' : 'offline'}"><span class="status-dot"></span>${item.isLive ? 'LIVE' : 'Offline'}</span>
+            return `<article class="stream-list-row provider-${meta.css}">
+              <div class="stream-list-main">
+                <div class="stream-avatar ${meta.css}">${escapeHtml(meta.short)}</div>
+                <div>
+                  <div class="stream-list-title">
+                    <a href="${escapeHtml(meta.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.streamerIdentifier)}</a>
+                    <span class="provider-chip ${meta.css}">${escapeHtml(meta.label)}</span>
+                    <span class="status-badge ${item.isLive ? 'live' : 'offline'}"><span class="status-dot"></span>${item.isLive ? 'LIVE' : 'Offline'}</span>
+                  </div>
+                  <div class="stream-list-meta">
+                    <span>Channel: <strong>${escapeHtml(channelName)}</strong></span>
+                    <span>Last announced: <strong>${escapeHtml(lastAnnounced)}</strong></span>
+                    <span>${item.enabled ? 'Enabled' : 'Disabled'}</span>
+                  </div>
                 </div>
-                <form method="post" action="/dashboard/${guild.id}/twitch/${item.id}/delete" onsubmit="return confirm('Remove this Twitch announcement?')">
-                  <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-                  <button class="icon-btn danger" type="submit" title="Remove Twitch alert">×</button>
-                </form>
               </div>
-              <div class="twitch-card-grid">
-                <div><span class="mini-label">Discord channel</span><strong>${escapeHtml(channelName)}</strong></div>
-                <div><span class="mini-label">Last announced</span><strong>${escapeHtml(lastAnnounced)}</strong></div>
-              </div>
-              <div class="twitch-message-preview">
-                <span class="mini-label">Announcement message</span>
-                <p>${customMessage}</p>
-              </div>
-              <div class="twitch-card-footer">
-                <span class="pill subtle">${item.enabled ? 'Enabled' : 'Disabled'}</span>
-                <a href="https://www.twitch.tv/${encodeURIComponent(item.twitchLogin)}" target="_blank" rel="noreferrer">Open Twitch ↗</a>
-              </div>
+              <form method="post" action="/dashboard/${guild.id}/streams/${item.id}/delete" onsubmit="return confirm('Remove this stream alert?')">
+                <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+                <button class="icon-btn danger" type="submit" title="Remove stream alert">×</button>
+              </form>
             </article>`;
           }).join('')
-        : '<div class="empty twitch-empty">No Twitch live announcements configured yet.</div>';
+        : '<div class="empty">No Twitch, YouTube, or Kick streamers configured yet.</div>';
 
-      const catalog = commandCatalog();
+      const streamEmbedEditors = embedConfigs
+        .filter((config) => ['twitch_live', 'youtube_live', 'kick_live'].includes(config.key))
+        .map((config) => {
+          const provider = config.key.replace('_live', '');
+          return `<div class="stream-provider-editor" data-stream-embed-panel="${provider}" ${provider === 'twitch' ? '' : 'hidden'}>
+            ${renderStreamEmbedEditor(guild.id, config, req.session.csrf)}
+          </div>`;
+        })
+        .join('');
+      const catalog = commandCatalog().filter((command) => !command.ownerOnly);
       const commandStates = await getCommandStateObject(guild.id, catalog.map((command) => command.name));
-      const preferredCategories = ['Moderation','Security','Administration','Tickets','Verification','Roles','Leveling','Applications','Giveaways','Community','Economy','Utility','Analytics','Voice','Integrations','Music','AI Assistant','Automations','Misc','Owner Tools','Other'];
+      const preferredCategories = ['Moderation','Security','Administration','Tickets','Verification','Roles','Leveling','Applications','Giveaways','Community','Economy','Utility','Analytics','Voice','Integrations','Music','AI Assistant','Automations','Misc','Other'];
       const discoveredCategories = [...new Set(catalog.map((command) => command.category))];
       const categoryOrder = [
         ...preferredCategories.filter((category) => discoveredCategories.includes(category)),
@@ -1866,7 +1839,7 @@ function startDashboard(client) {
         <a href="#configuration">Configuration</a>
         <a href="#features">Feature Center</a>
         <a href="#ticket-config">Ticket System</a>
-        <a href="#twitch">Twitch</a>
+        <a href="#stream-alerts">Stream Alerts</a>
         <a href="#commands">Commands</a>
         <a href="#tickets">Tickets</a>
       </nav>
@@ -1982,36 +1955,70 @@ function startDashboard(client) {
         <div class="ticket-module-grid">${ticketTypeCards}</div>
       </section>
 
-      <section id="twitch" class="panel twitch-panel">
-        <div class="twitch-hero">
+      <section id="stream-alerts" class="panel stream-alert-panel">
+        <div class="stream-alert-heading">
           <div>
-            <span class="eyebrow">LIVE INTEGRATION</span>
-            <h2>Twitch Live Announcements</h2>
-            <p>Automatically post a rich Twitch embed when a configured streamer goes live.</p>
+            <span class="eyebrow">STREAM ALERTS</span>
+            <h2>Twitch / YouTube / Kick Streamers</h2>
+            <p>Use one form for every streaming service. Choose the service below, then configure the streamer, Discord channel, live role, and matching embed.</p>
           </div>
-          <div class="twitch-logo-badge">Twitch</div>
+          <span class="stream-access-pill">${streamAccess.paid ? 'Paid' : 'Free'} • ${streamAnnouncements.length}/${streamAccess.streamerLimit} streamers</span>
         </div>
 
-        <form class="twitch-config-form" method="post" action="/dashboard/${guild.id}/twitch">
+        <form class="stream-config-form unified-stream-form" method="post" action="/dashboard/${guild.id}/streams">
           <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
           <div class="form-grid">
-            <label>Twitch Username
-              <input name="twitchLogin" maxlength="25" placeholder="streamername" required>
+            <label>Streaming Service
+              <select name="platform" data-stream-platform required>
+                <option value="twitch">Twitch</option>
+                <option value="youtube">YouTube</option>
+                <option value="kick">Kick</option>
+              </select>
+            </label>
+            <label>Streamer / Channel
+              <input name="streamerIdentifier" data-stream-identifier maxlength="64" placeholder="Twitch username" required>
+              <small data-stream-help>Twitch username without @.</small>
             </label>
             <label>Discord Announcement Channel
               <select name="discordChannelId" required>${selectOptions(broadcastChannels, '', 'Choose a channel')}</select>
             </label>
-            <label style="grid-column:1/-1">Custom Embed Message
-              <input name="customMessage" maxlength="500" placeholder="{user} is live playing {game}! {url}">
+            <label>Discord User ID <small>(optional live-role binding)</small>
+              <input name="discordUserId" maxlength="32" placeholder="123456789012345678">
+            </label>
+            <label>Live Role <small>(optional)</small>
+              <select name="liveRoleId">${selectOptions(roles, '', 'No live role')}</select>
+            </label>
+            <label class="stream-message-field">Custom Description Override <small>(optional)</small>
+              <textarea name="customMessage" maxlength="1000" rows="3" placeholder="{user} is live on {platform} playing {game}! {url}"></textarea>
             </label>
           </div>
-          <div class="token-row">
-            <span>{user}</span><span>{game}</span><span>{title}</span><span>{url}</span>
+          <div class="token-row"><span>{user}</span><span>{game}</span><span>{title}</span><span>{url}</span><span>{platform}</span></div>
+          <div class="stream-form-footer">
+            <span>${streamAnnouncements.length >= streamAccess.streamerLimit ? 'This server is at its current streamer limit. Updating an existing matching streamer is still allowed.' : `You can add ${streamAccess.streamerLimit - streamAnnouncements.length} more streamer${streamAccess.streamerLimit - streamAnnouncements.length === 1 ? '' : 's'}.`}</span>
+            <button class="btn twitch-btn" type="submit">＋ Add / Update Streamer</button>
           </div>
-          <button class="btn twitch-btn" type="submit">＋ Add / Update Streamer</button>
         </form>
 
-        <div class="twitch-cards">${twitchCards}</div>
+        <div class="stream-unified-block">
+          <div class="stream-subheading">
+            <div>
+              <span class="mini-label">CONFIGURED STREAMERS</span>
+              <h3>Your Stream Alerts</h3>
+            </div>
+          </div>
+          <div class="stream-list">${streamCards}</div>
+        </div>
+
+        <div class="stream-unified-block stream-embed-unified">
+          <div class="stream-subheading">
+            <div>
+              <span class="mini-label">EMBED SETTINGS</span>
+              <h3><span data-stream-embed-heading>Twitch</span> Go-Live Embed</h3>
+              <p>The Streaming Service dropdown above also selects which provider embed you are editing.</p>
+            </div>
+          </div>
+          <div class="stream-single-editor">${streamEmbedEditors}</div>
+        </div>
       </section>
 
       <section id="commands" class="panel command-panel">
@@ -2182,8 +2189,9 @@ function startDashboard(client) {
     try {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
-      const valid = commandCatalog().some((command) => command.name === req.params.commandName);
-      if (!valid) return res.status(400).send('Unknown command.');
+      const command = commandCatalog().find((item) => item.name === req.params.commandName);
+      if (!command) return res.status(400).send('Unknown command.');
+      if (command.ownerOnly) return res.status(403).send('Owner-only commands cannot be managed from a server dashboard.');
       await setCommandEnabled(req.params.guildId, req.params.commandName, req.body.enabled === '1');
       return res.status(204).end();
     } catch (error) {
@@ -2360,51 +2368,114 @@ function startDashboard(client) {
     }
   });
 
-  app.post('/dashboard/:guildId/twitch', requireAuth, verifyCsrf, async (req, res) => {
+  app.post('/dashboard/:guildId/streams', requireAuth, verifyCsrf, async (req, res) => {
     try {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
 
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
 
       const channel = guild.channels.cache.get(String(req.body.discordChannelId || ''));
       if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
         return res.status(400).send('Choose a valid Discord text or announcement channel.');
       }
 
-      await upsertTwitchAnnouncement({
+      const roleId = String(req.body.liveRoleId || '').trim();
+      if (roleId && !guild.roles.cache.has(roleId)) return res.status(400).send('Choose a valid Discord live role.');
+
+      const discordUserId = String(req.body.discordUserId || '').trim();
+      if (discordUserId && !/^\d{10,32}$/.test(discordUserId)) return res.status(400).send('Enter a valid Discord user ID for the live-role binding.');
+
+      await upsertStreamAnnouncement({
         guildId: guild.id,
-        twitchLogin: req.body.twitchLogin,
+        platform: req.body.platform,
+        streamerIdentifier: req.body.streamerIdentifier,
         discordChannelId: channel.id,
         customMessage: req.body.customMessage || '',
+        discordUserId,
+        liveRoleId: roleId,
         createdBy: req.session.user.id,
       });
 
-      return res.redirect(`/dashboard/${guild.id}#twitch`);
+      return res.redirect(`/dashboard/${guild.id}#stream-alerts`);
     } catch (error) {
       console.error(error);
-      return res.status(500).send(page(
-        'Dashboard error',
-        `<div class="empty"><strong>Unable to save Twitch announcement.</strong><p>${escapeHtml(error.message || String(error))}</p></div>`,
+      const status = error?.code === 'STREAMER_LIMIT_REACHED' ? 409 : 500;
+      const heading = error?.code === 'STREAMER_LIMIT_REACHED'
+        ? 'Streamer limit reached'
+        : 'Unable to save stream alert';
+      return res.status(status).send(page(
+        `${heading} • Kryndexa Bot`,
+        `<div class="empty"><strong>${escapeHtml(heading)}.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn secondary" href="/dashboard/${encodeURIComponent(req.params.guildId)}#stream-alerts">Return to Stream Alerts</a></p></div>`,
         req.session.user,
+        { private: true },
       ));
     }
   });
 
-  app.post('/dashboard/:guildId/twitch/:id/delete', requireAuth, verifyCsrf, async (req, res) => {
+  app.post('/dashboard/:guildId/streams/:id/delete', requireAuth, verifyCsrf, async (req, res) => {
     try {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
 
-      await deleteTwitchAnnouncement(req.params.guildId, req.params.id);
-      return res.redirect(`/dashboard/${req.params.guildId}#twitch`);
+      await deleteStreamAnnouncement(req.params.guildId, req.params.id);
+      return res.redirect(`/dashboard/${req.params.guildId}#stream-alerts`);
     } catch (error) {
       console.error(error);
-      return res.status(500).send('Unable to remove Twitch announcement.');
+      return res.status(500).send('Unable to remove stream alert.');
     }
   });
 
+  app.post('/dashboard/:guildId/streams/embed/:embedKey', requireAuth, verifyCsrf, async (req, res) => {
+    try {
+      const guilds = await getManagedGuilds(req, client);
+      if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
+
+      const key = String(req.params.embedKey || '');
+      if (!['twitch_live', 'youtube_live', 'kick_live'].includes(key) || !EMBED_MODULES[key]) {
+        return res.status(400).send('Unknown stream embed module.');
+      }
+
+      const imageUrl = String(req.body.imageUrl || '').trim();
+      const thumbnailUrl = String(req.body.thumbnailUrl || '').trim();
+      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return res.status(400).send('Image URL must use http:// or https://.');
+      if (thumbnailUrl && !/^https?:\/\//i.test(thumbnailUrl)) return res.status(400).send('Thumbnail URL must use http:// or https://.');
+
+      const fields = [];
+      for (let index = 0; index < 5; index += 1) {
+        const name = String(req.body[`fieldName_${index}`] || '').trim();
+        const value = String(req.body[`fieldValue_${index}`] || '').trim();
+        if (!name || !value) continue;
+        fields.push({
+          name,
+          value,
+          inline: req.body[`fieldInline_${index}`] === 'on',
+        });
+      }
+
+      await saveEmbedConfig(req.params.guildId, key, {
+        title: req.body.title,
+        description: req.body.description,
+        color: req.body.color,
+        footer: req.body.footer,
+        imageUrl,
+        thumbnailUrl,
+        fieldsEnabled: req.body.fieldsEnabled === 'on',
+        fields,
+      });
+
+      return res.redirect(`/dashboard/${req.params.guildId}#stream-alerts`);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).send(page(
+        'Embed settings error • Kryndexa Bot',
+        `<div class="empty"><strong>Unable to save the stream embed.</strong><p>${escapeHtml(error.message || String(error))}</p></div>`,
+        req.session.user,
+        { private: true },
+      ));
+    }
+  });
   app.get('/transcripts/:ticketId/view', requireAuth, async (req, res) => {
     try {
       const ticket = await getTicket(req.params.ticketId);
@@ -2460,41 +2531,6 @@ function startDashboard(client) {
     }
   });
 
-  app.get('/api/cloudflare/ssl', requireAuth, requireBotOwner, async (_req, res) => {
-    const status = await getCloudflareCertificatePacks();
-
-    if (!status.configured) {
-      return res.status(503).json({
-        ok: false,
-        configured: false,
-        message: 'Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable Cloudflare SSL monitoring.',
-        endpoint: status.endpoint,
-      });
-    }
-
-    if (status.error) {
-      return res.status(502).json({
-        ok: false,
-        configured: true,
-        zoneId: status.zoneId,
-        endpoint: status.endpoint,
-        error: status.error,
-      });
-    }
-
-    return res.json({
-      ok: true,
-      configured: true,
-      zoneId: status.zoneId,
-      endpoint: status.endpoint,
-      packCount: status.packs.length,
-      activeCertificates: status.activeCertificates,
-      pendingCertificates: status.pendingCertificates,
-      hosts: status.hosts,
-      packs: status.packs,
-    });
-  });
-
   app.get('/health', async (_req, res) => {
     let database = false;
     try {
@@ -2511,137 +2547,35 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  let tlsConfig = null;
-  let tlsConfigError = null;
+  const host = String(process.env.WEB_HOST || '0.0.0.0').trim() || '0.0.0.0';
 
-  try {
-    tlsConfig = loadDashboardTlsOptions();
-  } catch (error) {
-    tlsConfigError = error;
+  console.log(`[Dashboard] Starting web panel on ${host}:${port}...`);
 
-    console.error('[Dashboard SSL] TLS configuration is invalid:', error.message || error);
+  const server = app.listen(port, host);
 
-    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') {
-      console.error('[Dashboard SSL] The private key and certificate are from different certificate issuances.');
-      console.error('[Dashboard SSL] For Cloudflare Origin CA, create/download a new Origin Certificate and save the private key generated with that same certificate.');
+  server.once('listening', () => {
+    const localHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+    console.log(`[Dashboard] Web panel listening on http://${localHost}:${port}`);
+
+    if (host === '0.0.0.0' || host === '::') {
+      console.log('[Dashboard] Web panel is bound to all network interfaces.');
     }
 
-    if (envFlag('WEB_SSL_STRICT_STARTUP')) throw error;
+    const publicUrl = String(process.env.BASE_URL || '').trim();
+    if (publicUrl) console.log(`[Dashboard] Configured public URL: ${publicUrl}`);
+  });
 
-    console.warn('[Dashboard SSL] Direct HTTPS is disabled for this run; Kryndexa will use the internal HTTP listener for reverse-proxy mode.');
-  }
+  server.on('error', (error) => {
+    if (error?.code === 'EADDRINUSE') {
+      console.error(`[Dashboard] Cannot start web panel: ${host}:${port} is already in use.`);
+      console.error('[Dashboard] Change PORT/WEB_HOST or stop the process using that address and port.');
+      return;
+    }
 
-  const startHttpApp = (listenPort, reason = '') => {
-    const httpServer = app.listen(listenPort);
+    console.error('[Dashboard] HTTP server error:', error);
+  });
 
-    httpServer.once('listening', () => {
-      const advertisedUrl = process.env.BASE_URL || `http://localhost:${listenPort}`;
-      console.log(`Dashboard listening internally on http://127.0.0.1:${listenPort}`);
-
-      if (reason) console.warn(`[Dashboard SSL] ${reason}`);
-
-      if (envFlag('WEB_FORCE_HTTPS') || process.env.NODE_ENV === 'production') {
-        console.log(`[Dashboard SSL] Public URL remains ${advertisedUrl}.`);
-        console.log('[Dashboard SSL] The service currently owning port 443 must reverse-proxy HTTPS traffic to this internal dashboard port.');
-      }
-    });
-
-    httpServer.on('error', (error) => {
-      if (error?.code === 'EADDRINUSE') {
-        console.error(`[Dashboard] Cannot start internal web panel: port ${listenPort} is already in use.`);
-        console.error('[Dashboard] Change PORT / WEB_INTERNAL_PORT or stop the process using that port.');
-        return;
-      }
-
-      console.error('[Dashboard] HTTP server error:', error);
-    });
-
-    return httpServer;
-  };
-
-  if (tlsConfig) {
-    const httpsPort = Number(process.env.WEB_HTTPS_PORT || 443);
-    const internalPort = Number(process.env.WEB_INTERNAL_PORT || port || 3000);
-    const allowPortConflictFallback = envFlag('WEB_SSL_PORT_CONFLICT_FALLBACK', true);
-    const server = https.createServer(tlsConfig.options, app);
-    let fallbackStarted = false;
-
-    server.once('listening', () => {
-      const advertisedUrl = process.env.BASE_URL || `https://localhost:${httpsPort}`;
-
-      if (tlsConfig.provider === 'cloudflare-origin') {
-        console.log('[Dashboard SSL] Cloudflare Origin CA certificate enabled.');
-        console.log('[Dashboard SSL] Use Cloudflare SSL/TLS mode: Full (strict).');
-      } else {
-        console.log(`[Dashboard SSL] HTTPS enabled with provider: ${tlsConfig.provider}.`);
-      }
-
-      console.log(`[Dashboard SSL] HTTPS enabled on port ${httpsPort}.`);
-      console.log(`Dashboard listening securely on ${advertisedUrl}`);
-
-      const redirectPort = Number(process.env.WEB_HTTP_REDIRECT_PORT || 0);
-      if (redirectPort > 0 && redirectPort !== httpsPort) {
-        const redirectApp = express();
-        redirectApp.use((req, res) => res.redirect(308, httpsRedirectTarget(req)));
-
-        const redirectServer = redirectApp.listen(redirectPort, () => {
-          console.log(`[Dashboard SSL] HTTP port ${redirectPort} redirects to HTTPS.`);
-        });
-
-        redirectServer.on('error', (error) => {
-          if (error?.code === 'EADDRINUSE') {
-            console.warn(`[Dashboard SSL] HTTP redirect port ${redirectPort} is already in use; HTTPS will continue without the built-in redirect listener.`);
-            return;
-          }
-          console.error('[Dashboard SSL] HTTP redirect listener error:', error);
-        });
-      }
-    });
-
-    server.on('error', (error) => {
-      if (error?.code === 'EADDRINUSE') {
-        console.warn(`[Dashboard SSL] HTTPS port ${httpsPort} is already in use by another process.`);
-
-        if (!allowPortConflictFallback) {
-          console.error('[Dashboard SSL] Automatic fallback is disabled. Set WEB_SSL_PORT_CONFLICT_FALLBACK=true or free the HTTPS port.');
-          return;
-        }
-
-        if (fallbackStarted) return;
-        fallbackStarted = true;
-
-        if (internalPort === httpsPort) {
-          console.error(`[Dashboard SSL] WEB_INTERNAL_PORT/PORT is also ${httpsPort}; choose a different internal port such as 3000.`);
-          return;
-        }
-
-        startHttpApp(
-          internalPort,
-          `Port ${httpsPort} is occupied, so Kryndexa switched to reverse-proxy mode on internal port ${internalPort}.`,
-        );
-        return;
-      }
-
-      if (error?.code === 'EACCES') {
-        console.error(`[Dashboard SSL] Permission denied while binding HTTPS port ${httpsPort}. Use an elevated account, a higher port, or reverse-proxy mode.`);
-        return;
-      }
-
-      console.error('[Dashboard SSL] HTTPS server error:', error);
-    });
-
-    server.listen(httpsPort);
-    return server;
-  }
-
-  return startHttpApp(
-    Number(process.env.WEB_INTERNAL_PORT || port),
-    tlsConfigError
-      ? `Direct SSL could not start: ${tlsConfigError.message || tlsConfigError}. Use a matching certificate/key pair or terminate HTTPS at the reverse proxy.`
-      : envFlag('WEB_FORCE_HTTPS')
-        ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
-        : '',
-  );
+  return server;
 }
 
 module.exports = { startDashboard };

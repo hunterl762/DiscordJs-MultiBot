@@ -47,7 +47,9 @@ DISCORD_CLIENT_SECRET=
 DISCORD_REDIRECT_URI=http://localhost:3000/auth/callback
 
 PORT=3000
+WEB_HOST=0.0.0.0
 BASE_URL=http://localhost:3000
+WEB_ICON_URL=
 SESSION_SECRET=replace-with-a-long-random-secret
 NODE_ENV=development
 
@@ -59,16 +61,13 @@ MYSQL_DATABASE=multibot
 MYSQL_CONNECTION_LIMIT=10
 MYSQL_AUTO_MIGRATE=true
 
-MYSQL_SSL=false
-MYSQL_SSL_REJECT_UNAUTHORIZED=true
-MYSQL_SSL_CA_FILE=
-
 TWITCH_CLIENT_ID=
 TWITCH_CLIENT_SECRET=
 YOUTUBE_API_KEY=
 KICK_CLIENT_ID=
 KICK_CLIENT_SECRET=
 STREAM_ALERT_CHECK_INTERVAL_MS=120000
+STREAM_ROLE_CHECK_INTERVAL_MS=120000
 
 MUSIC_ENABLED=false
 LAVALINK_URL=localhost:2333
@@ -77,7 +76,6 @@ LAVALINK_SECURE=false
 MUSIC_DEFAULT_SEARCH_ENGINE=youtube
 ```
 
-For remote/cloud MySQL, enable TLS when your provider supports or requires it.
 
 ## Install
 
@@ -152,7 +150,9 @@ Tickets use private Discord channels. When a ticket is closed, MultiBot:
 
 Kryndexa supports live alerts for Twitch, YouTube, and Kick from the dashboard. Configure `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET`, `YOUTUBE_API_KEY`, and/or `KICK_CLIENT_ID`/`KICK_CLIENT_SECRET` for the providers you want to use.
 
-Server administrators can add provider-specific streamer/channel identifiers, choose a Discord announcement channel, set a custom message, and optionally assign a live role. The monitor records live state so it only announces a newly detected stream rather than reposting the same broadcast.
+Server administrators can add provider-specific streamer/channel identifiers, choose a Discord announcement channel, set a custom message, optionally bind a Discord user/live role, and customize separate Twitch, YouTube, and Kick embed templates with a live dashboard preview. The monitor records live state so it only announces a newly detected stream rather than reposting the same broadcast.
+
+Stream Alerts use a server entitlement limit: free servers can configure up to **3** streamers; servers granted paid access by a bot owner can configure up to **15**. The owner dashboard includes entitlement controls. This repository does not currently include a payment processor, so paid access must be granted after payment is verified externally.
 
 Optional custom announcement variables:
 
@@ -164,11 +164,13 @@ Optional custom announcement variables:
 
 The shared check interval defaults to 120 seconds and can be changed with `STREAM_ALERT_CHECK_INTERVAL_MS`. `TWITCH_CHECK_INTERVAL_MS` remains as a legacy fallback. Kryndexa enforces a minimum interval of 60 seconds.
 
+Live-role reconciliation has its own `STREAM_ROLE_CHECK_INTERVAL_MS` interval (default 120 seconds, minimum 60 seconds). It repairs configured Discord live roles from the last known stream state without performing an additional streaming-provider API poll.
+
 ## Web-panel Command Center
 
 Each server page now includes a categorized **Command Center** generated from the live command registry. It automatically lists every loaded module from `commands/`, including descriptions, subcommands, aliases, server/global scope, and whether a prefix fallback is available. Current categories are General, Moderation, Support & Verification, and Owner Tools; future uncategorized modules appear under Other.
 
-The Twitch section is also presented as streamer cards with live/offline status, target Discord channel, last announcement time, custom-message preview, and quick Twitch/remove controls.
+The Stream Alerts section presents Twitch, YouTube, and Kick streamer cards with provider badges, live/offline status, target Discord channel, last announcement time, custom-message preview, configurable provider embeds, and quick open/remove controls.
 
 
 ## Duty-based command modules

@@ -112,7 +112,7 @@ const FEATURE_CATALOG = [
   {
     key: 'stream_alerts', title: 'Twitch / YouTube / Kick Alerts', icon: '📺', priority: 'Popular', category: 'Integrations',
     description: 'Rich live notifications for Twitch, YouTube, and Kick with configurable embeds, announcement channels, and optional live roles.',
-    maturity: 'core', defaultEnabled: true, link: '#twitch',
+    maturity: 'core', defaultEnabled: true, link: '#stream-alerts',
     requirement: 'Configure credentials for at least one streaming provider.', fields: [],
   },
   {

@@ -8,6 +8,7 @@ module.exports = {
     .setDescription('Owner only: broadcast an announcement to every bot server.')
     .addStringOption((option) => option.setName('message').setDescription('Announcement message').setMaxLength(1800).setRequired(true))
     .addStringOption((option) => option.setName('title').setDescription('Announcement title').setMaxLength(256))
+    .addStringOption((option) => option.setName('title-link').setDescription('Optional URL opened when the embed title is clicked').setMaxLength(1000))
     .addBooleanOption((option) => option.setName('dry-run').setDescription('Preview delivery count without sending')),
   guildOnly: false,
   async executeSlash(interaction) {
@@ -15,10 +16,24 @@ module.exports = {
       return interaction.reply({ content: 'This command is restricted to the bot owner.', flags: MessageFlags.Ephemeral });
     }
     const message = interaction.options.getString('message', true).trim();
-    const title = (interaction.options.getString('title') || 'MultiBot Announcement').trim();
+    const title = (interaction.options.getString('title') || 'Kryndexa Bot Announcement').trim();
+    const titleUrl = (interaction.options.getString('title-link') || '').trim();
+    if (titleUrl && !/^https?:\/\//i.test(titleUrl)) {
+      return interaction.reply({
+        content: 'The title link must start with http:// or https://.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     const dryRun = interaction.options.getBoolean('dry-run') || false;
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const results = await broadcastToGuilds(interaction.client, { title, message, dryRun, owner: interaction.user });
+    const results = await broadcastToGuilds(interaction.client, {
+      title,
+      titleUrl,
+      message,
+      dryRun,
+      owner: interaction.user,
+    });
     return interaction.editReply(formatBroadcastSummary(results));
   },
   async executePrefix(message, args, { settings }) {

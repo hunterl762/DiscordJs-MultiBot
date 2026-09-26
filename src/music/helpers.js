@@ -1,6 +1,16 @@
 const { MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { getFeature } = require('../features/store');
-const { getMusicManager, musicGloballyEnabled, lavalinkConfigured, formatDuration } = require('./manager');
+const {
+  getMusicManager,
+  getMusicStatus,
+  markManualStop,
+  waitForManualStopCooldown,
+  isMusicReady,
+  musicUnavailableMessage,
+  musicGloballyEnabled,
+  lavalinkConfigured,
+  formatDuration,
+} = require('./manager');
 
 async function musicContext(source) {
   const guild = source.guild;
@@ -26,8 +36,71 @@ async function musicContext(source) {
   }
 
   const manager = getMusicManager();
-  if (!manager) return { error: 'The Lavalink music service is not connected.' };
-  return { guild, member, channel, feature, manager };
+  if (!manager || !isMusicReady()) {
+    return {
+      error: musicUnavailableMessage(),
+      lavalinkStatus: getMusicStatus(),
+    };
+  }
+
+  return { guild, member, channel, feature, manager, lavalinkStatus: getMusicStatus() };
+}
+
+function configuredSearchEngines() {
+  const configured = String(process.env.MUSIC_SEARCH_ENGINES || 'youtube,youtube_music,soundcloud')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => ['youtube', 'youtube_music', 'soundcloud'].includes(value));
+
+  return configured.length ? [...new Set(configured)] : ['youtube', 'youtube_music', 'soundcloud'];
+}
+
+async function searchMusic(manager, query, requester) {
+  const value = String(query || '').trim();
+  if (!value) return { result: { tracks: [], type: 'SEARCH' }, engine: null, attempts: [] };
+
+  const isUrl = /^https?:\/\//i.test(value);
+  const attempts = [];
+
+  if (isUrl) {
+    try {
+      const result = await manager.search(value, { requester });
+      return { result, engine: 'direct-url', attempts: ['direct-url'] };
+    } catch (error) {
+      attempts.push(`direct-url: ${error?.message || error}`);
+      return { result: { tracks: [], type: 'SEARCH' }, engine: null, attempts };
+    }
+  }
+
+  for (const engine of configuredSearchEngines()) {
+    try {
+      const result = await manager.search(value, { requester, engine });
+      attempts.push(engine);
+
+      if (result?.tracks?.length) {
+        return { result, engine, attempts };
+      }
+    } catch (error) {
+      attempts.push(`${engine}: ${error?.message || error}`);
+    }
+  }
+
+  return { result: { tracks: [], type: 'SEARCH' }, engine: null, attempts };
+}
+
+function noTracksMessage(query) {
+  const status = getMusicStatus();
+  const sources = Array.isArray(status.sourceManagers) ? status.sourceManagers : [];
+  const plugins = Array.isArray(status.plugins) ? status.plugins : [];
+  const isYoutubeUrl = /^https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(String(query || '').trim());
+  const hasYoutube = sources.some((source) => String(source).toLowerCase().includes('youtube'))
+    || plugins.some((plugin) => String(plugin?.name || '').toLowerCase().includes('youtube'));
+
+  if ((isYoutubeUrl || !/^https?:\/\//i.test(String(query || '').trim())) && !hasYoutube) {
+    return 'No playable tracks were found because this Lavalink node does not report a YouTube source. Install/enable the official Lavalink YouTube plugin, restart Lavalink, and try again.';
+  }
+
+  return 'No playable tracks were found. Check the Lavalink console for a source/plugin error for this track.';
 }
 
 function existingPlayer(manager, guildId) { return manager?.players?.get(guildId) || null; }
@@ -52,4 +125,16 @@ function trackLine(track, index = null) {
   return `${prefix}${uri ? `[${title}](${uri})` : title} • ${duration}`;
 }
 
-module.exports = { musicContext, existingPlayer, sameVoiceChannel, replySlash, replyPrefix, trackLine, formatDuration };
+module.exports = {
+  musicContext,
+  searchMusic,
+  markManualStop,
+  waitForManualStopCooldown,
+  noTracksMessage,
+  existingPlayer,
+  sameVoiceChannel,
+  replySlash,
+  replyPrefix,
+  trackLine,
+  formatDuration,
+};

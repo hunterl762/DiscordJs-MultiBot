@@ -69,10 +69,10 @@ Authorized server administrators can create configuration backups with MultiBot.
 
 The included backup command does not back up Discord message history, message attachments, passwords, tokens, or general member-profile data.
 
-## Twitch Live Announcements
+## Twitch, YouTube, and Kick Stream Alerts
 
-When a server administrator configures Twitch live alerts, MultiBot stores the Twitch username, selected Discord destination channel ID, optional custom announcement text, the Discord user ID of the administrator who configured the alert, and live-state metadata such as the most recently observed stream ID and announcement timestamp.
+When a server administrator configures Stream Alerts, MultiBot stores the selected streaming platform, public streamer/channel identifier, selected Discord destination channel ID, optional custom announcement text, optional Discord user/live-role binding, the Discord user ID of the administrator who configured the alert, and live-state metadata such as the most recently observed stream ID and announcement timestamp.
 
-MultiBot uses Twitch's API to check whether configured public Twitch channels are live. It may process public stream information such as the stream title, category/game, viewer count, start time, username, and thumbnail URL in order to create the Discord announcement.
+MultiBot may use Twitch, YouTube, and Kick APIs to check whether configured public channels are live. It may process public stream information such as stream title, category/game, viewer count, start time, public channel/user name, thumbnail URL, and stream URL in order to create Discord announcements.
 
-Twitch API credentials are deployment secrets stored in environment variables and are not exposed through the web dashboard.
+Servers may also have a Stream Alerts access entitlement indicating free or paid capacity. The entitlement does not store payment-card data. Streaming-provider API credentials are deployment secrets stored in environment variables and are not exposed through the web dashboard.

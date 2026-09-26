@@ -1,90 +1,58 @@
 const {
   MessageFlags,
-  REST,
-  Routes,
   SlashCommandBuilder,
 } = require('discord.js');
 const { isBotOwner } = require('../../src/bot/broadcast');
-
-async function clearGuildCommands(rest, applicationId, guildId) {
-  await rest.put(
-    Routes.applicationGuildCommands(applicationId, guildId),
-    { body: [] },
-  );
-}
-
-async function rebuildGlobalCommands(client, rest, applicationId, slashCommands) {
-  const cleanup = {
-    clearedGuilds: 0,
-    failedGuilds: 0,
-    failures: [],
-  };
-
-  // Remove the previous global set first.
-  await rest.put(Routes.applicationCommands(applicationId), { body: [] });
-
-  // Remove stale guild-specific registrations so Discord does not show
-  // both a global command and an old guild command with the same name.
-  for (const guild of client.guilds.cache.values()) {
-    try {
-      await clearGuildCommands(rest, applicationId, guild.id);
-      cleanup.clearedGuilds += 1;
-    } catch (error) {
-      cleanup.failedGuilds += 1;
-      cleanup.failures.push(`${guild.name}: ${error.message || 'unknown error'}`);
-      console.warn(`[Reset Commands] Could not clear guild commands in ${guild.name}:`, error.message || error);
-    }
-  }
-
-  // Register exactly the command modules currently loaded by MultiBot.
-  await rest.put(
-    Routes.applicationCommands(applicationId),
-    { body: slashCommands },
-  );
-
-  return cleanup;
-}
+const {
+  createRestClient,
+  registerSlashCommands,
+  syncGuildCommands,
+} = require('../../src/bot/slashCommandSync');
 
 async function resetCommands(client, slashCommands, scope, guildId) {
   await client.application.fetch();
 
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  const applicationId = client.application.id;
-
   if (scope === 'global') {
-    const cleanup = await rebuildGlobalCommands(client, rest, applicationId, slashCommands);
-
-    const details = [
-      `Deleted previous global commands and registered **${slashCommands.length}** current global command(s).`,
-      `Cleared stale guild-specific command registrations in **${cleanup.clearedGuilds}** server(s).`,
-    ];
-
-    if (cleanup.failedGuilds) {
-      details.push(`Could not clear guild commands in **${cleanup.failedGuilds}** server(s); those servers were skipped.`);
+    const result = await registerSlashCommands(client, slashCommands);
+    if (!result.globalRegistered) {
+      throw new Error(`Global command rebuild failed: ${result.globalError || 'Discord did not accept the global command set.'}`);
     }
 
-    details.push('Discord can take a short time to refresh the slash-command picker.');
+    const failed = result.guildSummary.failures.length;
+    const added = result.globalSummary?.added || [];
+    const removed = result.globalSummary?.removed || [];
 
-    return details.join('\n');
+    return [
+      `Rebuilt and verified **${slashCommands.length}** global slash command(s).`,
+      `New global commands: **${added.length}** • stale global commands removed: **${removed.length}**.`,
+      added.length ? `Added: ${added.map((name) => `/${name}`).join(', ')}` : 'No newly named global commands were added.',
+      removed.length ? `Removed stale: ${removed.map((name) => `/${name}`).join(', ')}` : 'No stale global command names were found.',
+      `Mirrored the clean command set to **${result.guildSummary.synced}/${result.guildSummary.total}** connected server(s).`,
+      failed
+        ? `**${failed}** server(s) could not be mirrored; check the bot console for Missing Access or Discord API errors.`
+        : 'Every connected server was synchronized successfully.',
+    ].join('\n');
   }
 
   if (!guildId) throw new Error('A guild ID is required for a guild command reset.');
 
-  // Force an immediate guild-specific command set. This is useful when
-  // Discord's global command picker has not become visible for this installation.
-  await clearGuildCommands(rest, applicationId, guildId);
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) {
+    throw new Error('The bot is not currently connected to this server.');
+  }
 
-  const registered = await rest.put(
-    Routes.applicationGuildCommands(applicationId, guildId),
-    { body: slashCommands },
+  const rest = createRestClient();
+  const applicationId = client.application.id;
+  const accepted = await syncGuildCommands(
+    rest,
+    applicationId,
+    guild,
+    slashCommands,
   );
 
-  const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
-
   return [
-    'Cleared the previous guild-specific slash commands for this server.',
-    `Registered **${accepted}** current guild command(s) for immediate visibility.`,
-    'The global command set is left intact for other servers.',
+    `Registered and verified **${accepted}** slash command(s) in **${guild.name}**.`,
+    'This server now has an immediate guild-specific copy while the global command set remains available to every installed server.',
   ].join('\n');
 }
 
@@ -92,10 +60,10 @@ module.exports = {
   name: 'resetcommands',
   data: new SlashCommandBuilder()
     .setName('resetcommands')
-    .setDescription('Owner only: remove stale slash commands and register the current command set.')
+    .setDescription('Owner only: rebuild all current slash commands and remove stale Discord commands.')
     .addStringOption((option) => option
       .setName('scope')
-      .setDescription('Global removes stale guild copies too and is recommended for production')
+      .setDescription('Rebuild the authoritative global set and sync every connected server')
       .setRequired(true)
       .addChoices(
         { name: 'Global clean rebuild (recommended)', value: 'global' },
