@@ -448,6 +448,7 @@ async function registerSlashCommands(client, slashCommands) {
     applicationId,
     commandCount: slashCommands.length,
     globalRegistered: !globalError,
+    globalError: globalError ? (globalError.message || String(globalError)) : null,
     globalSummary,
     guildSummary,
   };
