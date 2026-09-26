@@ -3,6 +3,8 @@ const { getFeature } = require('../features/store');
 const {
   getMusicManager,
   getMusicStatus,
+  markManualStop,
+  waitForManualStopCooldown,
   isMusicReady,
   musicUnavailableMessage,
   musicGloballyEnabled,
@@ -126,6 +128,8 @@ function trackLine(track, index = null) {
 module.exports = {
   musicContext,
   searchMusic,
+  markManualStop,
+  waitForManualStopCooldown,
   noTracksMessage,
   existingPlayer,
   sameVoiceChannel,
