@@ -189,10 +189,10 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260926-no-ssl">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260926-dashboard-access">
 </head><body>
 <header class="site-header"><div class="header-inner">
-  <a class="brand" href="/">Kryndexa Bot</a>
+  <a class="brand" href="/"><img class="brand-avatar" src="/favicon.ico" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
     <a href="/">Home</a><a href="/features">Features</a>
@@ -907,20 +907,54 @@ function startDashboard(client) {
       const managedGuilds = await getManagedGuilds(req, client);
       req.session.user.isBotOwner = await isBotOwner(client, req.session.user.id);
 
-      const dashboardStats = await Promise.all(managedGuilds.map(async (managed) => {
-        const guild = client.guilds.cache.get(managed.id);
-        if (!guild) return null;
+      // The Your Servers overview must reflect only the signed-in user's dashboard access.
+      // Deduplicate Discord's guild list by ID before calculating any totals.
+      const accessibleGuilds = [...new Map(
+        managedGuilds.map((guild) => [String(guild.id), guild]),
+      ).values()];
 
-        const [tickets, analytics] = await Promise.all([
+      const dashboardStats = await Promise.all(accessibleGuilds.map(async (managed) => {
+        const guild = client.guilds.cache.get(managed.id);
+        if (!guild) {
+          return {
+            id: managed.id,
+            name: managed.name,
+            icon: managed.icon || null,
+            members: 0,
+            channels: 0,
+            roles: 0,
+            openTickets: 0,
+            commandUses: 0,
+          };
+        }
+
+        const [ticketsResult, analyticsResult] = await Promise.allSettled([
           listGuildTickets(guild.id),
           getAnalytics(guild.id),
         ]);
+
+        const tickets = ticketsResult.status === 'fulfilled' ? ticketsResult.value : [];
+        const analytics = analyticsResult.status === 'fulfilled'
+          ? analyticsResult.value
+          : { uses: 0 };
+
+        if (ticketsResult.status === 'rejected') {
+          console.warn(
+            `[Dashboard] Ticket total unavailable for ${guild.name} (${guild.id}): ${ticketsResult.reason?.message || ticketsResult.reason}`,
+          );
+        }
+
+        if (analyticsResult.status === 'rejected') {
+          console.warn(
+            `[Dashboard] Command usage unavailable for ${guild.name} (${guild.id}): ${analyticsResult.reason?.message || analyticsResult.reason}`,
+          );
+        }
 
         return {
           id: managed.id,
           name: managed.name,
           icon: managed.icon || guild.icon || null,
-          members: guild.memberCount,
+          members: Number(guild.memberCount || 0),
           channels: guild.channels.cache.size,
           roles: Math.max(0, guild.roles.cache.size - 1),
           openTickets: tickets.filter((ticket) => ticket.status === 'open').length,
@@ -928,14 +962,16 @@ function startDashboard(client) {
         };
       }));
 
-      const rows = dashboardStats.filter(Boolean);
+      const rows = dashboardStats;
       const totals = rows.reduce((sum, item) => ({
+        servers: sum.servers + 1,
         members: sum.members + item.members,
         channels: sum.channels + item.channels,
         roles: sum.roles + item.roles,
         openTickets: sum.openTickets + item.openTickets,
         commandUses: sum.commandUses + item.commandUses,
       }), {
+        servers: 0,
         members: 0,
         channels: 0,
         roles: 0,
@@ -944,7 +980,7 @@ function startDashboard(client) {
       });
 
       const rowById = new Map(rows.map((item) => [item.id, item]));
-      const cards = managedGuilds.length ? managedGuilds.map((managed) => {
+      const cards = accessibleGuilds.length ? accessibleGuilds.map((managed) => {
         const stats = rowById.get(managed.id);
         const icon = managed.icon
           ? `<img src="https://cdn.discordapp.com/icons/${managed.id}/${managed.icon}.png?size=128" alt="">`
@@ -995,7 +1031,7 @@ function startDashboard(client) {
             <span class="summary-icon summary-icon-servers" aria-hidden="true">
               <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01M12 7h5M12 17h5"/></svg>
             </span>
-            <div><strong>${rows.length.toLocaleString()}</strong><span>Servers</span></div>
+            <div><strong>${totals.servers.toLocaleString()}</strong><span>Servers</span></div>
           </div>
           <div class="summary-card">
             <span class="summary-icon summary-icon-members" aria-hidden="true">
@@ -1036,7 +1072,7 @@ function startDashboard(client) {
               <h2>Choose a server</h2>
               <p>Open a server to configure Kryndexa or review its statistics.</p>
             </div>
-            <span class="managed-server-count">${managedGuilds.length} managed</span>
+            <span class="managed-server-count">${totals.servers.toLocaleString()} managed</span>
           </div>
 
           <div class="dashboard-toolbar">
