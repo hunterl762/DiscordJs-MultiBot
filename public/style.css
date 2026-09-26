@@ -122,7 +122,7 @@
 .ticket-module-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .ticket-module-fields label{font-weight:700;font-size:13px}
 .ticket-module-fields .wide{grid-column:1/-1}
-.ticket-module-fields input,.ticket-module-fields select,.ticket-module-fields textarea{display:block;width:100%;margin-top:6px;padding:10px 11px;background:#10141b;color:#fff;border:1px solid #303846;border-radius:9px;font:inherit;resize:vertical}
+.ticket-module-fields input,.ticket-module-fields select,.ticket-module-fields textarea{display:block;width:100%;margin-top:6px;padding:10px 11px;background:#10141b;color:#fff;border:1px solid #303846;border-radius:9px;font:inherit}
 .ticket-module-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:15px;padding-top:13px;border-top:1px solid #2c3340}
 .ticket-module-footer span{color:#7f899a;font-size:11px}
 .ticket-module-footer code{color:#bfcaff}
@@ -2481,4 +2481,101 @@ html[data-theme="light"] .embed-preview-title-link.has-link{
 }
 html[data-theme="light"] .embed-preview-title-link.has-link:hover{
   color:#3544c7;
+}
+
+
+/* === Cookie panel + fixed paragraph fields === */
+.cookie-notice{
+  display:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:17px 18px;
+  border-radius:16px;
+}
+.cookie-notice.is-visible{
+  display:flex;
+  animation:cookieNoticeIn .18s ease-out;
+}
+.cookie-notice.is-hidden{
+  display:none !important;
+}
+.cookie-copy{
+  min-width:0;
+  flex:1;
+}
+.cookie-copy strong{
+  display:block;
+  font-size:15px;
+  line-height:1.25;
+}
+.cookie-copy p{
+  max-width:610px;
+  margin:5px 0 0;
+  line-height:1.5;
+}
+.cookie-actions{
+  align-items:center;
+}
+.cookie-actions .btn:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+@keyframes cookieNoticeIn{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* Text/paragraph inputs keep a clean, fixed layout and cannot be dragged. */
+textarea{
+  box-sizing:border-box;
+  resize:none !important;
+  line-height:1.5;
+  overflow-y:auto;
+  scrollbar-gutter:stable;
+}
+.ticket-module-fields textarea{
+  height:112px;
+  min-height:112px;
+  max-height:112px;
+}
+.stream-config-form textarea{
+  height:100px;
+  min-height:100px;
+  max-height:100px;
+}
+.stream-embed-editor textarea{
+  height:128px;
+  min-height:128px;
+  max-height:128px;
+}
+.owner-broadcast-editor textarea{
+  height:190px;
+  min-height:190px;
+  max-height:190px;
+}
+.embed-editor-controls textarea{
+  border-radius:10px;
+}
+html[data-theme="light"] textarea{
+  box-shadow:inset 0 1px 2px rgba(31,51,89,.035);
+}
+
+@media(max-width:720px){
+  .cookie-notice.is-visible{
+    display:flex;
+    align-items:stretch;
+  }
+  .cookie-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .cookie-actions>a{
+    grid-column:1/-1;
+  }
+  .owner-broadcast-editor textarea{
+    height:160px;
+    min-height:160px;
+    max-height:160px;
+  }
 }
