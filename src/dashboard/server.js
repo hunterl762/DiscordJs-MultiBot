@@ -222,7 +222,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-cookie-textarea-repair">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-unified-stream-panel">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -314,9 +314,17 @@ ${cookieNotice}
 
   document.querySelectorAll('[data-stream-platform]').forEach(select=>{
     const form=select.closest('form');const input=form?.querySelector('[data-stream-identifier]');const help=form?.querySelector('[data-stream-help]');
-    const update=()=>{if(!input||!help)return;if(select.value==='youtube'){input.placeholder='UCxxxxxxxxxxxxxxxxxxxxxx';help.textContent='Use the YouTube channel ID.';}
-      else if(select.value==='kick'){input.placeholder='Broadcaster ID or channel slug';help.textContent='Use a Kick broadcaster ID or channel slug.';}
-      else{input.placeholder='Twitch username';help.textContent='Twitch username without @.';}};
+    const update=()=>{
+      const provider=select.value||'twitch';
+      if(input&&help){
+        if(provider==='youtube'){input.placeholder='UCxxxxxxxxxxxxxxxxxxxxxx';help.textContent='Use the YouTube channel ID.';}
+        else if(provider==='kick'){input.placeholder='Broadcaster ID or channel slug';help.textContent='Use a Kick broadcaster ID or channel slug.';}
+        else{input.placeholder='Twitch username';help.textContent='Twitch username without @.';}
+      }
+      document.querySelectorAll('[data-stream-embed-panel]').forEach(panel=>{panel.hidden=panel.dataset.streamEmbedPanel!==provider;});
+      const heading=document.querySelector('[data-stream-embed-heading]');
+      if(heading)heading.textContent=provider==='youtube'?'YouTube':provider==='kick'?'Kick':'Twitch';
+    };
     select.addEventListener('change',update);update();
   });
 
@@ -1676,42 +1684,39 @@ function startDashboard(client) {
             const lastAnnounced = item.lastAnnouncedAt
               ? new Date(item.lastAnnouncedAt).toLocaleString()
               : 'Never';
-            const customMessage = item.customMessage
-              ? escapeHtml(item.customMessage)
-              : `Using the configured ${meta.label} embed template`;
 
-            return `<article class="stream-card provider-${meta.css} ${item.isLive ? 'is-live' : ''}">
-              <div class="twitch-card-top">
+            return `<article class="stream-list-row provider-${meta.css}">
+              <div class="stream-list-main">
                 <div class="stream-avatar ${meta.css}">${escapeHtml(meta.short)}</div>
-                <div class="twitch-identity">
-                  <a class="twitch-name" href="${escapeHtml(meta.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.streamerIdentifier)}</a>
-                  <span class="provider-chip ${meta.css}">${escapeHtml(meta.label)}</span>
-                  <span class="status-badge ${item.isLive ? 'live' : 'offline'}"><span class="status-dot"></span>${item.isLive ? 'LIVE' : 'Offline'}</span>
+                <div>
+                  <div class="stream-list-title">
+                    <a href="${escapeHtml(meta.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.streamerIdentifier)}</a>
+                    <span class="provider-chip ${meta.css}">${escapeHtml(meta.label)}</span>
+                    <span class="status-badge ${item.isLive ? 'live' : 'offline'}"><span class="status-dot"></span>${item.isLive ? 'LIVE' : 'Offline'}</span>
+                  </div>
+                  <div class="stream-list-meta">
+                    <span>Channel: <strong>${escapeHtml(channelName)}</strong></span>
+                    <span>Last announced: <strong>${escapeHtml(lastAnnounced)}</strong></span>
+                    <span>${item.enabled ? 'Enabled' : 'Disabled'}</span>
+                  </div>
                 </div>
-                <form method="post" action="/dashboard/${guild.id}/streams/${item.id}/delete" onsubmit="return confirm('Remove this stream alert?')">
-                  <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-                  <button class="icon-btn danger" type="submit" title="Remove stream alert">×</button>
-                </form>
               </div>
-              <div class="twitch-card-grid">
-                <div><span class="mini-label">Discord channel</span><strong>${escapeHtml(channelName)}</strong></div>
-                <div><span class="mini-label">Last announced</span><strong>${escapeHtml(lastAnnounced)}</strong></div>
-              </div>
-              <div class="twitch-message-preview">
-                <span class="mini-label">Announcement message</span>
-                <p>${customMessage}</p>
-              </div>
-              <div class="twitch-card-footer">
-                <span class="pill subtle">${item.enabled ? 'Enabled' : 'Disabled'}</span>
-                <a href="${escapeHtml(meta.url)}" target="_blank" rel="noreferrer">Open ${escapeHtml(meta.label)} ↗</a>
-              </div>
+              <form method="post" action="/dashboard/${guild.id}/streams/${item.id}/delete" onsubmit="return confirm('Remove this stream alert?')">
+                <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+                <button class="icon-btn danger" type="submit" title="Remove stream alert">×</button>
+              </form>
             </article>`;
           }).join('')
-        : '<div class="empty twitch-empty">No Twitch, YouTube, or Kick stream alerts configured yet.</div>';
+        : '<div class="empty">No Twitch, YouTube, or Kick streamers configured yet.</div>';
 
       const streamEmbedEditors = embedConfigs
         .filter((config) => ['twitch_live', 'youtube_live', 'kick_live'].includes(config.key))
-        .map((config) => renderStreamEmbedEditor(guild.id, config, req.session.csrf))
+        .map((config) => {
+          const provider = config.key.replace('_live', '');
+          return `<div class="stream-provider-editor" data-stream-embed-panel="${provider}" ${provider === 'twitch' ? '' : 'hidden'}>
+            ${renderStreamEmbedEditor(guild.id, config, req.session.csrf)}
+          </div>`;
+        })
         .join('');
       const catalog = commandCatalog().filter((command) => !command.ownerOnly);
       const commandStates = await getCommandStateObject(guild.id, catalog.map((command) => command.name));
@@ -1892,26 +1897,19 @@ function startDashboard(client) {
       </section>
 
       <section id="stream-alerts" class="panel stream-alert-panel">
-        <div class="stream-alert-hero">
+        <div class="stream-alert-heading">
           <div>
-            <span class="eyebrow">LIVE INTEGRATION</span>
-            <h2>Twitch / YouTube / Kick Stream Alerts</h2>
-            <p>Configure multi-platform go-live alerts, Discord live roles, announcement channels, and provider-specific embed templates.</p>
+            <span class="eyebrow">STREAM ALERTS</span>
+            <h2>Twitch / YouTube / Kick Streamers</h2>
+            <p>Use one form for every streaming service. Choose the service below, then configure the streamer, Discord channel, live role, and matching embed.</p>
           </div>
-          <div class="stream-provider-badges"><span class="provider-chip twitch">Twitch</span><span class="provider-chip youtube">YouTube</span><span class="provider-chip kick">Kick</span></div>
+          <span class="stream-access-pill">${streamAccess.paid ? 'Paid' : 'Free'} • ${streamAnnouncements.length}/${streamAccess.streamerLimit} streamers</span>
         </div>
 
-        <div class="stream-plan-summary">
-          <div><span class="mini-label">Access tier</span><strong>${streamAccess.paid ? 'Paid' : 'Free'}</strong></div>
-          <div><span class="mini-label">Configured streamers</span><strong>${streamAnnouncements.length} / ${streamAccess.streamerLimit}</strong></div>
-          <div><span class="mini-label">Free limit</span><strong>${FREE_STREAMER_LIMIT} streamers</strong></div>
-          <div><span class="mini-label">Paid limit</span><strong>${PAID_STREAMER_LIMIT} streamers</strong></div>
-        </div>
-
-        <form class="stream-config-form" method="post" action="/dashboard/${guild.id}/streams">
+        <form class="stream-config-form unified-stream-form" method="post" action="/dashboard/${guild.id}/streams">
           <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
           <div class="form-grid">
-            <label>Streaming Platform
+            <label>Streaming Service
               <select name="platform" data-stream-platform required>
                 <option value="twitch">Twitch</option>
                 <option value="youtube">YouTube</option>
@@ -1931,7 +1929,7 @@ function startDashboard(client) {
             <label>Live Role <small>(optional)</small>
               <select name="liveRoleId">${selectOptions(roles, '', 'No live role')}</select>
             </label>
-            <label style="grid-column:1/-1">Custom Description Override <small>(optional)</small>
+            <label class="stream-message-field">Custom Description Override <small>(optional)</small>
               <textarea name="customMessage" maxlength="1000" rows="3" placeholder="{user} is live on {platform} playing {game}! {url}"></textarea>
             </label>
           </div>
@@ -1942,17 +1940,25 @@ function startDashboard(client) {
           </div>
         </form>
 
-        <div class="twitch-cards">${streamCards}</div>
-
-        <div class="stream-embed-section">
-          <div class="panel-heading-row">
+        <div class="stream-unified-block">
+          <div class="stream-subheading">
             <div>
-              <span class="eyebrow">EMBED MODULES</span>
-              <h3>Go-Live Embed Builder</h3>
-              <p>Customize the Discord embed sent for each streaming provider. Changes are used by the live monitor immediately.</p>
+              <span class="mini-label">CONFIGURED STREAMERS</span>
+              <h3>Your Stream Alerts</h3>
             </div>
           </div>
-          <div class="stream-embed-grid">${streamEmbedEditors}</div>
+          <div class="stream-list">${streamCards}</div>
+        </div>
+
+        <div class="stream-unified-block stream-embed-unified">
+          <div class="stream-subheading">
+            <div>
+              <span class="mini-label">EMBED SETTINGS</span>
+              <h3><span data-stream-embed-heading>Twitch</span> Go-Live Embed</h3>
+              <p>The Streaming Service dropdown above also selects which provider embed you are editing.</p>
+            </div>
+          </div>
+          <div class="stream-single-editor">${streamEmbedEditors}</div>
         </div>
       </section>
 
