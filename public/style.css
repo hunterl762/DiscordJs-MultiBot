@@ -2579,3 +2579,115 @@ html[data-theme="light"] textarea{
     max-height:160px;
   }
 }
+
+
+/* === Unified Stream Alerts panel === */
+.stream-alert-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:16px;
+}
+.stream-alert-heading h2{margin:4px 0 6px}
+.stream-alert-heading p{margin:0;max-width:780px;color:var(--muted)}
+.stream-access-pill{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  padding:8px 11px;
+  border:1px solid #3b4659;
+  border-radius:999px;
+  background:#141820;
+  color:#dfe6f2;
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.unified-stream-form{margin-bottom:16px}
+.stream-message-field{grid-column:1/-1}
+.stream-unified-block{
+  padding-top:18px;
+  margin-top:18px;
+  border-top:1px solid #343b49;
+}
+.stream-subheading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:12px;
+}
+.stream-subheading h3{margin:3px 0 0}
+.stream-subheading p{margin:5px 0 0;color:var(--muted)}
+.stream-list{
+  display:grid;
+  gap:8px;
+}
+.stream-list-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 13px;
+  border:1px solid #313744;
+  border-radius:12px;
+  background:#171a21;
+}
+.stream-list-row.provider-twitch{border-left:3px solid #9146ff}
+.stream-list-row.provider-youtube{border-left:3px solid #ff0033}
+.stream-list-row.provider-kick{border-left:3px solid #53fc18}
+.stream-list-main{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:11px;
+}
+.stream-list-title{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.stream-list-title>a{
+  color:#eef1f6;
+  font-weight:850;
+  text-decoration:none;
+}
+.stream-list-title>a:hover{text-decoration:underline}
+.stream-list-meta{
+  display:flex;
+  gap:13px;
+  flex-wrap:wrap;
+  margin-top:5px;
+  color:var(--muted);
+  font-size:11px;
+}
+.stream-list-meta strong{color:#cfd6e2}
+.stream-single-editor>.stream-provider-editor[hidden]{display:none !important}
+.stream-single-editor .stream-embed-editor{
+  margin:0;
+}
+.stream-single-editor .stream-embed-editor-head{
+  display:none;
+}
+
+html[data-theme="light"] .stream-access-pill,
+html[data-theme="light"] .stream-list-row{
+  background:#fff;
+  border-color:#dfe5ef;
+  color:#172033;
+}
+html[data-theme="light"] .stream-list-title>a{color:#172033}
+html[data-theme="light"] .stream-list-meta strong{color:#3b475d}
+
+@media(max-width:720px){
+  .stream-alert-heading,
+  .stream-list-row{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .stream-access-pill{
+    align-self:flex-start;
+  }
+}
