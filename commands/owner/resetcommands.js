@@ -15,12 +15,17 @@ async function resetCommands(client, slashCommands, scope, guildId) {
   if (scope === 'global') {
     const result = await registerSlashCommands(client, slashCommands);
     const failed = result.guildSummary.failures.length;
+    const added = result.globalSummary?.added || [];
+    const removed = result.globalSummary?.removed || [];
 
     return [
-      `Registered and verified **${slashCommands.length}** global slash command(s).`,
-      `Synced the current command set to **${result.guildSummary.synced}/${result.guildSummary.total}** connected server(s).`,
+      `Rebuilt and verified **${slashCommands.length}** global slash command(s).`,
+      `New global commands: **${added.length}** • stale global commands removed: **${removed.length}**.`,
+      added.length ? `Added: ${added.map((name) => `/${name}`).join(', ')}` : 'No newly named global commands were added.',
+      removed.length ? `Removed stale: ${removed.map((name) => `/${name}`).join(', ')}` : 'No stale global command names were found.',
+      `Mirrored the clean command set to **${result.guildSummary.synced}/${result.guildSummary.total}** connected server(s).`,
       failed
-        ? `**${failed}** server(s) could not be synced; check the bot console for Missing Access or Discord API errors.`
+        ? `**${failed}** server(s) could not be mirrored; check the bot console for Missing Access or Discord API errors.`
         : 'Every connected server was synchronized successfully.',
     ].join('\n');
   }
@@ -51,10 +56,10 @@ module.exports = {
   name: 'resetcommands',
   data: new SlashCommandBuilder()
     .setName('resetcommands')
-    .setDescription('Owner only: remove stale slash commands and register the current command set.')
+    .setDescription('Owner only: rebuild all current slash commands and remove stale Discord commands.')
     .addStringOption((option) => option
       .setName('scope')
-      .setDescription('Global removes stale guild copies too and is recommended for production')
+      .setDescription('Rebuild the authoritative global set and sync every connected server')
       .setRequired(true)
       .addChoices(
         { name: 'Global clean rebuild (recommended)', value: 'global' },
