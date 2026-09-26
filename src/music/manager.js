@@ -389,7 +389,7 @@ async function initMusic(client, { waitForReady = true } = {}) {
 
     // A delayed event from a destroyed player must never tear down a newly
     // created player for the same guild.
-    if (currentPlayer && currentPlayer !== player) {
+    if (!currentPlayer || currentPlayer !== player) {
       console.log(`[Music] Ignoring stale playerEmpty event for guild ${guildId}.`);
       return;
     }
