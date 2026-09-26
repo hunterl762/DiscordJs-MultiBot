@@ -4,6 +4,9 @@ let Kazagumo = null;
 let Connectors = null;
 let kazagumo = null;
 let initialized = false;
+const manualStopUntil = new Map();
+const playerEndReasons = new WeakMap();
+const playerStarted = new WeakSet();
 
 const connectionState = {
   state: 'idle',
@@ -175,6 +178,36 @@ async function probeLavalinkInfo() {
   }
 }
 
+function markManualStop(guildId, cooldownMs = 2_500) {
+  const id = String(guildId || '');
+  if (!id) return;
+  manualStopUntil.set(id, Date.now() + Math.max(500, Number(cooldownMs || 2_500)));
+}
+
+function manualStopActive(guildId) {
+  const id = String(guildId || '');
+  const until = Number(manualStopUntil.get(id) || 0);
+  if (!until) return false;
+  if (Date.now() >= until) {
+    manualStopUntil.delete(id);
+    return false;
+  }
+  return true;
+}
+
+async function waitForManualStopCooldown(guildId) {
+  const id = String(guildId || '');
+  const until = Number(manualStopUntil.get(id) || 0);
+  const remaining = until - Date.now();
+
+  if (remaining > 0) {
+    console.log(`[Music] Waiting ${remaining}ms for the previous voice session in guild ${id} to finish disconnecting.`);
+    await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+
+  manualStopUntil.delete(id);
+}
+
 function formatDuration(ms) {
   const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
   const hours = Math.floor(total / 3600);
@@ -321,7 +354,20 @@ async function initMusic(client, { waitForReady = true } = {}) {
     console.warn(`[Music] Lavalink node ${name || node.name} disconnected from ${endpoint}.`);
   });
 
+  kazagumo.on('playerCreate', (player) => {
+    // Kazagumo emits playerEmpty for both natural queue exhaustion and loadFailed.
+    // Capture Lavalink's raw end reason before Kazagumo processes it so we can
+    // distinguish an actual empty queue from a failed track load.
+    if (typeof player?.shoukaku?.prependListener === 'function') {
+      player.shoukaku.prependListener('end', (data) => {
+        playerEndReasons.set(player, String(data?.reason || 'unknown'));
+      });
+    }
+  });
+
   kazagumo.on('playerStart', (player, track) => {
+    playerStarted.add(player);
+    playerEndReasons.delete(player);
     const channel = client.channels.cache.get(player.textId);
     if (!channel?.isTextBased()) return;
     channel.send({
@@ -337,10 +383,49 @@ async function initMusic(client, { waitForReady = true } = {}) {
     }).catch(() => null);
   });
 
-  kazagumo.on('playerEmpty', (player) => {
+  kazagumo.on('playerEmpty', async (player) => {
+    const guildId = String(player?.guildId || '');
+    const currentPlayer = guildId ? kazagumo?.players?.get(guildId) : null;
+
+    // A delayed event from a destroyed player must never tear down a newly
+    // created player for the same guild.
+    if (currentPlayer && currentPlayer !== player) {
+      console.log(`[Music] Ignoring stale playerEmpty event for guild ${guildId}.`);
+      return;
+    }
+
+    // /stop intentionally destroys the player. Suppress the empty-queue
+    // notification/event generated while that old voice session is closing.
+    if (manualStopActive(guildId)) {
+      console.log(`[Music] Suppressed playerEmpty during manual stop for guild ${guildId}.`);
+      return;
+    }
+
+    const endReason = playerEndReasons.get(player) || 'unknown';
+    const hadStarted = playerStarted.has(player);
     const channel = client.channels.cache.get(player.textId);
-    if (channel?.isTextBased()) channel.send('🎵 Music queue finished. Leaving voice.').catch(() => null);
-    player.destroy();
+
+    if (endReason === 'loadFailed' || (!hadStarted && endReason !== 'finished')) {
+      console.warn(
+        `[Music] Track playback failed in guild ${guildId}. Lavalink end reason=${endReason}; started=${hadStarted}.`,
+      );
+      if (channel?.isTextBased()) {
+        channel.send(
+          '⚠️ Lavalink found the track but failed to start playback. Check the Lavalink console/YouTube source plugin, or try another result.',
+        ).catch(() => null);
+      }
+    } else if (channel?.isTextBased()) {
+      channel.send('🎵 Music queue finished. Leaving voice.').catch(() => null);
+    }
+
+    playerEndReasons.delete(player);
+
+    // Only destroy the player if this event still belongs to the active player.
+    if (!currentPlayer || currentPlayer === player) {
+      await player.destroy().catch((error) => {
+        console.warn(`[Music] Unable to destroy empty player for guild ${guildId}: ${error?.message || error}`);
+      });
+    }
   });
 
   console.log('[Music] Kazagumo/Shoukaku runtime initialized; waiting for Discord clientReady before node connection.');
@@ -386,6 +471,7 @@ function stopMusic() {
 
   kazagumo = null;
   initialized = false;
+  manualStopUntil.clear();
   setConnectionState('idle', {
     ready: false,
     nodeName: '',
@@ -402,6 +488,8 @@ module.exports = {
   getMusicManager,
   getMusicStatus,
   probeLavalinkInfo,
+  markManualStop,
+  waitForManualStopCooldown,
   isMusicReady,
   musicUnavailableMessage,
   musicGloballyEnabled,
