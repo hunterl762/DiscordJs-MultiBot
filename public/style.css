@@ -1941,3 +1941,46 @@ html[data-theme="light"] .site-nav a[href="/dashboard/owner"]:hover{
     min-width:0;
   }
 }
+
+
+/* === Kryndexa navigation avatar === */
+.brand{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+}
+.brand-avatar{
+  width:30px;
+  height:30px;
+  flex:0 0 30px;
+  display:block;
+  object-fit:cover;
+  border-radius:50%;
+  border:1px solid rgba(88,101,242,.28);
+  background:rgba(88,101,242,.10);
+  box-shadow:0 5px 14px rgba(0,0,0,.12);
+}
+.brand>span{
+  display:block;
+  min-width:0;
+}
+
+/* Keep every Your Servers stat glyph optically centered inside its bubble. */
+.dashboard-server-summary .summary-icon{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:0 !important;
+  line-height:0 !important;
+  text-align:center;
+}
+.dashboard-server-summary .summary-icon svg{
+  position:static !important;
+  display:block !important;
+  flex:0 0 auto;
+  margin:0 !important;
+  inset:auto !important;
+  vertical-align:middle;
+  transform:none !important;
+  overflow:visible;
+}
