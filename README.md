@@ -49,6 +49,7 @@ DISCORD_REDIRECT_URI=http://localhost:3000/auth/callback
 PORT=3000
 WEB_HOST=0.0.0.0
 BASE_URL=http://localhost:3000
+WEB_ICON_URL=
 SESSION_SECRET=replace-with-a-long-random-secret
 NODE_ENV=development
 
