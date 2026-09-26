@@ -16,6 +16,16 @@ const { startTwitchMonitor, stopTwitchMonitor } = require('./services/twitchMoni
 const { registerFeatureRuntime, stopFeatureRuntime } = require('./features/runtime');
 const { initMusic, stopMusic } = require('./music/manager');
 
+function envFlag(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const required = [
   'DISCORD_TOKEN',
   'DISCORD_CLIENT_ID',
@@ -59,16 +69,128 @@ async function waitForReady() {
   await new Promise((resolve) => client.once(Events.ClientReady, resolve));
 }
 
+function validateSlashCommandPayloads() {
+  if (!slashCommands.length) {
+    throw new Error('No slash commands were loaded from the commands directory.');
+  }
+
+  if (slashCommands.length > 100) {
+    throw new Error(`Loaded ${slashCommands.length} chat-input commands; Discord allows at most 100 global chat-input commands.`);
+  }
+
+  const seen = new Set();
+  for (const command of slashCommands) {
+    const name = String(command?.name || '').trim().toLowerCase();
+    if (!name || !command?.description) {
+      throw new Error(`Invalid slash-command payload: ${JSON.stringify(command)}`);
+    }
+    if (seen.has(name)) throw new Error(`Duplicate slash-command payload: /${name}`);
+    seen.add(name);
+  }
+}
+
+function commandNameSet(commands) {
+  return new Set(
+    (Array.isArray(commands) ? commands : [])
+      .map((command) => String(command?.name || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function commandSetsMatch(remoteCommands) {
+  if (!Array.isArray(remoteCommands) || remoteCommands.length !== slashCommands.length) return false;
+
+  const localNames = commandNameSet(slashCommands);
+  const remoteNames = commandNameSet(remoteCommands);
+
+  if (localNames.size !== remoteNames.size) return false;
+  return [...localNames].every((name) => remoteNames.has(name));
+}
+
 async function registerGlobalCommands(rest, applicationId) {
-  await rest.put(
+  const registered = await rest.put(
     Routes.applicationCommands(applicationId),
     { body: slashCommands },
   );
-  console.log(`Registered ${slashCommands.length} global slash commands.`);
+
+  const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
+  console.log(`[Slash Commands] Discord accepted ${accepted}/${slashCommands.length} global slash commands.`);
+
+  const remote = await rest.get(Routes.applicationCommands(applicationId));
+  const remoteCount = Array.isArray(remote) ? remote.length : 0;
+
+  if (!commandSetsMatch(remote)) {
+    const localNames = [...commandNameSet(slashCommands)].sort();
+    const remoteNames = [...commandNameSet(remote)].sort();
+
+    console.warn(
+      `[Slash Commands] Global verification mismatch: local=${slashCommands.length}, Discord=${remoteCount}.`,
+    );
+    console.warn(`[Slash Commands] Local names: ${localNames.join(', ')}`);
+    console.warn(`[Slash Commands] Discord names: ${remoteNames.join(', ')}`);
+  } else {
+    console.log(`[Slash Commands] Verified ${remoteCount} global commands on application ${applicationId}.`);
+  }
+
+  return remote;
+}
+
+async function syncGuildCommandFallback(rest, applicationId) {
+  const autoDefault = client.guilds.cache.size <= 100;
+  const enabled = envFlag('SLASH_COMMAND_GUILD_FALLBACK', autoDefault);
+
+  if (!enabled) {
+    console.log('[Slash Commands] Guild fallback sync is disabled; using global commands only.');
+    return;
+  }
+
+  console.log(
+    `[Slash Commands] Guild fallback sync enabled for ${client.guilds.cache.size} connected server(s).`,
+  );
+
+  let alreadyCurrent = 0;
+  let updated = 0;
+  let failed = 0;
+
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const existing = await rest.get(
+        Routes.applicationGuildCommands(applicationId, guild.id),
+      );
+
+      if (commandSetsMatch(existing)) {
+        alreadyCurrent += 1;
+        continue;
+      }
+
+      const registered = await rest.put(
+        Routes.applicationGuildCommands(applicationId, guild.id),
+        { body: slashCommands },
+      );
+
+      const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
+      updated += 1;
+      console.log(
+        `[Slash Commands] Synced ${accepted} guild commands to ${guild.name} (${guild.id}).`,
+      );
+
+      await sleep(250);
+    } catch (error) {
+      failed += 1;
+      console.warn(
+        `[Slash Commands] Guild fallback failed for ${guild.name} (${guild.id}): ${error.message || error}`,
+      );
+    }
+  }
+
+  console.log(
+    `[Slash Commands] Guild fallback complete: ${alreadyCurrent} already current, ${updated} updated, ${failed} failed.`,
+  );
 }
 
 async function registerSlashCommands() {
   await client.application.fetch();
+  validateSlashCommandPayloads();
 
   const applicationId = client.application.id;
   const configuredClientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
@@ -81,37 +203,38 @@ async function registerSlashCommands() {
   }
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  const devGuildId = String(process.env.DEV_GUILD_ID || '').trim();
 
-  if (!devGuildId) {
-    await registerGlobalCommands(rest, applicationId);
-    return;
-  }
+  // Production commands must always be global so every server that installed
+  // the application can see the same command set. DEV_GUILD_ID is only an
+  // optional instant-development mirror; it must never replace global sync.
+  await registerGlobalCommands(rest, applicationId);
+  await syncGuildCommandFallback(rest, applicationId);
+
+  const devGuildId = String(process.env.DEV_GUILD_ID || '').trim();
+  if (!devGuildId) return;
 
   const guild = client.guilds.cache.get(devGuildId);
-
   if (!guild) {
     console.warn(
       `[Slash Commands] DEV_GUILD_ID=${devGuildId} is not a server the bot is currently connected to. `
-      + 'Falling back to global slash-command registration. Clear DEV_GUILD_ID or replace it with a server ID where this bot is installed.',
+      + 'Global commands are registered; skipping the development-guild mirror.',
     );
-    await registerGlobalCommands(rest, applicationId);
     return;
   }
 
   try {
-    await rest.put(
+    const registered = await rest.put(
       Routes.applicationGuildCommands(applicationId, devGuildId),
       { body: slashCommands },
     );
-    console.log(`Registered ${slashCommands.length} slash commands in ${guild.name} (${devGuildId}).`);
+    const accepted = Array.isArray(registered) ? registered.length : slashCommands.length;
+    console.log(`[Slash Commands] Mirrored ${accepted} commands into development guild ${guild.name} (${devGuildId}).`);
   } catch (error) {
     if (error?.code === 50001 || error?.status === 403) {
       console.warn(
-        `[Slash Commands] Discord denied guild command registration for ${guild.name} (${devGuildId}) with Missing Access. `
-        + 'Falling back to global command registration instead of stopping MultiBot.',
+        `[Slash Commands] Discord denied development-guild registration for ${guild.name} (${devGuildId}) with Missing Access. `
+        + 'The global command set is still registered and available to installed servers.',
       );
-      await registerGlobalCommands(rest, applicationId);
       return;
     }
     throw error;

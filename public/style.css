@@ -220,3 +220,1898 @@
 .ticket-behavior-grid input,.ticket-behavior-grid select{display:block;width:100%;margin-top:6px;padding:10px 11px;border:1px solid #343d4d;border-radius:9px;background:#0f141c;color:#fff;font:inherit}
 .ticket-behavior-switches{margin:0 0 14px;padding:12px;border-radius:10px;background:#0e131b;border:1px solid #2c3442}
 @media(max-width:720px){.ticket-behavior-grid{grid-template-columns:1fr}}
+
+
+/* === Legacy dashboard structural repair ===
+   Keeps the current master dashboard usable until the file-based dashboard is merged.
+*/
+.site-header{
+  height:auto;
+  min-height:72px;
+  padding:0 24px;
+  display:block;
+}
+.header-inner{
+  width:100%;
+  max-width:1280px;
+  min-height:72px;
+  margin:0 auto;
+  display:flex;
+  align-items:center;
+  gap:20px;
+}
+.header-inner .brand{
+  flex:0 0 auto;
+  white-space:nowrap;
+}
+.site-nav{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  flex:1 1 auto;
+  min-width:0;
+}
+.site-nav a{
+  display:inline-flex;
+  align-items:center;
+  min-height:38px;
+  padding:8px 10px;
+  border-radius:9px;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.site-nav a:hover{
+  background:var(--panel2);
+  color:var(--text);
+}
+.header-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:9px;
+  flex:0 0 auto;
+}
+.header-auth,.header-auth .user{
+  display:flex;
+  align-items:center;
+  gap:9px;
+}
+.header-auth .user>span{
+  max-width:170px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.nav-toggle{
+  display:none;
+  width:42px;
+  height:42px;
+  padding:0;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel2);
+  color:var(--text);
+  cursor:pointer;
+}
+.theme-toggle{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel2);
+  color:var(--text);
+  cursor:pointer;
+}
+.header-actions .add-bot-button{
+  min-height:42px;
+  padding:10px 14px;
+  white-space:nowrap;
+}
+
+/* Server statistics page */
+.stats-page-hero{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:24px;
+  margin-bottom:18px;
+}
+.stats-page-hero h1{
+  margin:7px 0 8px;
+  font-size:clamp(34px,5vw,48px);
+  line-height:1.05;
+  letter-spacing:-.035em;
+}
+.stats-page-hero p{
+  margin:0;
+  max-width:720px;
+  color:var(--muted);
+  font-size:15px;
+}
+.server-stats-summary{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:18px;
+}
+.server-stats-summary>div{
+  min-width:0;
+  padding:16px 18px;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 14px 36px rgba(0,0,0,.12);
+}
+.server-stats-summary strong{
+  display:block;
+  font-size:24px;
+  line-height:1.05;
+  color:var(--text);
+}
+.server-stats-summary span{
+  display:block;
+  margin-top:5px;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+}
+.statistics-panel{
+  padding:18px;
+}
+.stats-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:14px;
+}
+.stats-toolbar>span{
+  color:var(--muted);
+  font-size:12px;
+  white-space:nowrap;
+}
+.server-search{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:1 1 420px;
+  max-width:620px;
+  min-width:0;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:#11151d;
+}
+.server-search>span{
+  flex:0 0 auto;
+  font-size:14px;
+}
+.server-search input{
+  width:100%;
+  min-width:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:var(--text);
+}
+.server-search input::placeholder{
+  color:var(--muted);
+}
+.server-statistics-table{
+  min-width:980px;
+}
+.server-statistics-table th{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.server-statistics-table td{
+  vertical-align:middle;
+}
+.server-statistics-table td>strong,
+.server-statistics-table td>small{
+  display:block;
+  white-space:nowrap;
+}
+.server-statistics-table td>small{
+  margin-top:2px;
+  color:var(--muted);
+  font-size:10px;
+}
+.stats-server-cell{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  min-width:260px;
+}
+.stats-server-cell>div:last-child{
+  min-width:0;
+}
+.stats-server-cell strong,
+.stats-server-cell small{
+  display:block;
+}
+.stats-server-cell strong{
+  max-width:220px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.stats-server-cell small{
+  margin-top:2px;
+  color:var(--muted);
+  font-size:10px;
+}
+.stats-server-icon{
+  width:48px;
+  height:48px;
+  flex:0 0 48px;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  border-radius:13px;
+  background:#323746;
+  font-size:12px;
+  font-weight:900;
+}
+.stats-server-icon img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.statistics-panel .table-wrap{
+  border:1px solid var(--line);
+  border-radius:12px;
+  overflow:auto;
+}
+.statistics-panel table{
+  background:var(--panel);
+}
+.statistics-panel th,
+.statistics-panel td{
+  padding:13px 12px;
+}
+
+/* Light mode contrast for legacy dashboard */
+html[data-theme="light"] .site-nav a{
+  color:#596579;
+}
+html[data-theme="light"] .site-nav a:hover{
+  color:#172033;
+  background:#f0f3f8;
+}
+html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .nav-toggle{
+  background:#f4f6fa;
+  color:#29344a;
+  border-color:#d8e0ea;
+}
+html[data-theme="light"] .server-stats-summary>div,
+html[data-theme="light"] .statistics-panel,
+html[data-theme="light"] .statistics-panel table{
+  background:#fff;
+}
+html[data-theme="light"] .server-search{
+  background:#fff;
+}
+html[data-theme="light"] .btn{
+  color:#fff;
+}
+html[data-theme="light"] .btn.secondary{
+  color:#29344a;
+}
+
+/* Responsive legacy header/statistics */
+@media(max-width:1080px){
+  .header-inner{gap:11px}
+  .site-nav{gap:1px}
+  .site-nav a{padding:8px 7px;font-size:12px}
+  .header-auth .user>span{display:none}
+  .server-stats-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:860px){
+  .site-header{padding:0 14px}
+  .header-inner{position:relative;min-height:64px}
+  .nav-toggle{
+    display:grid;
+    place-items:center;
+    margin-left:auto;
+  }
+  .site-nav{
+    display:none;
+    position:absolute;
+    top:calc(100% + 8px);
+    left:0;
+    right:0;
+    z-index:20;
+    padding:8px;
+    border:1px solid var(--line);
+    border-radius:13px;
+    background:var(--panel);
+    box-shadow:0 18px 48px rgba(0,0,0,.18);
+  }
+  .site-nav.open{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .site-nav a{
+    min-height:42px;
+    padding:10px 12px;
+  }
+  .header-actions .add-bot-button{display:none}
+}
+@media(max-width:720px){
+  .stats-page-hero{
+    align-items:stretch;
+    flex-direction:column;
+    gap:14px;
+  }
+  .stats-page-hero>.btn{align-self:flex-start}
+  .server-stats-summary{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .server-stats-summary>div{padding:13px 14px}
+  .stats-toolbar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .stats-toolbar>span{white-space:normal}
+  .server-search{
+    flex-basis:auto;
+    max-width:none;
+    width:100%;
+  }
+}
+@media(max-width:460px){
+  .header-auth{display:none}
+  .site-nav.open{grid-template-columns:1fr}
+  .server-stats-summary{grid-template-columns:1fr}
+}
+
+
+/* === Complete dashboard theme consistency ===
+   The theme switch now changes the entire dashboard instead of only individual cards.
+*/
+html[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f4f7fe;
+  --panel:#ffffff;
+  --panel2:#f8f9fd;
+  --text:#1b2559;
+  --muted:#707eae;
+  --accent:#5865f2;
+  --line:#e1e7f0;
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111318;
+  --panel:#1b1e25;
+  --panel2:#242832;
+  --text:#f5f7fb;
+  --muted:#9aa3b2;
+  --accent:#5865f2;
+  --line:#303644;
+}
+html[data-theme="light"] body{
+  background:linear-gradient(180deg,#eef2ff 0,#f7f9fc 270px,#f4f7fe 100%);
+  color:var(--text);
+}
+html[data-theme="dark"] body{
+  background:radial-gradient(circle at top,#202743 0,#111318 45%);
+  color:var(--text);
+}
+html[data-theme="light"] header,
+html[data-theme="light"] .site-header{
+  background:rgba(255,255,255,.92);
+  border-color:var(--line);
+}
+html[data-theme="dark"] header,
+html[data-theme="dark"] .site-header{
+  background:rgba(17,19,24,.92);
+  border-color:#252a35;
+}
+html[data-theme="light"] .brand{color:#1b2559}
+html[data-theme="dark"] .brand{color:#fff}
+html[data-theme="light"] a{color:#5865f2}
+html[data-theme="dark"] a{color:#aeb7ff}
+
+/* Generic dashboard surfaces */
+html[data-theme="light"] .panel,
+html[data-theme="light"] .guild-card,
+html[data-theme="light"] .empty,
+html[data-theme="light"] .statistics-panel,
+html[data-theme="light"] .server-stats-summary>div,
+html[data-theme="light"] .dashboard-home-stats>div,
+html[data-theme="light"] .dashboard-toolbar,
+html[data-theme="light"] .stats-toolbar,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .twitch-card,
+html[data-theme="light"] .settings-group,
+html[data-theme="light"] .settings-toggle-section{
+  background:#fff;
+  border-color:var(--line);
+  color:var(--text);
+}
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .guild-card,
+html[data-theme="dark"] .empty,
+html[data-theme="dark"] .statistics-panel,
+html[data-theme="dark"] .server-stats-summary>div,
+html[data-theme="dark"] .dashboard-home-stats>div,
+html[data-theme="dark"] .dashboard-toolbar,
+html[data-theme="dark"] .stats-toolbar{
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  border-color:var(--line);
+  color:var(--text);
+}
+html[data-theme="dark"] .command-card,
+html[data-theme="dark"] .feature-card,
+html[data-theme="dark"] .ticket-module-card,
+html[data-theme="dark"] .automation-rule-card,
+html[data-theme="dark"] .twitch-card,
+html[data-theme="dark"] .settings-group,
+html[data-theme="dark"] .settings-toggle-section{
+  background:#151922;
+  border-color:var(--line);
+  color:var(--text);
+}
+
+/* Statistics table follows the active theme */
+html[data-theme="light"] .statistics-panel table,
+html[data-theme="light"] .server-statistics-table{
+  background:#fff;
+  color:#1b2559;
+}
+html[data-theme="dark"] .statistics-panel table,
+html[data-theme="dark"] .server-statistics-table{
+  background:#1b1e25;
+  color:#f5f7fb;
+}
+html[data-theme="light"] .statistics-panel th,
+html[data-theme="light"] .statistics-panel td{
+  border-color:#e1e7f0;
+}
+html[data-theme="dark"] .statistics-panel th,
+html[data-theme="dark"] .statistics-panel td{
+  border-color:#303644;
+}
+html[data-theme="light"] .statistics-panel th{color:#707eae}
+html[data-theme="dark"] .statistics-panel th{color:#b8c0cf}
+
+/* Inputs and search fields */
+html[data-theme="light"] .server-search,
+html[data-theme="light"] .form-grid input,
+html[data-theme="light"] .form-grid select,
+html[data-theme="light"] .ticket-module-fields input,
+html[data-theme="light"] .ticket-module-fields select,
+html[data-theme="light"] .ticket-module-fields textarea,
+html[data-theme="light"] .feature-fields input,
+html[data-theme="light"] .feature-fields select,
+html[data-theme="light"] .automation-form input,
+html[data-theme="light"] .automation-form select{
+  background:#fff;
+  color:#1b2559;
+  border-color:#d7deea;
+}
+html[data-theme="dark"] .server-search,
+html[data-theme="dark"] .form-grid input,
+html[data-theme="dark"] .form-grid select,
+html[data-theme="dark"] .ticket-module-fields input,
+html[data-theme="dark"] .ticket-module-fields select,
+html[data-theme="dark"] .ticket-module-fields textarea,
+html[data-theme="dark"] .feature-fields input,
+html[data-theme="dark"] .feature-fields select,
+html[data-theme="dark"] .automation-form input,
+html[data-theme="dark"] .automation-form select{
+  background:#11151d;
+  color:#fff;
+  border-color:#343b49;
+}
+
+/* Buttons must keep readable contrast in either theme */
+html[data-theme="light"] .btn{
+  color:#fff;
+}
+html[data-theme="light"] .btn.secondary{
+  background:#eef2f7;
+  color:#29344a;
+}
+html[data-theme="dark"] .btn{
+  color:#fff;
+}
+html[data-theme="dark"] .btn.secondary{
+  background:#262b36;
+  color:#f5f7fb;
+}
+html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .nav-toggle{
+  background:#f4f6fa;
+  color:#29344a;
+  border-color:#d8e0ea;
+}
+html[data-theme="dark"] .theme-toggle,
+html[data-theme="dark"] .nav-toggle{
+  background:#242832;
+  color:#f5f7fb;
+  border-color:#303644;
+}
+
+/* Text that was previously hard-coded for dark mode */
+html[data-theme="light"] .guild-card{color:#1b2559}
+html[data-theme="light"] .twitch-name,
+html[data-theme="light"] .ticket-module-head h3,
+html[data-theme="light"] .feature-label-row h3,
+html[data-theme="light"] .command-card strong{
+  color:#1b2559;
+}
+html[data-theme="dark"] .guild-card,
+html[data-theme="dark"] .twitch-name,
+html[data-theme="dark"] .ticket-module-head h3,
+html[data-theme="dark"] .feature-label-row h3{
+  color:#f5f7fb;
+}
+
+
+/* === Homepage content spacing and category layout === */
+.landing-hero{
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);
+  align-items:center;
+  gap:42px;
+  min-height:520px;
+  padding:58px 4px 70px;
+}
+.hero-copy{
+  min-width:0;
+}
+.hero-copy .pill{
+  display:inline-flex;
+  align-items:center;
+  margin-bottom:22px;
+}
+.hero-copy h1{
+  max-width:760px;
+  margin:0 0 24px;
+  font-size:clamp(42px,5vw,68px);
+  line-height:1.02;
+  letter-spacing:-.045em;
+}
+.hero-slogan{
+  margin:0 0 16px;
+  max-width:820px;
+  line-height:1.55;
+}
+.hero-detail{
+  margin:0;
+  max-width:900px;
+  color:var(--muted);
+  line-height:1.7;
+}
+.hero-copy .actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:28px;
+}
+
+/* Right-side command center card */
+.hero-console{
+  align-self:center;
+  padding:22px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 22px 50px rgba(0,0,0,.16);
+}
+.hero-console-heading{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  margin-bottom:16px;
+  padding-bottom:15px;
+  border-bottom:1px solid var(--line);
+}
+.hero-console-label{
+  color:#aeb7ff;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.15em;
+}
+.hero-console-title{
+  color:var(--text);
+  font-size:21px;
+  line-height:1.2;
+}
+.hero-console-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.hero-category{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:44px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(255,255,255,.025);
+  color:var(--text);
+  font-size:12px;
+  font-weight:750;
+  line-height:1.25;
+}
+.hero-category b{
+  width:22px;
+  flex:0 0 22px;
+  text-align:center;
+  font-size:15px;
+}
+
+/* Footer spacing */
+footer{
+  padding:34px 24px 42px;
+}
+.footer-inner{
+  max-width:1280px;
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  text-align:center;
+}
+.footer-brand-block{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.footer-brand-block strong{
+  color:var(--text);
+  font-weight:850;
+}
+.footer-brand-block span{
+  color:var(--muted);
+}
+.footer-nav{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.footer-nav a{
+  font-weight:700;
+}
+.footer-nav>span{
+  color:var(--muted);
+}
+
+/* Theme-aware homepage cards */
+html[data-theme="light"] .hero-console{
+  background:#fff;
+  border-color:#dfe5ef;
+  box-shadow:0 22px 50px rgba(44,62,100,.10);
+}
+html[data-theme="light"] .hero-console-label{
+  color:#5865f2;
+}
+html[data-theme="light"] .hero-category{
+  background:#f7f9fd;
+  border-color:#dfe5ef;
+  color:#1b2559;
+}
+html[data-theme="dark"] .hero-console{
+  background:linear-gradient(180deg,#1b2030,#171b24);
+}
+html[data-theme="dark"] .hero-category{
+  background:#202530;
+  color:#f5f7fb;
+}
+
+/* Responsive homepage */
+@media(max-width:980px){
+  .landing-hero{
+    grid-template-columns:1fr;
+    gap:28px;
+    padding-top:42px;
+  }
+  .hero-console{
+    width:100%;
+  }
+}
+@media(max-width:620px){
+  .landing-hero{
+    padding-top:30px;
+    padding-bottom:48px;
+  }
+  .hero-copy h1{
+    font-size:clamp(38px,12vw,52px);
+  }
+  .hero-copy .actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .hero-copy .actions .btn{
+    width:100%;
+  }
+  .hero-console{
+    padding:16px;
+  }
+  .hero-console-grid{
+    grid-template-columns:1fr;
+  }
+  .footer-brand-block{
+    flex-direction:column;
+    gap:2px;
+  }
+}
+
+
+/* === Advanced dashboard control center === */
+.dashboard-control-shell{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+.dashboard-home-hero{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+  padding:26px 28px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  background:
+    radial-gradient(circle at top right,rgba(88,101,242,.18),transparent 38%),
+    linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 20px 50px rgba(0,0,0,.14);
+}
+.dashboard-hero-copy{
+  min-width:0;
+}
+.dashboard-home-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  margin-bottom:9px;
+  padding:6px 9px;
+  border:1px solid rgba(88,101,242,.35);
+  border-radius:999px;
+  background:rgba(88,101,242,.10);
+  color:#aeb7ff;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.dashboard-home-badge i,
+.dashboard-online-pill i,
+.guild-status i{
+  width:7px;
+  height:7px;
+  flex:0 0 7px;
+  border-radius:50%;
+  background:#20d587;
+  box-shadow:0 0 0 4px rgba(32,213,135,.10);
+}
+.dashboard-home-hero h1{
+  margin:5px 0 8px;
+  font-size:clamp(38px,5vw,56px);
+  line-height:1;
+  letter-spacing:-.045em;
+}
+.dashboard-home-hero p{
+  max-width:700px;
+  margin:0;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.65;
+}
+.dashboard-hero-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:0 0 auto;
+}
+.dashboard-online-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:40px;
+  padding:8px 12px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:rgba(255,255,255,.025);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+/* six-card overview */
+.dashboard-server-summary{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:10px;
+  margin:2px 0 0;
+  align-items:stretch;
+}
+.dashboard-server-summary>div{
+  min-width:0;
+  padding:0;
+}
+.dashboard-server-summary .summary-card{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  min-height:86px;
+  padding:14px 15px;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 10px 28px rgba(0,0,0,.09);
+  overflow:hidden;
+}
+.summary-icon{
+  width:38px;
+  height:38px;
+  flex:0 0 38px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(88,101,242,.28);
+  border-radius:11px;
+  background:rgba(88,101,242,.10);
+  color:#aeb7ff;
+}
+.summary-icon svg{
+  width:18px;
+  height:18px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.summary-icon-members svg,
+.summary-icon-tickets svg{
+  width:19px;
+  height:19px;
+}
+.summary-icon-channels svg{
+  width:17px;
+  height:17px;
+}
+.summary-icon-commands svg{
+  width:18px;
+  height:18px;
+}
+.dashboard-server-summary .summary-card>div{
+  min-width:0;
+}
+.dashboard-server-summary strong{
+  display:block;
+  font-size:22px;
+  line-height:1.05;
+  letter-spacing:-.025em;
+  color:var(--text);
+}
+.dashboard-server-summary .summary-card>div>span{
+  display:block;
+  margin-top:5px;
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.2;
+  font-weight:900;
+  letter-spacing:.075em;
+  text-transform:uppercase;
+  white-space:normal;
+}
+
+/* managed servers section */
+.dashboard-server-section{
+  padding:22px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 18px 46px rgba(0,0,0,.12);
+}
+.dashboard-server-section-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:16px;
+}
+.dashboard-server-section-head h2{
+  margin:4px 0 4px;
+  font-size:24px;
+  letter-spacing:-.025em;
+}
+.dashboard-server-section-head p{
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+}
+.managed-server-count{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--panel2);
+  color:var(--muted);
+  font-size:9px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  white-space:nowrap;
+}
+.dashboard-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 16px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(0,0,0,.08);
+}
+.dashboard-toolbar .server-search{
+  max-width:640px;
+}
+.dashboard-toolbar-hint{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+/* server cards */
+.friendly-guild-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+.friendly-guild-card{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:0;
+  min-width:0;
+  padding:17px;
+  border-radius:17px;
+  overflow:hidden;
+}
+.friendly-guild-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(88,101,242,.55);
+  box-shadow:0 16px 38px rgba(0,0,0,.14);
+}
+.guild-card-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.guild-card-main{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+  flex:1 1 auto;
+}
+.friendly-guild-card .guild-icon{
+  width:54px;
+  height:54px;
+  flex:0 0 54px;
+  border-radius:15px;
+}
+.guild-card-copy{
+  min-width:0;
+  flex:1 1 auto;
+}
+.guild-title-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.guild-title-row>strong{
+  min-width:0;
+  flex:1 1 auto;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:15px;
+}
+.guild-status{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  flex:0 0 auto;
+  padding:4px 7px;
+  border:1px solid rgba(32,213,135,.18);
+  border-radius:999px;
+  background:rgba(32,213,135,.08);
+  color:#5ee2a7;
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+.guild-card-copy>small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:9px;
+}
+.guild-mini-stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-top:15px;
+}
+.guild-mini-stats>div{
+  min-width:0;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:rgba(0,0,0,.07);
+}
+.guild-mini-stats span,
+.guild-mini-stats strong{
+  display:block;
+}
+.guild-mini-stats span{
+  color:var(--muted);
+  font-size:8px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.guild-mini-stats strong{
+  margin-top:4px;
+  color:var(--text);
+  font-size:15px;
+}
+.guild-card-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:14px;
+}
+.guild-card-actions .btn{
+  flex:1 1 0;
+  min-width:0;
+}
+.guild-configure-btn{
+  box-shadow:0 10px 24px rgba(88,101,242,.18);
+}
+
+/* theme tuning */
+html[data-theme="light"] .dashboard-home-hero,
+html[data-theme="light"] .dashboard-server-section,
+html[data-theme="light"] .dashboard-server-summary .summary-card{
+  background:#fff;
+  border-color:#dfe5ef;
+  box-shadow:0 18px 45px rgba(44,62,100,.08);
+}
+html[data-theme="light"] .dashboard-home-badge{
+  color:#5865f2;
+}
+html[data-theme="light"] .summary-icon{
+  background:#eef1ff;
+  color:#5865f2;
+  border-color:#d8defd;
+}
+html[data-theme="light"] .dashboard-toolbar,
+html[data-theme="light"] .guild-mini-stats>div,
+html[data-theme="light"] .dashboard-online-pill,
+html[data-theme="light"] .managed-server-count{
+  background:#f7f9fd;
+}
+html[data-theme="light"] .guild-status{
+  color:#0b9f61;
+}
+html[data-theme="dark"] .dashboard-server-section{
+  background:linear-gradient(180deg,#171c27,#131720);
+}
+html[data-theme="dark"] .friendly-guild-card{
+  background:linear-gradient(180deg,#1c2230,#171b24);
+}
+
+/* dashboard responsive layout */
+@media(max-width:1180px){
+  .dashboard-server-summary{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+@media(max-width:900px){
+  .dashboard-home-hero{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .dashboard-hero-actions{
+    width:100%;
+    flex-wrap:wrap;
+  }
+  .friendly-guild-grid{
+    grid-template-columns:1fr;
+  }
+}
+@media(max-width:720px){
+  .dashboard-home-hero,
+  .dashboard-server-section{
+    padding:16px;
+    border-radius:16px;
+  }
+  .dashboard-server-summary{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .dashboard-server-summary .summary-card{
+    min-height:76px;
+    padding:12px;
+  }
+  .summary-icon{
+    width:34px;
+    height:34px;
+    flex:0 0 34px;
+    border-radius:10px;
+  }
+  .summary-icon svg{
+    width:16px;
+    height:16px;
+  }
+  .dashboard-server-summary strong{
+    font-size:19px;
+  }
+  .dashboard-server-section-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .dashboard-toolbar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .dashboard-toolbar .server-search{
+    width:100%;
+    max-width:none;
+  }
+  .dashboard-toolbar-hint{
+    white-space:normal;
+  }
+  .guild-mini-stats{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:480px){
+  .dashboard-server-summary{
+    grid-template-columns:1fr;
+  }
+  .dashboard-hero-actions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .dashboard-hero-actions .btn,
+  .dashboard-online-pill{
+    width:100%;
+    justify-content:center;
+  }
+  .guild-title-row{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .guild-card-actions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+}
+
+
+/* === Cloudflare SSL dashboard status === */
+.cloudflare-ssl-card{
+  padding:17px 18px;
+  border:1px solid var(--line);
+  border-radius:17px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  box-shadow:0 12px 32px rgba(0,0,0,.09);
+}
+.cloudflare-ssl-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+.cloudflare-ssl-title{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+}
+.cloudflare-logo{
+  width:42px;
+  height:42px;
+  flex:0 0 42px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(246,130,31,.28);
+  border-radius:12px;
+  background:rgba(246,130,31,.10);
+  color:#f6821f;
+}
+.cloudflare-logo svg{
+  width:22px;
+  height:22px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.cloudflare-ssl-title h3{
+  margin:2px 0;
+  font-size:16px;
+}
+.cloudflare-ssl-title p{
+  margin:0;
+  color:var(--muted);
+  font-size:10px;
+}
+.cloudflare-status{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:30px;
+  padding:6px 9px;
+  border:1px solid rgba(32,213,135,.20);
+  border-radius:999px;
+  background:rgba(32,213,135,.08);
+  color:#5ee2a7;
+  font-size:8px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  white-space:nowrap;
+}
+.cloudflare-status i{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#20d587;
+}
+.cloudflare-status.error{
+  border-color:rgba(238,93,80,.25);
+  background:rgba(238,93,80,.08);
+  color:#ff857a;
+}
+.cloudflare-status.error i{background:#ee5d50}
+.cloudflare-status.unconfigured{
+  border-color:var(--line);
+  background:rgba(255,255,255,.025);
+  color:var(--muted);
+}
+.cloudflare-status.unconfigured i{background:var(--muted)}
+.cloudflare-ssl-metrics{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-top:14px;
+}
+.cloudflare-ssl-metrics>div{
+  min-width:0;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:rgba(0,0,0,.06);
+}
+.cloudflare-ssl-metrics span,
+.cloudflare-ssl-metrics strong{
+  display:block;
+}
+.cloudflare-ssl-metrics span{
+  color:var(--muted);
+  font-size:8px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.cloudflare-ssl-metrics strong{
+  margin-top:3px;
+  color:var(--text);
+  font-size:17px;
+}
+.cloudflare-ssl-foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid var(--line);
+}
+.cloudflare-ssl-foot>span{
+  min-width:0;
+  color:var(--muted);
+  font-size:9px;
+  overflow-wrap:anywhere;
+}
+html[data-theme="light"] .cloudflare-ssl-card{
+  background:#fff;
+  border-color:#dfe5ef;
+}
+html[data-theme="light"] .cloudflare-ssl-metrics>div{
+  background:#f7f9fd;
+}
+@media(max-width:720px){
+  .cloudflare-ssl-head,
+  .cloudflare-ssl-foot{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .cloudflare-ssl-metrics{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .cloudflare-ssl-foot .btn{
+    width:100%;
+  }
+}
+
+
+/* === Complete light-mode module cleanup ===
+   Make every dashboard module use white/light surfaces with dark readable text.
+*/
+html[data-theme="light"] body{
+  background:
+    radial-gradient(circle at top left,rgba(88,101,242,.07),transparent 34%),
+    linear-gradient(180deg,#f5f7fb 0,#f8faff 100%);
+  color:#172033;
+}
+
+html[data-theme="light"] main{
+  color:#172033;
+}
+
+/* Primary dashboard surfaces */
+html[data-theme="light"] .panel,
+html[data-theme="light"] .dashboard-home-hero,
+html[data-theme="light"] .dashboard-server-section,
+html[data-theme="light"] .statistics-panel,
+html[data-theme="light"] .cloudflare-ssl-card,
+html[data-theme="light"] .server-config-hero,
+html[data-theme="light"] .settings-panel,
+html[data-theme="light"] .feature-center-panel,
+html[data-theme="light"] .ticket-system-panel,
+html[data-theme="light"] .twitch-panel,
+html[data-theme="light"] .command-center-panel,
+html[data-theme="light"] .friendly-guild-card,
+html[data-theme="light"] .guild-card,
+html[data-theme="light"] .summary-card{
+  background:#ffffff !important;
+  color:#172033 !important;
+  border-color:#dfe5ef !important;
+  box-shadow:0 14px 34px rgba(31,51,89,.08) !important;
+}
+
+/* Nested module cards */
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .twitch-card,
+html[data-theme="light"] .settings-group,
+html[data-theme="light"] .settings-toggle-section,
+html[data-theme="light"] .automation-builder,
+html[data-theme="light"] .automation-form,
+html[data-theme="light"] .ticket-behavior-form,
+html[data-theme="light"] .ticket-behavior-grid,
+html[data-theme="light"] .ticket-behavior-switches,
+html[data-theme="light"] .twitch-config-form,
+html[data-theme="light"] .twitch-card-grid>div,
+html[data-theme="light"] .twitch-message-preview,
+html[data-theme="light"] .feature-fields,
+html[data-theme="light"] .feature-check,
+html[data-theme="light"] .checks label,
+html[data-theme="light"] .guild-mini-stats>div,
+html[data-theme="light"] .cloudflare-ssl-metrics>div,
+html[data-theme="light"] .dashboard-toolbar,
+html[data-theme="light"] .stats-toolbar,
+html[data-theme="light"] .managed-server-count,
+html[data-theme="light"] .dashboard-online-pill,
+html[data-theme="light"] .dashboard-jump,
+html[data-theme="light"] .settings-footer{
+  background:#f8fafc !important;
+  color:#172033 !important;
+  border-color:#dfe5ef !important;
+  box-shadow:none !important;
+}
+
+/* Cards that should stay pure white even when nested */
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .twitch-card,
+html[data-theme="light"] .settings-group{
+  background:#ffffff !important;
+}
+
+/* Text hierarchy */
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] h4,
+html[data-theme="light"] strong,
+html[data-theme="light"] .brand,
+html[data-theme="light"] .feature-label-row h3,
+html[data-theme="light"] .ticket-module-head h3,
+html[data-theme="light"] .twitch-name,
+html[data-theme="light"] .guild-title-row>strong,
+html[data-theme="light"] .command-card code{
+  color:#172033 !important;
+}
+
+html[data-theme="light"] p,
+html[data-theme="light"] small,
+html[data-theme="light"] .muted,
+html[data-theme="light"] .feature-description,
+html[data-theme="light"] .settings-group-heading p,
+html[data-theme="light"] .panel-heading-row p,
+html[data-theme="light"] .guild-card-copy>small,
+html[data-theme="light"] .dashboard-toolbar-hint,
+html[data-theme="light"] .cloudflare-ssl-title p,
+html[data-theme="light"] .cloudflare-ssl-foot>span{
+  color:#667085 !important;
+}
+
+html[data-theme="light"] .eyebrow,
+html[data-theme="light"] .mini-label{
+  color:#5967d9 !important;
+}
+
+/* Form controls */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .server-search{
+  background:#ffffff !important;
+  color:#172033 !important;
+  border-color:#d6deea !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder{
+  color:#98a2b3 !important;
+}
+
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus{
+  border-color:#7c87f5 !important;
+  box-shadow:0 0 0 3px rgba(88,101,242,.12) !important;
+}
+
+html[data-theme="light"] label{
+  color:#475467;
+}
+
+/* Tables */
+html[data-theme="light"] table,
+html[data-theme="light"] .server-statistics-table{
+  background:#ffffff !important;
+  color:#172033 !important;
+}
+
+html[data-theme="light"] th{
+  background:#f8fafc !important;
+  color:#667085 !important;
+  border-color:#e4e9f1 !important;
+}
+
+html[data-theme="light"] td{
+  background:#ffffff !important;
+  color:#344054 !important;
+  border-color:#e4e9f1 !important;
+}
+
+html[data-theme="light"] tbody tr:hover td{
+  background:#f8faff !important;
+}
+
+/* Navigation */
+html[data-theme="light"] .site-header,
+html[data-theme="light"] header{
+  background:rgba(255,255,255,.94) !important;
+  border-color:#dfe5ef !important;
+  box-shadow:0 6px 24px rgba(31,51,89,.06);
+}
+
+html[data-theme="light"] .site-nav a,
+html[data-theme="light"] .dashboard-jump a{
+  color:#475467 !important;
+}
+
+html[data-theme="light"] .site-nav a:hover,
+html[data-theme="light"] .dashboard-jump a:hover{
+  background:#eef2f7 !important;
+  color:#172033 !important;
+}
+
+/* Buttons */
+html[data-theme="light"] .btn{
+  background:#5865f2;
+  color:#ffffff !important;
+  border-color:#5865f2;
+}
+
+html[data-theme="light"] .btn:hover{
+  background:#4752d8;
+}
+
+html[data-theme="light"] .btn.secondary,
+html[data-theme="light"] .btn.compact.secondary{
+  background:#ffffff !important;
+  color:#344054 !important;
+  border-color:#d6deea !important;
+}
+
+html[data-theme="light"] .btn.secondary:hover{
+  background:#f4f6f9 !important;
+  color:#172033 !important;
+}
+
+html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .nav-toggle{
+  background:#ffffff !important;
+  color:#344054 !important;
+  border-color:#d6deea !important;
+}
+
+/* Status / utility pills */
+html[data-theme="light"] .dashboard-home-badge,
+html[data-theme="light"] .summary-icon{
+  background:#eef1ff !important;
+  color:#5865f2 !important;
+  border-color:#d8defd !important;
+}
+
+html[data-theme="light"] .guild-status{
+  background:#ecfdf3 !important;
+  color:#067647 !important;
+  border-color:#abefc6 !important;
+}
+
+html[data-theme="light"] .cloudflare-status{
+  background:#ecfdf3 !important;
+  color:#067647 !important;
+  border-color:#abefc6 !important;
+}
+
+html[data-theme="light"] .cloudflare-status.error{
+  background:#fef3f2 !important;
+  color:#b42318 !important;
+  border-color:#fecdca !important;
+}
+
+html[data-theme="light"] .cloudflare-status.unconfigured{
+  background:#f2f4f7 !important;
+  color:#667085 !important;
+  border-color:#d0d5dd !important;
+}
+
+/* Code/chips/badges */
+html[data-theme="light"] code,
+html[data-theme="light"] .command-card code{
+  background:#f2f4f7 !important;
+  color:#344054 !important;
+  border-color:#e4e7ec !important;
+}
+
+html[data-theme="light"] .chip,
+html[data-theme="light"] .badge,
+html[data-theme="light"] .priority-badge,
+html[data-theme="light"] .feature-priority,
+html[data-theme="light"] .status-pill{
+  background:#f2f4f7 !important;
+  color:#475467 !important;
+  border-color:#e4e7ec !important;
+}
+
+/* Light-mode shadows should be subtle */
+html[data-theme="light"] .friendly-guild-card:hover,
+html[data-theme="light"] .feature-card:hover,
+html[data-theme="light"] .command-card:hover{
+  border-color:#b8c1ff !important;
+  box-shadow:0 16px 36px rgba(88,101,242,.10) !important;
+}
+
+/* Make scrollbars visually compatible with light mode */
+html[data-theme="light"] *{
+  scrollbar-color:#cbd3df #f5f7fa;
+}
+
+@media(max-width:720px){
+  html[data-theme="light"] .settings-footer{
+    background:rgba(255,255,255,.97) !important;
+    box-shadow:0 12px 28px rgba(31,51,89,.10) !important;
+  }
+}
+
+
+/* === Light-mode navigation/button cleanup ===
+   Remove legacy dark pill/button backgrounds from dashboard controls.
+*/
+html[data-theme="light"] .dashboard-jump{
+  background:rgba(255,255,255,.96) !important;
+  border-color:#dfe5ef !important;
+  box-shadow:0 8px 24px rgba(31,51,89,.06) !important;
+}
+
+html[data-theme="light"] .dashboard-jump a,
+html[data-theme="light"] .dashboard-jump button,
+html[data-theme="light"] .section-tabs a,
+html[data-theme="light"] .section-tabs button,
+html[data-theme="light"] .tab-list a,
+html[data-theme="light"] .tab-list button,
+html[data-theme="light"] .settings-nav a,
+html[data-theme="light"] .settings-nav button,
+html[data-theme="light"] .module-nav a,
+html[data-theme="light"] .module-nav button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:40px;
+  padding:9px 14px;
+  border:1px solid #d6deea !important;
+  border-radius:10px;
+  background:#ffffff !important;
+  color:#344054 !important;
+  box-shadow:0 1px 2px rgba(16,24,40,.04) !important;
+  font-weight:700;
+  text-decoration:none;
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    box-shadow .16s ease,
+    transform .16s ease;
+}
+
+html[data-theme="light"] .dashboard-jump a:hover,
+html[data-theme="light"] .dashboard-jump button:hover,
+html[data-theme="light"] .section-tabs a:hover,
+html[data-theme="light"] .section-tabs button:hover,
+html[data-theme="light"] .tab-list a:hover,
+html[data-theme="light"] .tab-list button:hover,
+html[data-theme="light"] .settings-nav a:hover,
+html[data-theme="light"] .settings-nav button:hover,
+html[data-theme="light"] .module-nav a:hover,
+html[data-theme="light"] .module-nav button:hover{
+  background:#f3f5ff !important;
+  border-color:#b8c1ff !important;
+  color:#3843c7 !important;
+  box-shadow:0 5px 14px rgba(88,101,242,.10) !important;
+  transform:translateY(-1px);
+}
+
+html[data-theme="light"] .dashboard-jump a:focus-visible,
+html[data-theme="light"] .dashboard-jump button:focus-visible,
+html[data-theme="light"] .section-tabs a:focus-visible,
+html[data-theme="light"] .section-tabs button:focus-visible,
+html[data-theme="light"] .tab-list a:focus-visible,
+html[data-theme="light"] .tab-list button:focus-visible,
+html[data-theme="light"] .settings-nav a:focus-visible,
+html[data-theme="light"] .settings-nav button:focus-visible,
+html[data-theme="light"] .module-nav a:focus-visible,
+html[data-theme="light"] .module-nav button:focus-visible{
+  outline:0;
+  border-color:#7c87f5 !important;
+  box-shadow:0 0 0 3px rgba(88,101,242,.14) !important;
+}
+
+html[data-theme="light"] .dashboard-jump a:active,
+html[data-theme="light"] .dashboard-jump button:active,
+html[data-theme="light"] .section-tabs a:active,
+html[data-theme="light"] .section-tabs button:active,
+html[data-theme="light"] .tab-list a:active,
+html[data-theme="light"] .tab-list button:active,
+html[data-theme="light"] .settings-nav a:active,
+html[data-theme="light"] .settings-nav button:active,
+html[data-theme="light"] .module-nav a:active,
+html[data-theme="light"] .module-nav button:active{
+  background:#e9edff !important;
+  border-color:#9ea9fb !important;
+  color:#303bb8 !important;
+  transform:none;
+}
+
+/* Legacy text-chip controls should not remain charcoal in light mode. */
+html[data-theme="light"] .token-row span,
+html[data-theme="light"] .command-subcommands span{
+  background:#f2f4f7 !important;
+  color:#475467 !important;
+  border-color:#e4e7ec !important;
+}
+
+/* Generic non-primary native buttons inside dashboard panels. */
+html[data-theme="light"] main button:not(.btn):not(.theme-toggle):not(.nav-toggle){
+  background:#ffffff;
+  color:#344054;
+  border-color:#d6deea;
+}
+
+html[data-theme="light"] main button:not(.btn):not(.theme-toggle):not(.nav-toggle):hover{
+  background:#f4f6f9;
+  color:#172033;
+  border-color:#c6cfdd;
+}
+
+@media(max-width:720px){
+  html[data-theme="light"] .dashboard-jump{
+    gap:7px;
+    padding:8px;
+  }
+
+  html[data-theme="light"] .dashboard-jump a{
+    min-height:38px;
+    padding:8px 11px;
+    font-size:12px;
+  }
+}
+
+
+/* === Bot owner dashboard === */
+.owner-dashboard-shell{
+  display:grid;
+  gap:18px;
+}
+.owner-dashboard-hero{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:24px;
+  padding:26px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:linear-gradient(145deg,rgba(88,101,242,.16),rgba(18,20,27,.96) 48%);
+  box-shadow:0 18px 44px rgba(0,0,0,.14);
+}
+.owner-dashboard-hero h1{
+  margin:6px 0 8px;
+  font-size:clamp(30px,5vw,46px);
+  letter-spacing:-.035em;
+}
+.owner-dashboard-hero p{
+  max-width:700px;
+  margin:0;
+  color:var(--muted);
+}
+.owner-access-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  margin-bottom:10px;
+  padding:7px 10px;
+  border:1px solid rgba(255,178,36,.28);
+  border-radius:999px;
+  background:rgba(255,178,36,.08);
+  color:#ffc76a;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.owner-access-badge i{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#ffb224;
+  box-shadow:0 0 0 4px rgba(255,178,36,.10);
+}
+.owner-dashboard-meta{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(130px,1fr));
+  gap:9px;
+  min-width:min(360px,100%);
+}
+.owner-dashboard-meta span{
+  padding:13px 14px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(0,0,0,.12);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:700;
+}
+.owner-dashboard-meta strong{
+  display:block;
+  margin-bottom:3px;
+  color:var(--text);
+  font-size:20px;
+}
+.owner-section{
+  padding:20px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--panel);
+  box-shadow:0 14px 34px rgba(0,0,0,.10);
+}
+.owner-section-heading{
+  margin-bottom:14px;
+}
+.owner-section-heading h2{
+  margin:3px 0 5px;
+}
+.owner-section-heading p{
+  margin:0;
+  color:var(--muted);
+}
+.owner-cloudflare-card{
+  box-shadow:none;
+}
+.site-nav a[href="/dashboard/owner"]{
+  color:#ffc76a;
+}
+.site-nav a[href="/dashboard/owner"]:hover{
+  background:rgba(255,178,36,.08);
+  color:#ffd896;
+}
+
+html[data-theme="light"] .owner-dashboard-hero,
+html[data-theme="light"] .owner-section{
+  background:#ffffff !important;
+  border-color:#dfe5ef !important;
+  color:#172033 !important;
+  box-shadow:0 14px 34px rgba(31,51,89,.08) !important;
+}
+html[data-theme="light"] .owner-dashboard-hero{
+  background:
+    radial-gradient(circle at top right,rgba(88,101,242,.10),transparent 38%),
+    #ffffff !important;
+}
+html[data-theme="light"] .owner-dashboard-meta span{
+  background:#f8fafc !important;
+  border-color:#dfe5ef !important;
+  color:#667085 !important;
+}
+html[data-theme="light"] .owner-dashboard-meta strong{
+  color:#172033 !important;
+}
+html[data-theme="light"] .owner-access-badge{
+  background:#fff8eb !important;
+  border-color:#fedf89 !important;
+  color:#b54708 !important;
+}
+html[data-theme="light"] .site-nav a[href="/dashboard/owner"]{
+  color:#b54708 !important;
+}
+html[data-theme="light"] .site-nav a[href="/dashboard/owner"]:hover{
+  background:#fff8eb !important;
+  color:#93370d !important;
+}
+
+@media(max-width:760px){
+  .owner-dashboard-hero{
+    flex-direction:column;
+    padding:20px;
+  }
+  .owner-dashboard-meta{
+    width:100%;
+    min-width:0;
+  }
+}

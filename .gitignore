@@ -7,3 +7,6 @@ npm-debug.log*
 data/settings.json
 data/tickets.json
 data/transcripts/*.html
+
+# SSL private keys and generated certificates
+certs/

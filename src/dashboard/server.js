@@ -1,6 +1,7 @@
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const https = require('node:https');
 const express = require('express');
 const session = require('express-session');
 const MySQLStoreFactory = require('express-mysql-session');
@@ -36,13 +37,484 @@ const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encrypte
 const { PROVIDERS, listAiCredentials, saveAiCredential, deleteAiCredential } = require('../aiCredentialStore');
 const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedConfigStore');
 const { getAnalytics } = require('../features/dataStore');
+const { isBotOwner } = require('../bot/broadcast');
 
 const DISCORD_API = 'https://discord.com/api/v10';
+const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 const GUILD_CACHE_TTL_MS = 60_000;
+const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
+const cloudflareZoneCache = {
+  zoneName: '',
+  zoneId: '',
+  expiresAt: 0,
+  error: '',
+  errorExpiresAt: 0,
+};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function envFlag(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function resolveDashboardFile(filePath) {
+  const value = String(filePath || '').trim();
+  if (!value) return '';
+  return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
+}
+
+function validateTlsKeyPair(keyPem, certPem, keyPath, certPath) {
+  try {
+    const certificate = new crypto.X509Certificate(certPem);
+    const privateKey = crypto.createPrivateKey(keyPem);
+    const certificatePublicKey = certificate.publicKey.export({
+      type: 'spki',
+      format: 'der',
+    });
+    const privateKeyPublicKey = crypto.createPublicKey(privateKey).export({
+      type: 'spki',
+      format: 'der',
+    });
+
+    const matches = certificatePublicKey.length === privateKeyPublicKey.length
+      && crypto.timingSafeEqual(certificatePublicKey, privateKeyPublicKey);
+
+    if (!matches) {
+      const error = new Error(
+        `Dashboard SSL certificate/private key mismatch. The certificate at "${certPath}" was not generated with the private key at "${keyPath}". Replace them with a matching pair from the same certificate issuance.`,
+      );
+      error.code = 'DASHBOARD_SSL_KEY_CERT_MISMATCH';
+      throw error;
+    }
+  } catch (error) {
+    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') throw error;
+
+    const wrapped = new Error(
+      `Dashboard SSL key/certificate validation failed: ${error.message || error}`,
+    );
+    wrapped.code = 'DASHBOARD_SSL_INVALID_CERTIFICATE';
+    wrapped.cause = error;
+    throw wrapped;
+  }
+}
+
+function loadDashboardTlsOptions() {
+  if (!envFlag('WEB_SSL_ENABLED')) return null;
+
+  const provider = String(process.env.WEB_SSL_PROVIDER || 'standard')
+    .trim()
+    .toLowerCase();
+
+  const cloudflareOrigin = provider === 'cloudflare-origin';
+  const keyPath = resolveDashboardFile(
+    cloudflareOrigin
+      ? process.env.WEB_CLOUDFLARE_ORIGIN_KEY_FILE
+      : process.env.WEB_SSL_KEY_FILE,
+  );
+  const certPath = resolveDashboardFile(
+    cloudflareOrigin
+      ? process.env.WEB_CLOUDFLARE_ORIGIN_CERT_FILE
+      : process.env.WEB_SSL_CERT_FILE,
+  );
+  const caPath = resolveDashboardFile(process.env.WEB_SSL_CA_FILE);
+
+  if (!keyPath || !certPath) {
+    if (cloudflareOrigin) {
+      throw new Error(
+        'WEB_SSL_PROVIDER=cloudflare-origin requires WEB_CLOUDFLARE_ORIGIN_KEY_FILE and WEB_CLOUDFLARE_ORIGIN_CERT_FILE.',
+      );
+    }
+
+    throw new Error(
+      'WEB_SSL_ENABLED=true requires WEB_SSL_KEY_FILE and WEB_SSL_CERT_FILE.',
+    );
+  }
+
+  if (!fs.existsSync(keyPath)) {
+    throw new Error(`Dashboard SSL private key not found: ${keyPath}`);
+  }
+  if (!fs.existsSync(certPath)) {
+    throw new Error(`Dashboard SSL certificate not found: ${certPath}`);
+  }
+  if (caPath && !fs.existsSync(caPath)) {
+    throw new Error(`Dashboard SSL CA/chain file not found: ${caPath}`);
+  }
+
+  const key = fs.readFileSync(keyPath);
+  const cert = fs.readFileSync(certPath);
+  validateTlsKeyPair(key, cert, keyPath, certPath);
+
+  return {
+    provider,
+    keyPath,
+    certPath,
+    options: {
+      key,
+      cert,
+      ...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
+      minVersion: 'TLSv1.2',
+    },
+  };
+}
+function cloudflareSslConfig() {
+  return {
+    zoneId: String(process.env.CLOUDFLARE_ZONE_ID || '').trim(),
+    zoneName: String(
+      process.env.CLOUDFLARE_ZONE_NAME
+        || process.env.WEB_CANONICAL_HOST
+        || 'kryndexabot.xyz',
+    ).trim().toLowerCase(),
+    apiToken: String(process.env.CLOUDFLARE_API_TOKEN || '').trim(),
+  };
+}
+
+async function cloudflareJson(endpoint, apiToken) {
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      Accept: 'application/json',
+    },
+    signal: AbortSignal.timeout(8_000),
+  });
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  return { response, payload };
+}
+
+function cloudflareErrorMessage(payload, fallback = '') {
+  const detail = Array.isArray(payload?.errors)
+    ? payload.errors.map((item) => item?.message).filter(Boolean).join('; ')
+    : '';
+
+  return detail || fallback;
+}
+
+function isInvalidCloudflareZone(response, payload) {
+  if (response?.status !== 403) return false;
+
+  const detail = cloudflareErrorMessage(payload).toLowerCase();
+  return detail.includes('invalid zone identifier')
+    || detail.includes('zone identifier');
+}
+
+async function resolveCloudflareZoneId(zoneName, apiToken, force = false) {
+  const normalizedName = String(zoneName || '').trim().toLowerCase();
+  if (!normalizedName || !apiToken) return null;
+
+  const now = Date.now();
+
+  if (
+    !force
+    && cloudflareZoneCache.zoneName === normalizedName
+    && cloudflareZoneCache.zoneId
+    && cloudflareZoneCache.expiresAt > now
+  ) {
+    return cloudflareZoneCache.zoneId;
+  }
+
+  if (
+    !force
+    && cloudflareZoneCache.zoneName === normalizedName
+    && cloudflareZoneCache.error
+    && cloudflareZoneCache.errorExpiresAt > now
+  ) {
+    return null;
+  }
+
+  const endpoint = `${CLOUDFLARE_API}/zones?name=${encodeURIComponent(normalizedName)}&status=active&per_page=50`;
+  const { response, payload } = await cloudflareJson(endpoint, apiToken);
+
+  if (!response.ok || !payload?.success) {
+    const detail = cloudflareErrorMessage(
+      payload,
+      `Cloudflare zone lookup failed with HTTP ${response.status}`,
+    );
+
+    cloudflareZoneCache.zoneName = normalizedName;
+    cloudflareZoneCache.zoneId = '';
+    cloudflareZoneCache.expiresAt = 0;
+    cloudflareZoneCache.error = detail;
+    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
+
+    return null;
+  }
+
+  const matches = Array.isArray(payload.result) ? payload.result : [];
+  const exact = matches.find(
+    (zone) => String(zone?.name || '').trim().toLowerCase() === normalizedName,
+  );
+
+  if (!exact?.id) {
+    const detail = `No active Cloudflare zone named "${normalizedName}" was visible to this API token.`;
+
+    cloudflareZoneCache.zoneName = normalizedName;
+    cloudflareZoneCache.zoneId = '';
+    cloudflareZoneCache.expiresAt = 0;
+    cloudflareZoneCache.error = detail;
+    cloudflareZoneCache.errorExpiresAt = now + 5 * 60_000;
+
+    return null;
+  }
+
+  cloudflareZoneCache.zoneName = normalizedName;
+  cloudflareZoneCache.zoneId = String(exact.id);
+  cloudflareZoneCache.expiresAt = now + 6 * 60 * 60_000;
+  cloudflareZoneCache.error = '';
+  cloudflareZoneCache.errorExpiresAt = 0;
+
+  console.log(
+    `[Cloudflare SSL] Resolved Cloudflare zone "${normalizedName}" to ${cloudflareZoneCache.zoneId}.`,
+  );
+
+  return cloudflareZoneCache.zoneId;
+}
+
+async function getCloudflareCertificatePacks() {
+  const {
+    zoneId: configuredZoneId,
+    zoneName,
+    apiToken,
+  } = cloudflareSslConfig();
+
+  if (!apiToken) {
+    return {
+      configured: false,
+      zoneId: configuredZoneId,
+      zoneName,
+      endpoint: null,
+      packs: [],
+      activeCertificates: 0,
+      pendingCertificates: 0,
+      hosts: [],
+      error: null,
+    };
+  }
+
+  let zoneId = configuredZoneId;
+
+  if (!zoneId) {
+    zoneId = await resolveCloudflareZoneId(zoneName, apiToken);
+
+    if (!zoneId) {
+      return {
+        configured: true,
+        zoneId: '',
+        zoneName,
+        endpoint: null,
+        packs: [],
+        activeCertificates: 0,
+        pendingCertificates: 0,
+        hosts: [],
+        error: cloudflareZoneCache.error
+          || `Unable to resolve Cloudflare zone "${zoneName}". Give the token Zone Read access or set CLOUDFLARE_ZONE_ID to the zone's actual Zone ID.`,
+      };
+    }
+  }
+
+  let endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
+
+  try {
+    let { response, payload } = await cloudflareJson(endpoint, apiToken);
+
+    if (isInvalidCloudflareZone(response, payload)) {
+      const resolvedZoneId = await resolveCloudflareZoneId(zoneName, apiToken, true);
+
+      if (resolvedZoneId && resolvedZoneId !== zoneId) {
+        console.warn(
+          `[Cloudflare SSL] Configured CLOUDFLARE_ZONE_ID "${zoneId}" is invalid for this token; using resolved zone "${resolvedZoneId}" for ${zoneName}.`,
+        );
+
+        zoneId = resolvedZoneId;
+        endpoint = `${CLOUDFLARE_API}/zones/${encodeURIComponent(zoneId)}/ssl/certificate_packs`;
+        ({ response, payload } = await cloudflareJson(endpoint, apiToken));
+      } else {
+        const detail = cloudflareZoneCache.error
+          || cloudflareErrorMessage(payload, 'Invalid zone identifier');
+
+        return {
+          configured: true,
+          zoneId,
+          zoneName,
+          endpoint,
+          packs: [],
+          activeCertificates: 0,
+          pendingCertificates: 0,
+          hosts: [],
+          error: `${detail}. Replace CLOUDFLARE_ZONE_ID with the Zone ID for ${zoneName}, or leave CLOUDFLARE_ZONE_ID blank and allow automatic lookup.`,
+        };
+      }
+    }
+
+    if (!response.ok || !payload?.success) {
+      const detail = cloudflareErrorMessage(payload);
+      throw new Error(
+        `Cloudflare certificate-pack request failed with HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
+      );
+    }
+
+    const packs = Array.isArray(payload.result) ? payload.result : [];
+    const certificates = packs.flatMap((pack) =>
+      Array.isArray(pack?.certificates) ? pack.certificates : [],
+    );
+
+    const activeCertificates = certificates.filter((cert) =>
+      String(cert?.status || '').toLowerCase() === 'active',
+    ).length;
+
+    const pendingCertificates = certificates.filter((cert) => {
+      const status = String(cert?.status || '').toLowerCase();
+      return status && status !== 'active' && status !== 'deleted';
+    }).length;
+
+    const hosts = [...new Set(
+      packs.flatMap((pack) => {
+        const packHosts = Array.isArray(pack?.hosts) ? pack.hosts : [];
+        const certHosts = (Array.isArray(pack?.certificates) ? pack.certificates : [])
+          .flatMap((cert) => Array.isArray(cert?.hosts) ? cert.hosts : []);
+        return [...packHosts, ...certHosts].map(String);
+      }),
+    )].sort();
+
+    return {
+      configured: true,
+      zoneId,
+      zoneName,
+      endpoint,
+      packs,
+      activeCertificates,
+      pendingCertificates,
+      hosts,
+      error: null,
+    };
+  } catch (error) {
+    console.warn(
+      '[Cloudflare SSL] Certificate-pack status unavailable:',
+      error.message || error,
+    );
+
+    return {
+      configured: true,
+      zoneId,
+      zoneName,
+      endpoint,
+      packs: [],
+      activeCertificates: 0,
+      pendingCertificates: 0,
+      hosts: [],
+      error: error.message || String(error),
+    };
+  }
+}
+
+function publicBaseUrl() {
+  const configured = String(process.env.BASE_URL || '').trim();
+
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      url.pathname = '/';
+      url.search = '';
+      url.hash = '';
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      // Fall through to production/local defaults.
+    }
+  }
+
+  if (process.env.NODE_ENV === 'production') return 'https://kryndexabot.xyz';
+
+  const port = Number(process.env.PORT || 3000);
+  return `http://localhost:${port}`;
+}
+
+function absoluteWebUrl(pathname = '/') {
+  const base = publicBaseUrl();
+  try {
+    return new URL(pathname || '/', `${base}/`).toString();
+  } catch {
+    return `${base}/`;
+  }
+}
+
+function canonicalHost() {
+  return String(process.env.WEB_CANONICAL_HOST || 'kryndexabot.xyz')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+}
+
+function metaDescriptionForTitle(title) {
+  const value = String(title || '').toLowerCase();
+
+  if (value.includes('features')) {
+    return 'Explore Kryndexa Bot features for moderation, tickets, logging, music, automations, streaming alerts, analytics and Discord server management.';
+  }
+  if (value.includes('privacy')) {
+    return 'Read the Kryndexa Bot privacy policy and learn how Discord data, dashboard sessions, tickets and essential cookies are handled.';
+  }
+  if (value.includes('terms')) {
+    return 'Read the Kryndexa Bot Terms of Service for the Discord bot, dashboard, commands, tickets, integrations and related services.';
+  }
+  if (value.includes('statistics')) {
+    return 'View Kryndexa Bot server statistics, members, channels, roles, tickets and command activity from the web dashboard.';
+  }
+  if (value.includes('dashboard') || value.includes('settings')) {
+    return 'Manage your Discord servers with the Kryndexa Bot dashboard, including settings, features, tickets, commands, integrations and analytics.';
+  }
+
+  return 'Kryndexa Bot is a Discord.js v14 command center for moderation, tickets, logging, music, streaming alerts, automations, analytics and server configuration.';
+}
+
+function pageMeta(title, meta = {}) {
+  const description = String(meta.description || metaDescriptionForTitle(title)).trim();
+  const canonical = absoluteWebUrl(meta.path || '/');
+  const image = String(
+    meta.image
+      || process.env.WEB_META_IMAGE_URL
+      || absoluteWebUrl('/favicon.ico'),
+  ).trim();
+  const robots = String(meta.robots || (meta.private ? 'noindex,nofollow,noarchive' : 'index,follow')).trim();
+  const fullTitle = String(title || 'Kryndexa Bot').trim();
+
+  return {
+    description,
+    canonical,
+    image,
+    robots,
+    title: fullTitle,
+  };
+}
+
+function httpsRedirectTarget(req) {
+  const baseUrl = String(process.env.BASE_URL || '').trim();
+
+  if (baseUrl) {
+    try {
+      const base = new URL(baseUrl);
+      base.protocol = 'https:';
+      return new URL(req.originalUrl || req.url || '/', base).toString();
+    } catch {
+      // Fall back to request host.
+    }
+  }
+
+  const host = String(req.headers.host || 'localhost').replace(/:\d+$/, '');
+  const httpsPort = Number(process.env.WEB_HTTPS_PORT || process.env.PORT || 443);
+  const portSuffix = httpsPort === 443 ? '' : `:${httpsPort}`;
+  return `https://${host}${portSuffix}${req.originalUrl || req.url || '/'}`;
 }
 
 function parseCookies(req) {
@@ -73,7 +545,8 @@ function renderAddBotButton() {
   return `<a class="btn add-bot-button" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`;
 }
 
-function page(title, body, user) {
+function page(title, body, user, meta = {}) {
+  const seo = pageMeta(title, meta);
   const auth = user
     ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
     : '<a class="btn compact" href="/login">Login with Discord</a>';
@@ -94,23 +567,41 @@ function page(title, body, user) {
 
   return `<!doctype html><html lang="en" data-theme="dark"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)}</title>
+<title>${escapeHtml(seo.title)}</title>
+<meta name="description" content="${escapeHtml(seo.description)}">
+<meta name="robots" content="${escapeHtml(seo.robots)}">
+<meta name="application-name" content="Kryndexa Bot">
+<meta name="apple-mobile-web-app-title" content="Kryndexa Bot">
+<meta name="theme-color" content="#5865f2">
+<link rel="canonical" href="${escapeHtml(seo.canonical)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Kryndexa Bot">
+<meta property="og:title" content="${escapeHtml(seo.title)}">
+<meta property="og:description" content="${escapeHtml(seo.description)}">
+<meta property="og:url" content="${escapeHtml(seo.canonical)}">
+<meta property="og:image" content="${escapeHtml(seo.image)}">
+<meta property="og:image:alt" content="Kryndexa Bot Discord server control center">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escapeHtml(seo.title)}">
+<meta name="twitter:description" content="${escapeHtml(seo.description)}">
+<meta name="twitter:image" content="${escapeHtml(seo.image)}">
+<meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css">
+<link rel="icon" type="image/png" href="/favicon.ico"><link rel="apple-touch-icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=20260925-owner-dashboard">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/">Kryndexa Bot</a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
     <a href="/">Home</a><a href="/features">Features</a>
-    ${user ? '<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>' : ''}
+    ${user ? `<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
     <a href="/privacy">Privacy</a><a href="/terms">Terms</a>
   </nav>
   <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme"><span data-theme-icon>◐</span></button><div class="header-auth">${auth}</div></div>
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
-<footer><div class="footer-inner"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span><nav><a href="/features">Features</a> • <a href="/privacy">Privacy</a> • <a href="/terms">Terms</a></nav></div></footer>
+<footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
 ${cookieNotice}
 <script>(() => {
   const root=document.documentElement;
@@ -126,10 +617,23 @@ ${cookieNotice}
   const notice=document.getElementById('cookieNotice');
   const getConsent=()=>{const match=document.cookie.match(/(?:^|; )multibot_cookie_consent=([^;]+)/);return match?decodeURIComponent(match[1]):'';};
   const refreshConsent=()=>{const loginNeedsConsent=new URLSearchParams(location.search).get('cookie')==='required';if(loginNeedsConsent){notice?.classList.remove('is-hidden');return;}if(['essential','declined'].includes(getConsent()))notice?.classList.add('is-hidden');};
-  const setConsent=async(choice)=>{const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin'});if(r.ok)notice?.classList.add('is-hidden');};
+  let continueToLogin=new URLSearchParams(location.search).get('continue')==='login';
+  const setConsent=async(choice)=>{
+    const r=await fetch('/cookie-consent/'+choice,{method:'POST',credentials:'same-origin'});
+    if(!r.ok)return;
+    notice?.classList.add('is-hidden');
+    if(choice==='accept'&&continueToLogin){
+      location.assign('/login');
+    }
+  };
   document.getElementById('cookieAccept')?.addEventListener('click',()=>setConsent('accept'));
-  document.getElementById('cookieDecline')?.addEventListener('click',()=>setConsent('decline'));
-  document.querySelectorAll('a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{if(getConsent()==='essential')return;event.preventDefault();notice?.classList.remove('is-hidden');}));
+  document.getElementById('cookieDecline')?.addEventListener('click',()=>{continueToLogin=false;setConsent('decline');});
+  document.querySelectorAll('a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{
+    if(getConsent()==='essential')return;
+    event.preventDefault();
+    continueToLogin=true;
+    notice?.classList.remove('is-hidden');
+  }));
 
   const toast=document.getElementById('dashboardToast');let toastTimer;
   const showToast=(message,kind='success')=>{if(!toast)return;toast.textContent=message;toast.className='dashboard-toast is-visible '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.className='dashboard-toast',2300);};
@@ -244,15 +748,113 @@ function renderPrivacyPolicy(markdown) {
   return html.join('\n');
 }
 
-function oauthUrl(state) {
+function resolveOAuthRedirectUri(req) {
+  const configured = String(process.env.DISCORD_REDIRECT_URI || '').trim();
+  if (configured) return configured;
+
+  const baseUrl = String(process.env.BASE_URL || '').trim();
+  if (baseUrl) {
+    try {
+      return new URL('/auth/callback', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
+    } catch {
+      // Fall through to the current request URL.
+    }
+  }
+
+  const protocol = req.protocol || 'http';
+  const host = req.get('host');
+  return `${protocol}://${host}/auth/callback`;
+}
+
+function oauthUrl(state, redirectUri) {
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID,
-    redirect_uri: process.env.DISCORD_REDIRECT_URI,
+    redirect_uri: redirectUri,
     response_type: 'code',
     scope: 'identify guilds',
     state,
   });
   return `https://discord.com/oauth2/authorize?${params}`;
+}
+
+function oauthStateKey() {
+  const secret = String(process.env.SESSION_SECRET || '').trim();
+  if (!secret) throw new Error('SESSION_SECRET is required for Discord OAuth state signing.');
+  return secret;
+}
+
+function createOAuthState(redirectUri) {
+  const payload = Buffer.from(JSON.stringify({
+    version: DASHBOARD_OAUTH_STATE_VERSION,
+    nonce: crypto.randomBytes(24).toString('hex'),
+    issuedAt: Date.now(),
+    redirectUri,
+  }), 'utf8').toString('base64url');
+
+  const signature = crypto
+    .createHmac('sha256', oauthStateKey())
+    .update(payload)
+    .digest('base64url');
+
+  return `${payload}.${signature}`;
+}
+
+function verifyOAuthState(state) {
+  const [payload, signature, extra] = String(state || '').split('.');
+  if (!payload || !signature || extra !== undefined) {
+    throw new Error('OAuth state token is malformed.');
+  }
+
+  const expected = crypto
+    .createHmac('sha256', oauthStateKey())
+    .update(payload)
+    .digest();
+
+  let supplied;
+  try {
+    supplied = Buffer.from(signature, 'base64url');
+  } catch {
+    throw new Error('OAuth state signature is malformed.');
+  }
+
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+    throw new Error('OAuth state signature is invalid.');
+  }
+
+  let decoded;
+  try {
+    decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('OAuth state payload is invalid.');
+  }
+
+  if (Number(decoded?.version) !== DASHBOARD_OAUTH_STATE_VERSION) {
+    throw new Error('This login link was created by an older dashboard version. Start a new Discord login.');
+  }
+
+  const issuedAt = Number(decoded?.issuedAt || 0);
+  if (!issuedAt || Date.now() - issuedAt > 10 * 60 * 1000 || issuedAt > Date.now() + 60_000) {
+    throw new Error('OAuth state token has expired.');
+  }
+
+  const redirectUri = String(decoded?.redirectUri || '').trim();
+  if (!/^https?:\/\//i.test(redirectUri)) {
+    throw new Error('OAuth state redirect URI is invalid.');
+  }
+
+  return { redirectUri };
+}
+
+function saveSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save((error) => error ? reject(error) : resolve());
+  });
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => error ? reject(error) : resolve());
+  });
 }
 
 async function discordFetch(pathname, accessToken, { maxRetries = 3 } = {}) {
@@ -365,10 +967,50 @@ function featureFieldHtml(field, value, resources) {
 }
 
 function startDashboard(client) {
+  console.log(`[Dashboard OAuth] Signed OAuth state v${DASHBOARD_OAUTH_STATE_VERSION} enabled.`);
   const addBotButton = renderAddBotButton();
   const app = express();
   app.disable('x-powered-by');
-  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+
+  // Trust one reverse-proxy hop in production so req.secure honors
+  // X-Forwarded-Proto from Cloudflare, NGINX, Caddy, etc.
+  if (process.env.NODE_ENV === 'production' || envFlag('WEB_TRUST_PROXY')) {
+    app.set('trust proxy', 1);
+  }
+
+  app.use((req, res, next) => {
+    if (!envFlag('WEB_CANONICAL_REDIRECT')) return next();
+
+    const expectedHost = canonicalHost();
+    const receivedHost = String(req.hostname || '').trim().toLowerCase();
+
+    if (!expectedHost || !receivedHost || receivedHost === expectedHost) return next();
+
+    const destination = new URL(req.originalUrl || req.url || '/', `https://${expectedHost}`);
+    return res.redirect(308, destination.toString());
+  });
+
+  app.use((req, res, next) => {
+    const forwardedProto = String(req.get('x-forwarded-proto') || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    const isSecure = req.secure || forwardedProto === 'https';
+
+    if (isSecure && envFlag('WEB_HSTS_ENABLED', process.env.NODE_ENV === 'production')) {
+      res.setHeader(
+        'Strict-Transport-Security',
+        'max-age=31536000; includeSubDomains',
+      );
+    }
+
+    if (envFlag('WEB_FORCE_HTTPS') && !isSecure) {
+      return res.redirect(308, httpsRedirectTarget(req));
+    }
+
+    return next();
+  });
+
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(express.static(path.join(process.cwd(), 'public')));
   const MySQLStore = MySQLStoreFactory(session);
@@ -405,7 +1047,7 @@ function startDashboard(client) {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000 },
+    cookie: { httpOnly: true, sameSite: 'lax', secure: 'auto', maxAge: 7 * 24 * 60 * 60 * 1000 },
   }));
 
   app.get('/favicon.ico', (_req, res) => {
@@ -422,9 +1064,25 @@ function startDashboard(client) {
         <p class="hero-detail">Moderation, tickets, logging, streaming alerts, music, automation, analytics, embeds and server configuration from one responsive dashboard.</p>
         <div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : '<a class="btn" href="/login">Login with Discord</a>'} ${addBotButton}</div>
       </div>
-      <div class="hero-console"><span>COMMAND CENTER</span><strong>Kryndexa Bot</strong><div class="hero-console-grid"><i>Advanced Tickets</i><i>Server Analytics</i><i>Streaming Alerts</i><i>AutoMod</i><i>Music</i><i>Encrypted Settings</i></div></div>
+      <aside class="hero-console" aria-label="Kryndexa Bot feature categories">
+        <div class="hero-console-heading">
+          <span class="hero-console-label">COMMAND CENTER</span>
+          <strong class="hero-console-title">Kryndexa Bot</strong>
+        </div>
+        <div class="hero-console-grid">
+          <span class="hero-category"><b>🎫</b> Advanced Tickets</span>
+          <span class="hero-category"><b>📊</b> Server Analytics</span>
+          <span class="hero-category"><b>📡</b> Streaming Alerts</span>
+          <span class="hero-category"><b>🛡️</b> AutoMod</span>
+          <span class="hero-category"><b>🎵</b> Music</span>
+          <span class="hero-category"><b>🔐</b> Encrypted Settings</span>
+        </div>
+      </aside>
     </section>`;
-    res.send(page('Kryndexa Bot', body, req.session.user));
+    res.send(page('Kryndexa Bot', body, req.session.user, {
+      path: '/',
+      description: 'Kryndexa Bot is your Discord server command center for moderation, advanced tickets, logging, music, streaming alerts, automations, analytics and server configuration.',
+    }));
   });
 
   app.get('/features', (req, res) => {
@@ -435,7 +1093,10 @@ function startDashboard(client) {
     }).join('');
 
     const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : '<a class="btn" href="/login">Login to Dashboard</a>'} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
-    return res.send(page('Features • Kryndexa Bot', body, req.session.user));
+    return res.send(page('Features • Kryndexa Bot', body, req.session.user, {
+      path: '/features',
+      description: 'Explore Kryndexa Bot modules for moderation, tickets, logging, verification, music, automations, streaming alerts, analytics and Discord community management.',
+    }));
   });
 
   app.get('/privacy', (req, res) => {
@@ -469,7 +1130,10 @@ function startDashboard(client) {
       </div>
     </div>`;
 
-    res.send(page('Privacy Policy • MultiBot', body, req.session.user));
+    res.send(page('Privacy Policy • Kryndexa Bot', body, req.session.user, {
+      path: '/privacy',
+      description: 'Kryndexa Bot privacy policy covering Discord data, dashboard sessions, tickets, integrations and essential cookies.',
+    }));
   });
 
   app.get('/terms', (req, res) => {
@@ -503,7 +1167,10 @@ function startDashboard(client) {
       </div>
     </div>`;
 
-    res.send(page('Terms of Service • MultiBot', body, req.session.user));
+    res.send(page('Terms of Service • Kryndexa Bot', body, req.session.user, {
+      path: '/terms',
+      description: 'Kryndexa Bot Terms of Service covering the Discord bot, dashboard, commands, tickets, integrations and service usage.',
+    }));
   });
 
   app.post('/cookie-consent/accept', (req, res) => {
@@ -536,37 +1203,133 @@ function startDashboard(client) {
     return finish();
   });
 
-  app.get('/login', (req, res) => {
-    const consent = parseCookies(req).multibot_cookie_consent;
-    if (consent !== 'essential') return res.redirect('/?cookie=required');
+  app.get('/login', async (req, res) => {
+    try {
+      const consent = parseCookies(req).multibot_cookie_consent;
+      if (consent !== 'essential') return res.redirect('/?cookie=required&continue=login');
 
-    req.session.oauthState = crypto.randomBytes(24).toString('hex');
-    res.redirect(oauthUrl(req.session.oauthState));
+      const redirectUri = resolveOAuthRedirectUri(req);
+      const state = createOAuthState(redirectUri);
+
+      // Remove legacy session-bound OAuth metadata from older dashboard builds.
+      // Signed state v2 does not depend on these fields.
+      delete req.session.oauthState;
+      delete req.session.oauthRedirectUri;
+      delete req.session.oauthStartedAt;
+
+      // OAuth state is signed and self-contained. It no longer depends on the
+      // pre-login MySQL session surviving the round trip through Discord.
+      return res.redirect(oauthUrl(state, redirectUri));
+    } catch (error) {
+      console.error('[Dashboard OAuth] Unable to start Discord login:', error);
+      return res.status(500).send(page(
+        'Discord login error',
+        `<div class="empty"><strong>Unable to start Discord login.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn" href="/">Return Home</a></p></div>`,
+        req.session.user,
+      ));
+    }
   });
 
   app.get('/auth/callback', async (req, res) => {
     try {
-      if (!req.query.code || req.query.state !== req.session.oauthState) return res.status(400).send('Invalid OAuth state.');
+      if (req.query.error) {
+        const description = String(req.query.error_description || req.query.error || 'Discord authorization was cancelled.');
+        console.warn('[Dashboard OAuth] Discord returned an authorization error:', description);
+        return res.status(400).send(page(
+          'Discord login cancelled',
+          `<div class="empty"><strong>Discord login was not completed.</strong><p>${escapeHtml(description)}</p><p><a class="btn" href="/login">Try Again</a></p></div>`,
+          req.session.user,
+        ));
+      }
+
+      if (!req.query.code || !req.query.state) {
+        return res.status(400).send(page(
+          'Discord login expired',
+          '<div class="empty"><strong>Discord did not return a complete login response.</strong><p>Please start the login again.</p><p><a class="btn" href="/login">Try Discord Login Again</a></p></div>',
+          req.session.user,
+        ));
+      }
+
+      let verifiedState;
+      try {
+        verifiedState = verifyOAuthState(req.query.state);
+      } catch (stateError) {
+        console.warn('[Dashboard OAuth] Signed state validation failed:', stateError.message);
+        return res.status(400).send(page(
+          'Discord login expired',
+          `<div class="empty"><strong>Your Discord login request could not be verified.</strong><p>${escapeHtml(stateError.message)}</p><p>Please start a fresh login attempt.</p><p><a class="btn" href="/login">Try Discord Login Again</a></p></div>`,
+          req.session.user,
+        ));
+      }
+
+      const redirectUri = verifiedState.redirectUri;
       const body = new URLSearchParams({
-        client_id: process.env.DISCORD_CLIENT_ID,
-        client_secret: process.env.DISCORD_CLIENT_SECRET,
+        client_id: String(process.env.DISCORD_CLIENT_ID || '').trim(),
+        client_secret: String(process.env.DISCORD_CLIENT_SECRET || '').trim(),
         grant_type: 'authorization_code',
         code: String(req.query.code),
-        redirect_uri: process.env.DISCORD_REDIRECT_URI,
+        redirect_uri: redirectUri,
       });
-      const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-      if (!tokenRes.ok) throw new Error(`OAuth token exchange failed: ${tokenRes.status}`);
+
+      const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+
+      if (!tokenRes.ok) {
+        let detail = '';
+        try {
+          const payload = await tokenRes.json();
+          detail = payload?.error_description || payload?.error || payload?.message || '';
+        } catch {
+          detail = await tokenRes.text().catch(() => '');
+        }
+
+        const message = [
+          `Discord OAuth token exchange failed with HTTP ${tokenRes.status}.`,
+          detail ? `Discord: ${detail}` : '',
+          `Redirect URI used: ${redirectUri}`,
+          'Make sure this exact URI is listed under OAuth2 > Redirects in the Discord Developer Portal and that DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET belong to the same bot application.',
+        ].filter(Boolean).join(' ');
+
+        throw new Error(message);
+      }
+
       const token = await tokenRes.json();
+      if (!token.access_token) throw new Error('Discord OAuth returned no access token.');
+
       const user = await discordFetch('/users/@me', token.access_token);
-      req.session.user = { id: user.id, username: user.global_name || user.username, avatar: user.avatar };
+      if (!user?.id) throw new Error('Discord did not return a valid user profile.');
+
+      const ownerAccess = await isBotOwner(client, user.id);
+
+      // Regenerate the session after authentication to prevent session fixation.
+      await regenerateSession(req);
+      req.session.user = {
+        id: user.id,
+        username: user.global_name || user.username,
+        avatar: user.avatar,
+        isBotOwner: ownerAccess,
+      };
       req.session.accessToken = token.access_token;
       req.session.csrf = crypto.randomBytes(24).toString('hex');
-      delete req.session.guildCache;
-      delete req.session.oauthState;
-      res.redirect('/dashboard');
+      req.session.guildCache = null;
+      req.session.authenticatedAt = Date.now();
+
+      // Persist authentication before redirecting to /dashboard. Without this,
+      // MySQL-backed sessions can race the redirect and appear logged out.
+      await saveSession(req);
+
+      console.log(`[Dashboard OAuth] Logged in Discord user ${req.session.user.username} (${user.id}).`);
+      return res.redirect('/dashboard');
     } catch (error) {
-      console.error(error);
-      res.status(500).send('Discord login failed.');
+      console.error('[Dashboard OAuth] Discord login failed:', error);
+      return res.status(500).send(page(
+        'Discord login failed',
+        `<div class="empty"><strong>Discord login failed.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn" href="/login">Try Again</a> <a class="btn secondary" href="/">Return Home</a></p></div>`,
+        req.session.user,
+      ));
     }
   });
 
@@ -574,31 +1337,273 @@ function startDashboard(client) {
 
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
-      const guilds = await getManagedGuilds(req, client);
-      const connected = guilds.map((managed) => client.guilds.cache.get(managed.id)).filter(Boolean);
-      const totalMembers = connected.reduce((sum, guild) => sum + guild.memberCount, 0);
+      const managedGuilds = await getManagedGuilds(req, client);
+      req.session.user.isBotOwner = await isBotOwner(client, req.session.user.id);
 
-      const cards = guilds.length ? guilds.map((managed) => {
+      const dashboardStats = await Promise.all(managedGuilds.map(async (managed) => {
         const guild = client.guilds.cache.get(managed.id);
+        if (!guild) return null;
+
+        const [tickets, analytics] = await Promise.all([
+          listGuildTickets(guild.id),
+          getAnalytics(guild.id),
+        ]);
+
+        return {
+          id: managed.id,
+          name: managed.name,
+          icon: managed.icon || guild.icon || null,
+          members: guild.memberCount,
+          channels: guild.channels.cache.size,
+          roles: Math.max(0, guild.roles.cache.size - 1),
+          openTickets: tickets.filter((ticket) => ticket.status === 'open').length,
+          commandUses: Number(analytics.uses || 0),
+        };
+      }));
+
+      const rows = dashboardStats.filter(Boolean);
+      const totals = rows.reduce((sum, item) => ({
+        members: sum.members + item.members,
+        channels: sum.channels + item.channels,
+        roles: sum.roles + item.roles,
+        openTickets: sum.openTickets + item.openTickets,
+        commandUses: sum.commandUses + item.commandUses,
+      }), {
+        members: 0,
+        channels: 0,
+        roles: 0,
+        openTickets: 0,
+        commandUses: 0,
+      });
+
+      const rowById = new Map(rows.map((item) => [item.id, item]));
+      const cards = managedGuilds.length ? managedGuilds.map((managed) => {
+        const stats = rowById.get(managed.id);
         const icon = managed.icon
           ? `<img src="https://cdn.discordapp.com/icons/${managed.id}/${managed.icon}.png?size=128" alt="">`
           : escapeHtml(managed.name.slice(0, 2).toUpperCase());
+
         return `<article class="guild-card friendly-guild-card" data-guild-card data-guild-search="${escapeHtml((managed.name + ' ' + managed.id).toLowerCase())}">
-          <div class="guild-card-main"><div class="guild-icon">${icon}</div><div class="guild-card-copy"><strong>${escapeHtml(managed.name)}</strong><small>${(guild?.memberCount || 0).toLocaleString()} members • ${guild?.channels.cache.size || 0} channels</small></div></div>
-          <div class="guild-card-actions"><a class="btn" href="/dashboard/${managed.id}">Configure</a><a class="btn secondary" href="/dashboard/statistics#guild-${managed.id}">View Stats</a></div>
+          <div class="guild-card-top">
+            <div class="guild-card-main">
+              <div class="guild-icon">${icon}</div>
+              <div class="guild-card-copy">
+                <div class="guild-title-row">
+                  <strong>${escapeHtml(managed.name)}</strong>
+                  <span class="guild-status"><i></i> Connected</span>
+                </div>
+                <small>Server ID • ${managed.id}</small>
+              </div>
+            </div>
+          </div>
+          <div class="guild-mini-stats">
+            <div><span>Members</span><strong>${(stats?.members || 0).toLocaleString()}</strong></div>
+            <div><span>Channels</span><strong>${(stats?.channels || 0).toLocaleString()}</strong></div>
+            <div><span>Roles</span><strong>${(stats?.roles || 0).toLocaleString()}</strong></div>
+            <div><span>Open Tickets</span><strong>${(stats?.openTickets || 0).toLocaleString()}</strong></div>
+          </div>
+          <div class="guild-card-actions">
+            <a class="btn guild-configure-btn" href="/dashboard/${managed.id}">Configure Server</a>
+            <a class="btn secondary" href="/dashboard/statistics#guild-${managed.id}">View Statistics</a>
+          </div>
         </article>`;
       }).join('') : '<div class="empty">No servers found where you have Manage Server and Kryndexa Bot is installed.</div>';
 
-      const body = `<section class="dashboard-home-hero"><div><span class="eyebrow">YOUR COMMAND CENTER</span><h1>Your Servers</h1><p>Choose a server to configure or compare activity across all servers you manage.</p></div><a class="btn secondary" href="/dashboard/statistics">Server Statistics</a></section>
-        <section class="dashboard-home-stats"><div><strong>${guilds.length}</strong><span>Managed Servers</span></div><div><strong>${totalMembers.toLocaleString()}</strong><span>Total Members</span></div><div><strong>${client.guilds.cache.size.toLocaleString()}</strong><span>Bot Servers</span></div></section>
-        <div class="dashboard-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Search servers by name or ID" data-filter-selector="[data-guild-card]" data-filter-attribute="data-guild-search" data-filter-empty="#dashboardSearchEmpty"></label><span>Select a server to configure.</span></div>
-        <div class="guild-grid friendly-guild-grid">${cards}</div><div id="dashboardSearchEmpty" class="search-empty-state" hidden>No servers match your search.</div>`;
-      return res.send(page('Dashboard • Kryndexa Bot', body, req.session.user));
+      const body = `<section class="dashboard-control-shell">
+        <section class="dashboard-home-hero">
+          <div class="dashboard-hero-copy">
+            <span class="dashboard-home-badge"><i></i> CONTROL CENTER</span>
+            <span class="eyebrow">YOUR COMMAND CENTER</span>
+            <h1>Your Servers</h1>
+            <p>Manage configuration, activity, tickets, commands and server health from one place.</p>
+          </div>
+          <div class="dashboard-hero-actions">
+            <span class="dashboard-online-pill"><i></i> Kryndexa Online</span>
+            <a class="btn secondary" href="/dashboard/statistics">View All Statistics</a>
+          </div>
+        </section>
+
+        <section class="server-stats-summary dashboard-server-summary" aria-label="Managed server totals">
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-servers" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01M12 7h5M12 17h5"/></svg>
+            </span>
+            <div><strong>${rows.length.toLocaleString()}</strong><span>Servers</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-members" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-channels" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 9h14M4 15h14M10 3 8 21M16 3l-2 18"/></svg>
+            </span>
+            <div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-roles" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
+            <div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-tickets" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 6h18v5a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4V6Z"/><path d="M13 9v6"/></svg>
+            </span>
+            <div><strong>${totals.openTickets.toLocaleString()}</strong><span>Open Tickets</span></div>
+          </div>
+          <div class="summary-card">
+            <span class="summary-icon summary-icon-commands" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+            </span>
+            <div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div>
+          </div>
+        </section>
+
+        <section class="dashboard-server-section">
+          <div class="dashboard-server-section-head">
+            <div>
+              <span class="eyebrow">MANAGED SERVERS</span>
+              <h2>Choose a server</h2>
+              <p>Open a server to configure Kryndexa or review its statistics.</p>
+            </div>
+            <span class="managed-server-count">${managedGuilds.length} managed</span>
+          </div>
+
+          <div class="dashboard-toolbar">
+            <label class="server-search">
+              <span>⌕</span>
+              <input type="search" placeholder="Search servers by name or ID" data-filter-selector="[data-guild-card]" data-filter-attribute="data-guild-search" data-filter-empty="#dashboardSearchEmpty">
+            </label>
+            <span class="dashboard-toolbar-hint">Select a server to continue</span>
+          </div>
+
+          <div class="guild-grid friendly-guild-grid">${cards}</div>
+          <div id="dashboardSearchEmpty" class="search-empty-state" hidden>No servers match your search.</div>
+        </section>
+      </section>`;
+
+      return res.send(page('Dashboard • Kryndexa Bot', body, req.session.user, {
+        path: '/dashboard',
+        private: true,
+      }));
     } catch (error) {
       console.error(error);
       if (error.status === 429) return res.status(503).send(page('Discord rate limit', '<div class="empty">Discord is temporarily rate limiting dashboard access. Refresh shortly.</div>', req.session.user));
       if (error.status === 401) return res.status(401).send(page('Session expired', '<div class="empty">Your Discord session expired. <a href="/login">Log in again</a>.</div>'));
       return res.status(500).send(page('Dashboard error', '<div class="empty">The dashboard could not load your server list.</div>', req.session.user));
+    }
+  });
+
+  const requireBotOwner = async (req, res, next) => {
+    if (!req.session.user) return res.redirect('/login');
+
+    try {
+      const allowed = await isBotOwner(client, req.session.user.id);
+      req.session.user.isBotOwner = allowed;
+
+      if (!allowed) {
+        return res.status(403).send(page(
+          'Access denied • Kryndexa Bot',
+          '<div class="empty"><strong>Bot owner access required.</strong><p>This dashboard area is restricted to configured Kryndexa Bot owners.</p><p><a class="btn secondary" href="/dashboard">Return to Dashboard</a></p></div>',
+          req.session.user,
+          { path: '/dashboard/owner', private: true },
+        ));
+      }
+
+      return next();
+    } catch (error) {
+      console.error('[Dashboard Owner] Unable to verify bot owner:', error);
+      return res.status(500).send(page(
+        'Owner verification failed • Kryndexa Bot',
+        '<div class="empty"><strong>Owner verification failed.</strong><p>Kryndexa could not verify owner access right now.</p><p><a class="btn secondary" href="/dashboard">Return to Dashboard</a></p></div>',
+        req.session.user,
+        { path: '/dashboard/owner', private: true },
+      ));
+    }
+  };
+
+  app.get('/dashboard/owner', requireAuth, requireBotOwner, async (req, res) => {
+    try {
+      const cloudflareSsl = await getCloudflareCertificatePacks();
+      const ownerIds = String(process.env.BOT_OWNER_IDS || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+      const body = `<section class="owner-dashboard-shell">
+        <section class="owner-dashboard-hero">
+          <div>
+            <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
+            <span class="eyebrow">BOT OWNERS</span>
+            <h1>Owner Control Center</h1>
+            <p>Private infrastructure, application and service controls for Kryndexa Bot owners.</p>
+          </div>
+          <div class="owner-dashboard-meta">
+            <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
+            <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
+          </div>
+        </section>
+
+        <section class="owner-section">
+          <div class="owner-section-heading">
+            <div>
+              <span class="eyebrow">INFRASTRUCTURE</span>
+              <h2>Cloudflare SSL</h2>
+              <p>Certificate monitoring is restricted to bot owners and is not included in regular administrator dashboards.</p>
+            </div>
+          </div>
+
+          <section class="cloudflare-ssl-card owner-cloudflare-card" aria-label="Cloudflare SSL status">
+            <div class="cloudflare-ssl-head">
+              <div class="cloudflare-ssl-title">
+                <span class="cloudflare-logo" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7.2 17h10.9a3.4 3.4 0 0 0 .4-6.8A5.4 5.4 0 0 0 8.2 8.8 4.2 4.2 0 0 0 7.2 17Z"/><path d="M4.8 17H4a2.5 2.5 0 1 1 .6-4.9"/></svg>
+                </span>
+                <div>
+                  <span class="eyebrow">CLOUDFLARE SSL</span>
+                  <h3>Certificate Packs</h3>
+                  <p>Edge certificate status for the configured Cloudflare zone.</p>
+                </div>
+              </div>
+              <span class="cloudflare-status ${!cloudflareSsl.configured ? 'unconfigured' : cloudflareSsl.error ? 'error' : 'ok'}">
+                <i></i>
+                ${!cloudflareSsl.configured ? 'Not Configured' : cloudflareSsl.error ? 'API Error' : 'Connected'}
+              </span>
+            </div>
+            <div class="cloudflare-ssl-metrics">
+              <div><span>Packs</span><strong>${cloudflareSsl.packs.length.toLocaleString()}</strong></div>
+              <div><span>Active Certificates</span><strong>${cloudflareSsl.activeCertificates.toLocaleString()}</strong></div>
+              <div><span>Pending / Other</span><strong>${cloudflareSsl.pendingCertificates.toLocaleString()}</strong></div>
+              <div><span>Hosts</span><strong>${cloudflareSsl.hosts.length.toLocaleString()}</strong></div>
+            </div>
+            <div class="cloudflare-ssl-foot">
+              <span>${cloudflareSsl.error
+                ? escapeHtml(cloudflareSsl.error)
+                : cloudflareSsl.configured
+                  ? `Zone ${escapeHtml(cloudflareSsl.zoneId)} • Full (strict) recommended`
+                  : 'Set CLOUDFLARE_ZONE_NAME / CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable certificate monitoring.'}</span>
+              <a class="btn secondary compact" href="/api/cloudflare/ssl" target="_blank" rel="noreferrer">View SSL JSON</a>
+            </div>
+          </section>
+        </section>
+      </section>`;
+
+      return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
+        path: '/dashboard/owner',
+        private: true,
+        description: 'Restricted Kryndexa Bot owner infrastructure dashboard.',
+      }));
+    } catch (error) {
+      console.error('[Dashboard Owner] Owner dashboard failed:', error);
+      return res.status(500).send(page(
+        'Owner dashboard error • Kryndexa Bot',
+        '<div class="empty"><strong>Owner dashboard unavailable.</strong><p>The private owner control center could not be loaded.</p></div>',
+        req.session.user,
+        { path: '/dashboard/owner', private: true },
+      ));
     }
   });
 
@@ -634,7 +1639,10 @@ function startDashboard(client) {
       const body = `<section class="stats-page-hero"><div><span class="eyebrow">SERVER STATISTICS</span><h1>Server Overview</h1><p>Compare the servers you manage without opening each configuration page.</p></div><a class="btn secondary" href="/dashboard">← Your Servers</a></section>
         <section class="server-stats-summary"><div><strong>${rows.length}</strong><span>Servers</span></div><div><strong>${totals.members.toLocaleString()}</strong><span>Members</span></div><div><strong>${totals.channels.toLocaleString()}</strong><span>Channels</span></div><div><strong>${totals.roles.toLocaleString()}</strong><span>Roles</span></div><div><strong>${totals.openTickets}</strong><span>Open Tickets</span></div><div><strong>${totals.commandUses.toLocaleString()}</strong><span>Command Uses • 30d</span></div></section>
         <section class="panel statistics-panel"><div class="stats-toolbar"><label class="server-search"><span>🔎</span><input type="search" placeholder="Filter server statistics" data-filter-selector="[data-stat-row]" data-filter-attribute="data-stat-search" data-filter-empty="#statisticsSearchEmpty"></label><span>Sorted by member count</span></div><div class="table-wrap"><table class="server-statistics-table"><thead><tr><th>Server</th><th>Members</th><th>Channels</th><th>Roles</th><th>Boosts</th><th>Tickets</th><th>Commands</th><th></th></tr></thead><tbody>${tableRows}</tbody></table></div><div id="statisticsSearchEmpty" class="search-empty-state" hidden>No server statistics match your search.</div></section>`;
-      return res.send(page('Server Statistics • Kryndexa Bot', body, req.session.user));
+      return res.send(page('Server Statistics • Kryndexa Bot', body, req.session.user, {
+        path: '/dashboard/statistics',
+        private: true,
+      }));
     } catch (error) {
       console.error(error);
       return res.status(500).send(page('Statistics error', '<div class="empty">Unable to load server statistics.</div>', req.session.user));
@@ -1019,7 +2027,11 @@ function startDashboard(client) {
       </section>
 
       <section id="tickets" class="panel"><h2>Recent Tickets</h2><div class="table-wrap"><table><thead><tr><th>Ticket</th><th>Type</th><th>Status</th><th>Claimed By</th><th>Close Reason</th><th>Created</th><th>Transcript</th></tr></thead><tbody>${transcriptRows}</tbody></table></div></section>`;
-      res.send(page(`${guild.name} Settings`, form, req.session.user));
+      res.send(page(`${guild.name} Settings • Kryndexa Bot`, form, req.session.user, {
+        path: `/dashboard/${guild.id}`,
+        private: true,
+        description: `Configure Kryndexa Bot settings and modules for ${guild.name}.`,
+      }));
     } catch (error) {
       console.error(error);
       res.status(500).send(page('Dashboard error', `<div class="empty"><strong>Unable to load server settings.</strong><p>${process.env.NODE_ENV === 'production' ? 'Check the MySQL connection and schema.' : escapeHtml(error.message || String(error))}</p></div>`, req.session.user));
@@ -1448,6 +2460,41 @@ function startDashboard(client) {
     }
   });
 
+  app.get('/api/cloudflare/ssl', requireAuth, requireBotOwner, async (_req, res) => {
+    const status = await getCloudflareCertificatePacks();
+
+    if (!status.configured) {
+      return res.status(503).json({
+        ok: false,
+        configured: false,
+        message: 'Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable Cloudflare SSL monitoring.',
+        endpoint: status.endpoint,
+      });
+    }
+
+    if (status.error) {
+      return res.status(502).json({
+        ok: false,
+        configured: true,
+        zoneId: status.zoneId,
+        endpoint: status.endpoint,
+        error: status.error,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      configured: true,
+      zoneId: status.zoneId,
+      endpoint: status.endpoint,
+      packCount: status.packs.length,
+      activeCertificates: status.activeCertificates,
+      pendingCertificates: status.pendingCertificates,
+      hosts: status.hosts,
+      packs: status.packs,
+    });
+  });
+
   app.get('/health', async (_req, res) => {
     let database = false;
     try {
@@ -1464,7 +2511,137 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  app.listen(port, () => console.log(`Dashboard listening on ${process.env.BASE_URL || `http://localhost:${port}`}`));
+  let tlsConfig = null;
+  let tlsConfigError = null;
+
+  try {
+    tlsConfig = loadDashboardTlsOptions();
+  } catch (error) {
+    tlsConfigError = error;
+
+    console.error('[Dashboard SSL] TLS configuration is invalid:', error.message || error);
+
+    if (error?.code === 'DASHBOARD_SSL_KEY_CERT_MISMATCH') {
+      console.error('[Dashboard SSL] The private key and certificate are from different certificate issuances.');
+      console.error('[Dashboard SSL] For Cloudflare Origin CA, create/download a new Origin Certificate and save the private key generated with that same certificate.');
+    }
+
+    if (envFlag('WEB_SSL_STRICT_STARTUP')) throw error;
+
+    console.warn('[Dashboard SSL] Direct HTTPS is disabled for this run; Kryndexa will use the internal HTTP listener for reverse-proxy mode.');
+  }
+
+  const startHttpApp = (listenPort, reason = '') => {
+    const httpServer = app.listen(listenPort);
+
+    httpServer.once('listening', () => {
+      const advertisedUrl = process.env.BASE_URL || `http://localhost:${listenPort}`;
+      console.log(`Dashboard listening internally on http://127.0.0.1:${listenPort}`);
+
+      if (reason) console.warn(`[Dashboard SSL] ${reason}`);
+
+      if (envFlag('WEB_FORCE_HTTPS') || process.env.NODE_ENV === 'production') {
+        console.log(`[Dashboard SSL] Public URL remains ${advertisedUrl}.`);
+        console.log('[Dashboard SSL] The service currently owning port 443 must reverse-proxy HTTPS traffic to this internal dashboard port.');
+      }
+    });
+
+    httpServer.on('error', (error) => {
+      if (error?.code === 'EADDRINUSE') {
+        console.error(`[Dashboard] Cannot start internal web panel: port ${listenPort} is already in use.`);
+        console.error('[Dashboard] Change PORT / WEB_INTERNAL_PORT or stop the process using that port.');
+        return;
+      }
+
+      console.error('[Dashboard] HTTP server error:', error);
+    });
+
+    return httpServer;
+  };
+
+  if (tlsConfig) {
+    const httpsPort = Number(process.env.WEB_HTTPS_PORT || 443);
+    const internalPort = Number(process.env.WEB_INTERNAL_PORT || port || 3000);
+    const allowPortConflictFallback = envFlag('WEB_SSL_PORT_CONFLICT_FALLBACK', true);
+    const server = https.createServer(tlsConfig.options, app);
+    let fallbackStarted = false;
+
+    server.once('listening', () => {
+      const advertisedUrl = process.env.BASE_URL || `https://localhost:${httpsPort}`;
+
+      if (tlsConfig.provider === 'cloudflare-origin') {
+        console.log('[Dashboard SSL] Cloudflare Origin CA certificate enabled.');
+        console.log('[Dashboard SSL] Use Cloudflare SSL/TLS mode: Full (strict).');
+      } else {
+        console.log(`[Dashboard SSL] HTTPS enabled with provider: ${tlsConfig.provider}.`);
+      }
+
+      console.log(`[Dashboard SSL] HTTPS enabled on port ${httpsPort}.`);
+      console.log(`Dashboard listening securely on ${advertisedUrl}`);
+
+      const redirectPort = Number(process.env.WEB_HTTP_REDIRECT_PORT || 0);
+      if (redirectPort > 0 && redirectPort !== httpsPort) {
+        const redirectApp = express();
+        redirectApp.use((req, res) => res.redirect(308, httpsRedirectTarget(req)));
+
+        const redirectServer = redirectApp.listen(redirectPort, () => {
+          console.log(`[Dashboard SSL] HTTP port ${redirectPort} redirects to HTTPS.`);
+        });
+
+        redirectServer.on('error', (error) => {
+          if (error?.code === 'EADDRINUSE') {
+            console.warn(`[Dashboard SSL] HTTP redirect port ${redirectPort} is already in use; HTTPS will continue without the built-in redirect listener.`);
+            return;
+          }
+          console.error('[Dashboard SSL] HTTP redirect listener error:', error);
+        });
+      }
+    });
+
+    server.on('error', (error) => {
+      if (error?.code === 'EADDRINUSE') {
+        console.warn(`[Dashboard SSL] HTTPS port ${httpsPort} is already in use by another process.`);
+
+        if (!allowPortConflictFallback) {
+          console.error('[Dashboard SSL] Automatic fallback is disabled. Set WEB_SSL_PORT_CONFLICT_FALLBACK=true or free the HTTPS port.');
+          return;
+        }
+
+        if (fallbackStarted) return;
+        fallbackStarted = true;
+
+        if (internalPort === httpsPort) {
+          console.error(`[Dashboard SSL] WEB_INTERNAL_PORT/PORT is also ${httpsPort}; choose a different internal port such as 3000.`);
+          return;
+        }
+
+        startHttpApp(
+          internalPort,
+          `Port ${httpsPort} is occupied, so Kryndexa switched to reverse-proxy mode on internal port ${internalPort}.`,
+        );
+        return;
+      }
+
+      if (error?.code === 'EACCES') {
+        console.error(`[Dashboard SSL] Permission denied while binding HTTPS port ${httpsPort}. Use an elevated account, a higher port, or reverse-proxy mode.`);
+        return;
+      }
+
+      console.error('[Dashboard SSL] HTTPS server error:', error);
+    });
+
+    server.listen(httpsPort);
+    return server;
+  }
+
+  return startHttpApp(
+    Number(process.env.WEB_INTERNAL_PORT || port),
+    tlsConfigError
+      ? `Direct SSL could not start: ${tlsConfigError.message || tlsConfigError}. Use a matching certificate/key pair or terminate HTTPS at the reverse proxy.`
+      : envFlag('WEB_FORCE_HTTPS')
+        ? 'HTTPS is expected to terminate at Cloudflare, NGINX, IIS, Caddy, or another configured reverse proxy.'
+        : '',
+  );
 }
 
 module.exports = { startDashboard };
