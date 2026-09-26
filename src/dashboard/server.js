@@ -1489,8 +1489,9 @@ function startDashboard(client) {
         </div>
       </form>`).join('');
 
-      const twitchCards = twitchAnnouncements.length
-        ? twitchAnnouncements.map((item) => {
+      const streamCards = streamAnnouncements.length
+        ? streamAnnouncements.map((item) => {
+            const meta = streamPlatformMeta(item.platform, item.streamerIdentifier);
             const targetChannel = guild.channels.cache.get(item.discordChannelId);
             const channelName = targetChannel?.name ? `#${targetChannel.name}` : 'Channel unavailable';
             const lastAnnounced = item.lastAnnouncedAt
@@ -1498,18 +1499,19 @@ function startDashboard(client) {
               : 'Never';
             const customMessage = item.customMessage
               ? escapeHtml(item.customMessage)
-              : 'Using the default rich Twitch embed message';
+              : `Using the configured ${meta.label} embed template`;
 
-            return `<article class="twitch-card ${item.isLive ? 'is-live' : ''}">
+            return `<article class="stream-card provider-${meta.css} ${item.isLive ? 'is-live' : ''}">
               <div class="twitch-card-top">
-                <div class="twitch-avatar">T</div>
+                <div class="stream-avatar ${meta.css}">${escapeHtml(meta.short)}</div>
                 <div class="twitch-identity">
-                  <a class="twitch-name" href="https://www.twitch.tv/${encodeURIComponent(item.twitchLogin)}" target="_blank" rel="noreferrer">${escapeHtml(item.twitchLogin)}</a>
+                  <a class="twitch-name" href="${escapeHtml(meta.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.streamerIdentifier)}</a>
+                  <span class="provider-chip ${meta.css}">${escapeHtml(meta.label)}</span>
                   <span class="status-badge ${item.isLive ? 'live' : 'offline'}"><span class="status-dot"></span>${item.isLive ? 'LIVE' : 'Offline'}</span>
                 </div>
-                <form method="post" action="/dashboard/${guild.id}/twitch/${item.id}/delete" onsubmit="return confirm('Remove this Twitch announcement?')">
+                <form method="post" action="/dashboard/${guild.id}/streams/${item.id}/delete" onsubmit="return confirm('Remove this stream alert?')">
                   <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
-                  <button class="icon-btn danger" type="submit" title="Remove Twitch alert">×</button>
+                  <button class="icon-btn danger" type="submit" title="Remove stream alert">×</button>
                 </form>
               </div>
               <div class="twitch-card-grid">
@@ -1522,12 +1524,16 @@ function startDashboard(client) {
               </div>
               <div class="twitch-card-footer">
                 <span class="pill subtle">${item.enabled ? 'Enabled' : 'Disabled'}</span>
-                <a href="https://www.twitch.tv/${encodeURIComponent(item.twitchLogin)}" target="_blank" rel="noreferrer">Open Twitch ↗</a>
+                <a href="${escapeHtml(meta.url)}" target="_blank" rel="noreferrer">Open ${escapeHtml(meta.label)} ↗</a>
               </div>
             </article>`;
           }).join('')
-        : '<div class="empty twitch-empty">No Twitch live announcements configured yet.</div>';
+        : '<div class="empty twitch-empty">No Twitch, YouTube, or Kick stream alerts configured yet.</div>';
 
+      const streamEmbedEditors = embedConfigs
+        .filter((config) => ['twitch_live', 'youtube_live', 'kick_live'].includes(config.key))
+        .map((config) => renderStreamEmbedEditor(guild.id, config, req.session.csrf))
+        .join('');
       const catalog = commandCatalog().filter((command) => !command.ownerOnly);
       const commandStates = await getCommandStateObject(guild.id, catalog.map((command) => command.name));
       const preferredCategories = ['Moderation','Security','Administration','Tickets','Verification','Roles','Leveling','Applications','Giveaways','Community','Economy','Utility','Analytics','Voice','Integrations','Music','AI Assistant','Automations','Misc','Other'];
