@@ -2,7 +2,7 @@
 
 **Effective date: September 25, 2026**
 
-These Terms of Service ("Terms") govern access to and use of MultiBot, including the Discord bot, web dashboard, ticket system, verification tools, Twitch live announcements, moderation tools, broadcasts, transcripts, and related features.
+These Terms of Service ("Terms") govern access to and use of MultiBot, including the Discord bot, web dashboard, ticket system, verification tools, Twitch, YouTube, and Kick stream alerts, moderation tools, broadcasts, transcripts, and related features.
 
 By adding MultiBot to a Discord server, using a MultiBot command, signing in to the dashboard, or otherwise using MultiBot, you agree to these Terms. If you do not agree, do not use MultiBot.
 
@@ -14,9 +14,9 @@ Server owners and administrators are responsible for deciding which MultiBot fea
 
 ## 2. Bot and Dashboard Features
 
-MultiBot may provide features including slash commands, optional prefix-command backups, moderation actions, role management, welcome and leave messages, logging, verification, support tickets, HTML transcripts, Twitch live announcements, server configuration through a web dashboard, and bot-owner broadcasts.
+MultiBot may provide features including slash commands, optional prefix-command backups, moderation actions, role management, welcome and leave messages, logging, verification, support tickets, HTML transcripts, Twitch, YouTube, and Kick stream alerts, server configuration through a web dashboard, and bot-owner broadcasts.
 
-Features may be added, changed, suspended, or removed over time. Availability can depend on Discord permissions, Discord or Twitch APIs, database connectivity, hosting availability, and server-specific configuration.
+Features may be added, changed, suspended, or removed over time. Availability can depend on Discord permissions, Discord or streaming-provider APIs, database connectivity, hosting availability, access tier, and server-specific configuration.
 
 ## 3. Administrator Responsibilities
 
@@ -48,7 +48,7 @@ The included system is not an identity-verification service and should not be re
 
 ## 7. Twitch Live Announcements
 
-When Twitch live announcements are enabled, MultiBot may use Twitch's public API to check configured Twitch channels and post live-status information to selected Discord channels.
+When Twitch, YouTube, and Kick stream alerts are enabled, MultiBot may use Twitch's public API to check configured Twitch channels and post live-status information to selected Discord channels.
 
 Server administrators are responsible for choosing which Twitch accounts are monitored and where announcements are posted. Use of Twitch-related features is also subject to Twitch's applicable terms and API requirements.
 
