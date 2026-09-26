@@ -47,12 +47,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function envFlag(name, fallback = false) {
-  const raw = String(process.env[name] ?? '').trim().toLowerCase();
-  if (!raw) return fallback;
-  return ['1', 'true', 'yes', 'on'].includes(raw);
-}
-
 function publicBaseUrl() {
   const configured = String(process.env.BASE_URL || '').trim();
 
@@ -81,14 +75,6 @@ function absoluteWebUrl(pathname = '/') {
   } catch {
     return `${base}/`;
   }
-}
-
-function canonicalHost() {
-  return String(process.env.WEB_CANONICAL_HOST || 'kryndexabot.xyz')
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/.*$/, '');
 }
 
 function metaDescriptionForTitle(title) {
@@ -591,18 +577,6 @@ function startDashboard(client) {
   if (process.env.NODE_ENV === 'production') {
     app.set('trust proxy', 1);
   }
-
-  app.use((req, res, next) => {
-    if (!envFlag('WEB_CANONICAL_REDIRECT')) return next();
-
-    const expectedHost = canonicalHost();
-    const receivedHost = String(req.hostname || '').trim().toLowerCase();
-
-    if (!expectedHost || !receivedHost || receivedHost === expectedHost) return next();
-
-    const destination = new URL(req.originalUrl || req.url || '/', `https://${expectedHost}`);
-    return res.redirect(308, destination.toString());
-  });
 
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(express.static(path.join(process.cwd(), 'public')));
