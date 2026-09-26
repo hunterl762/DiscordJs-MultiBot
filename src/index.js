@@ -45,6 +45,8 @@ if (missing.length) {
   return;
 }
 
+let dashboardServer = null;
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -247,9 +249,14 @@ async function shutdown(signal) {
     stopTwitchMonitor();
     stopFeatureRuntime();
     stopMusic();
+
+    if (dashboardServer?.listening) {
+      await new Promise((resolve) => dashboardServer.close(() => resolve()));
+    }
+
     client.destroy();
   } catch (error) {
-    console.error('Error while closing Discord client:', error);
+    console.error('Error while shutting down MultiBot:', error);
   }
   process.exitCode = 0;
 }
@@ -259,9 +266,15 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
 
 (async () => {
   await initDatabase();
+
+  try {
+    dashboardServer = startDashboard(client);
+  } catch (error) {
+    console.error('[Dashboard] Failed to initialize web panel:', error);
+  }
+
   await client.login(process.env.DISCORD_TOKEN);
   await waitForReady();
-  startDashboard(client);
 
   try {
     await registerSlashCommands();
