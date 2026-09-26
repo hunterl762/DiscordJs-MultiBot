@@ -171,6 +171,11 @@ function configuredWebIconUrl() {
   return `/${raw.replace(/^\.?\//, '')}`;
 }
 
+function renderDiscordLoginButton(label = 'Log in with Discord', extraClass = '') {
+  const classes = ['btn', 'discord-login-button', extraClass].filter(Boolean).join(' ');
+  return `<a class="${classes}" href="/login" data-discord-login><span class="discord-login-mark" aria-hidden="true">◈</span><span>${escapeHtml(label)}</span></a>`;
+}
+
 function renderAddBotButton() {
   const clientId = String(process.env.DISCORD_CLIENT_ID || '').trim();
   if (!clientId) return '';
@@ -183,7 +188,7 @@ function page(title, body, user, meta = {}) {
   const seo = pageMeta(title, meta);
   const auth = user
     ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
-    : '<a class="btn compact" href="/login">Login with Discord</a>';
+    : renderDiscordLoginButton('Log in with Discord', 'compact');
 
   const addBotButton = renderAddBotButton();
   const webIcon = configuredWebIconUrl() || '/favicon.ico';
@@ -221,8 +226,8 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:description" content="${escapeHtml(seo.description)}">
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
-<script>(()=>{try{const saved=localStorage.getItem('multibot-theme');const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=saved||preferred;}catch{}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-unified-stream-panel">
+<script>(()=>{try{const legacy=localStorage.getItem('multibot-theme');const saved=localStorage.getItem('kryndexa-theme')||legacy;const valid=saved==='light'||saved==='dark'?saved:null;const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';const theme=valid||preferred;document.documentElement.dataset.theme=theme;if(legacy&&!localStorage.getItem('kryndexa-theme'))localStorage.setItem('kryndexa-theme',theme);}catch{document.documentElement.dataset.theme='dark';}})();</script>
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-login-lightmode-repair">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -232,7 +237,7 @@ function page(title, body, user, meta = {}) {
     ${user ? `<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
     <a href="/privacy">Privacy</a><a href="/terms">Terms</a>
   </nav>
-  <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme"><span data-theme-icon>◐</span></button><div class="header-auth">${auth}</div></div>
+  <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false"><span class="theme-toggle-icon" data-theme-icon aria-hidden="true">☀</span><span class="theme-toggle-label" data-theme-label>Light Mode</span></button><div class="header-auth">${auth}</div></div>
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
@@ -242,8 +247,28 @@ ${cookieNotice}
   const root=document.documentElement;
   const themeButton=document.querySelector('[data-theme-toggle]');
   const themeIcon=document.querySelector('[data-theme-icon]');
-  const refreshTheme=()=>{const dark=root.dataset.theme==='dark';if(themeIcon)themeIcon.textContent=dark?'☀':'☾';};
-  themeButton?.addEventListener('click',()=>{const next=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=next;localStorage.setItem('multibot-theme',next);refreshTheme();});
+  const themeLabel=document.querySelector('[data-theme-label]');
+  const themeMeta=document.querySelector('meta[name="theme-color"]');
+  const refreshTheme=()=>{
+    const dark=root.dataset.theme==='dark';
+    if(themeIcon)themeIcon.textContent=dark?'☀':'☾';
+    if(themeLabel)themeLabel.textContent=dark?'Light Mode':'Dark Mode';
+    if(themeButton){
+      themeButton.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+      themeButton.setAttribute('aria-pressed',dark?'false':'true');
+      themeButton.title=dark?'Switch to light mode':'Switch to dark mode';
+    }
+    if(themeMeta)themeMeta.setAttribute('content',dark?'#111318':'#f4f7fe');
+  };
+  themeButton?.addEventListener('click',()=>{
+    const next=root.dataset.theme==='dark'?'light':'dark';
+    root.dataset.theme=next;
+    try{
+      localStorage.setItem('kryndexa-theme',next);
+      localStorage.removeItem('multibot-theme');
+    }catch{}
+    refreshTheme();
+  });
   refreshTheme();
 
   const nav=document.querySelector('[data-site-nav]');
@@ -279,7 +304,7 @@ ${cookieNotice}
   };
   document.getElementById('cookieAccept')?.addEventListener('click',()=>setConsent('accept'));
   document.getElementById('cookieDecline')?.addEventListener('click',()=>{continueToLogin=false;setConsent('decline');});
-  document.querySelectorAll('a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{
+  document.querySelectorAll('[data-discord-login],a[href="/login"]').forEach(link=>link.addEventListener('click',event=>{
     if(getConsent()==='essential')return;
     event.preventDefault();
     continueToLogin=true;
@@ -788,7 +813,7 @@ function startDashboard(client) {
         <h1>Your Discord server, under control.</h1>
         <p class="hero-slogan"><strong>One Bot. Every Tool. Total Control. The Command Center for Your Discord Server.</strong></p>
         <p class="hero-detail">Moderation, tickets, logging, streaming alerts, music, automation, analytics, embeds and server configuration from one responsive dashboard.</p>
-        <div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : '<a class="btn" href="/login">Login with Discord</a>'} ${addBotButton}</div>
+        <div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Open Dashboard</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div>
       </div>
       <aside class="hero-console" aria-label="Kryndexa Bot feature categories">
         <div class="hero-console-heading">
@@ -818,7 +843,7 @@ function startDashboard(client) {
       return `<section class="public-feature-section"><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${features.length} module${features.length === 1 ? '' : 's'}</span></div><div class="public-feature-grid">${features.map((feature) => `<article class="public-feature-card"><div class="public-feature-top"><div class="feature-icon">${escapeHtml(feature.icon)}</div><div><span class="mini-label">${escapeHtml(feature.priority)} priority</span><h3>${escapeHtml(feature.title)}</h3></div></div><p>${escapeHtml(feature.description)}</p><div class="public-feature-meta"><span>${feature.locked ? 'Always enabled' : feature.defaultEnabled ? 'Enabled by default' : 'Server configurable'}</span><small>${escapeHtml(feature.requirement || 'Configured directly from the server dashboard.')}</small></div></article>`).join('')}</div></section>`;
     }).join('');
 
-    const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : '<a class="btn" href="/login">Login to Dashboard</a>'} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
+    const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
     return res.send(page('Features • Kryndexa Bot', body, req.session.user, {
       path: '/features',
       description: 'Explore Kryndexa Bot modules for moderation, tickets, logging, verification, music, automations, streaming alerts, analytics and Discord community management.',
@@ -907,6 +932,11 @@ function startDashboard(client) {
       path: '/',
       maxAge: 365 * 24 * 60 * 60 * 1000,
     });
+
+    if (String(req.query.continue || '') === 'login') {
+      return res.redirect(303, '/login');
+    }
+
     return res.status(204).end();
   });
 
@@ -936,7 +966,36 @@ function startDashboard(client) {
   app.get('/login', async (req, res) => {
     try {
       const consent = parseCookies(req).multibot_cookie_consent;
-      if (consent !== 'essential') return res.redirect('/?cookie=required&continue=login');
+      if (consent !== 'essential') {
+        const body = `<section class="login-consent-shell">
+          <div class="login-consent-card panel">
+            <span class="discord-login-logo" aria-hidden="true">◈</span>
+            <span class="eyebrow">DISCORD SIGN-IN</span>
+            <h1>Continue with Discord</h1>
+            <p>Kryndexa needs its essential dashboard session cookie to securely complete Discord OAuth, protect the login state, and keep you signed in.</p>
+            <div class="login-consent-points">
+              <span>Essential session cookie only</span>
+              <span>No advertising cookies</span>
+              <span>No tracking cookie requirement</span>
+            </div>
+            <form method="post" action="/cookie-consent/accept?continue=login">
+              <button class="btn discord-login-button login-consent-submit" type="submit"><span class="discord-login-mark" aria-hidden="true">◈</span><span>Accept Essentials & Continue with Discord</span></button>
+            </form>
+            <div class="login-consent-links"><a href="/privacy#cookies">Cookie details</a><a href="/">Return Home</a></div>
+          </div>
+        </section>`;
+
+        return res.status(200).send(page(
+          'Log in with Discord • Kryndexa Bot',
+          body,
+          req.session.user,
+          {
+            path: '/login',
+            private: true,
+            description: 'Secure Discord login for the Kryndexa Bot dashboard.',
+          },
+        ));
+      }
 
       const redirectUri = resolveOAuthRedirectUri(req);
       const state = createOAuthState(redirectUri);
