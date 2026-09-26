@@ -1748,8 +1748,9 @@ function startDashboard(client) {
     try {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
-      const valid = commandCatalog().some((command) => command.name === req.params.commandName);
-      if (!valid) return res.status(400).send('Unknown command.');
+      const command = commandCatalog().find((item) => item.name === req.params.commandName);
+      if (!command) return res.status(400).send('Unknown command.');
+      if (command.ownerOnly) return res.status(403).send('Owner-only commands cannot be managed from a server dashboard.');
       await setCommandEnabled(req.params.guildId, req.params.commandName, req.body.enabled === '1');
       return res.status(204).end();
     } catch (error) {
