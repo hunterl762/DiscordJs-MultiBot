@@ -1098,36 +1098,78 @@ function startDashboard(client) {
       .map((id) => id.trim())
       .filter(Boolean);
 
+    const ownerCommands = commandCatalog().filter((command) => command.ownerOnly);
+    const ownerCommandCards = ownerCommands.length
+      ? ownerCommands.map((command) => {
+          const subcommands = command.subcommands.length
+            ? `<div class="command-subcommands">${command.subcommands.map((sub) => `<span>/${escapeHtml(command.name)} ${escapeHtml(sub)}</span>`).join('')}</div>`
+            : '';
+
+          const aliases = command.aliases.length
+            ? `<span class="command-meta">Aliases: ${command.aliases.map((alias) => escapeHtml(alias)).join(', ')}</span>`
+            : '';
+
+          return `<article class="command-card enabled owner-command-card">
+            <div class="command-card-head">
+              <code>/${escapeHtml(command.name)}</code>
+              <div class="command-badges">
+                <span class="pill subtle">Owner only</span>
+                <span class="pill subtle">${command.guildOnly ? 'Server' : 'Global capable'}</span>
+                <span class="pill subtle">${command.prefixBackup ? 'Prefix backup' : 'Slash only'}</span>
+              </div>
+            </div>
+            <p>${escapeHtml(command.description)}</p>
+            <span class="command-meta">Module: ${escapeHtml(command.modulePath || 'unknown')}</span>
+            ${subcommands}
+            ${aliases}
+          </article>`;
+        }).join('')
+      : '<div class="empty">No owner-only commands are currently loaded.</div>';
+
     const body = `<section class="owner-dashboard-shell">
       <section class="owner-dashboard-hero">
         <div>
           <span class="owner-access-badge"><i></i> RESTRICTED OWNER ACCESS</span>
           <span class="eyebrow">BOT OWNERS</span>
           <h1>Owner Control Center</h1>
-          <p>Private owner tools for Kryndexa Bot.</p>
+          <p>Private owner commands and bot-wide tools for Kryndexa Bot.</p>
         </div>
         <div class="owner-dashboard-meta">
           <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
-          <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
+          <span><strong>${ownerCommands.length.toLocaleString()}</strong> owner command${ownerCommands.length === 1 ? '' : 's'}</span>
         </div>
       </section>
 
       <section class="owner-section">
         <div class="owner-section-heading">
           <div>
-            <span class="eyebrow">OWNER TOOLS</span>
-            <h2>Private Controls</h2>
-            <p>Owner-only modules will appear here when configured.</p>
+            <span class="eyebrow">OWNER COMMANDS</span>
+            <h2>Bot Owner Command Center</h2>
+            <p>These commands are hidden from normal server dashboards and remain restricted by server-side bot-owner checks when executed.</p>
           </div>
         </div>
-        <div class="empty">No owner-only modules are currently configured.</div>
+        <div class="command-grid">${ownerCommandCards}</div>
+      </section>
+
+      <section class="owner-section">
+        <div class="owner-section-heading">
+          <div>
+            <span class="eyebrow">ACCESS</span>
+            <h2>Owner Access</h2>
+            <p>Only configured bot owners can open this page. Direct requests from non-owners return HTTP 403.</p>
+          </div>
+        </div>
+        <div class="owner-dashboard-meta">
+          <span><strong>${ownerIds.length || 1}</strong> configured owner${(ownerIds.length || 1) === 1 ? '' : 's'}</span>
+          <span><strong>${ownerCommands.filter((command) => command.prefixBackup).length}</strong> prefix backup${ownerCommands.filter((command) => command.prefixBackup).length === 1 ? '' : 's'}</span>
+        </div>
       </section>
     </section>`;
 
     return res.send(page('Bot Owners • Kryndexa Bot', body, req.session.user, {
       path: '/dashboard/owner',
       private: true,
-      description: 'Restricted Kryndexa Bot owner dashboard.',
+      description: 'Restricted Kryndexa Bot owner commands and controls.',
     }));
   });
 
@@ -1328,9 +1370,9 @@ function startDashboard(client) {
           }).join('')
         : '<div class="empty twitch-empty">No Twitch live announcements configured yet.</div>';
 
-      const catalog = commandCatalog();
+      const catalog = commandCatalog().filter((command) => !command.ownerOnly);
       const commandStates = await getCommandStateObject(guild.id, catalog.map((command) => command.name));
-      const preferredCategories = ['Moderation','Security','Administration','Tickets','Verification','Roles','Leveling','Applications','Giveaways','Community','Economy','Utility','Analytics','Voice','Integrations','Music','AI Assistant','Automations','Misc','Owner Tools','Other'];
+      const preferredCategories = ['Moderation','Security','Administration','Tickets','Verification','Roles','Leveling','Applications','Giveaways','Community','Economy','Utility','Analytics','Voice','Integrations','Music','AI Assistant','Automations','Misc','Other'];
       const discoveredCategories = [...new Set(catalog.map((command) => command.category))];
       const categoryOrder = [
         ...preferredCategories.filter((category) => discoveredCategories.includes(category)),
