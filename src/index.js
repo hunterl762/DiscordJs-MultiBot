@@ -6,7 +6,10 @@ const {
   Partials,
 } = require('discord.js');
 const { slashCommands } = require('./bot/commandRegistry');
-const { registerSlashCommands } = require('./bot/slashCommandSync');
+const {
+  registerSlashCommands,
+  registerGuildJoinSlashSync,
+} = require('./bot/slashCommandSync');
 const { registerEvents } = require('./bot/events');
 const { registerInteractions } = require('./bot/interactions');
 const { startDashboard } = require('./dashboard/server');
@@ -52,6 +55,7 @@ const client = new Client({
 registerEvents(client);
 registerInteractions(client);
 registerFeatureRuntime(client);
+registerGuildJoinSlashSync(client, slashCommands);
 
 async function waitForReady() {
   if (client.isReady()) return;
