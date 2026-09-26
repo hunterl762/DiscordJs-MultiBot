@@ -16,7 +16,11 @@ const { startDashboard } = require('./dashboard/server');
 const { initDatabase } = require('./database');
 const { startTwitchMonitor, stopTwitchMonitor } = require('./services/twitchMonitor');
 const { registerFeatureRuntime, stopFeatureRuntime } = require('./features/runtime');
-const { initMusic, stopMusic } = require('./music/manager');
+const {
+  initMusic,
+  waitForMusicConnection,
+  stopMusic,
+} = require('./music/manager');
 
 const required = [
   'DISCORD_TOKEN',
@@ -94,15 +98,24 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
     console.error('[Dashboard] Failed to initialize web panel:', error);
   }
 
+  // Shoukaku's Discord.js connector subscribes to the one-time clientReady event.
+  // It must be constructed before Discord login or the Lavalink node never starts.
+  try {
+    await initMusic(client, { waitForReady: false });
+  } catch (error) {
+    console.error('[Music] Failed to initialize the Lavalink connector before Discord login:', error);
+  }
+
   await client.login(process.env.DISCORD_TOKEN);
   await waitForReady();
 
-  // Lavalink should initialize as soon as Discord is ready. Do not make music
-  // wait for the potentially long per-guild slash-command synchronization.
   try {
-    await initMusic(client);
+    const lavalinkReady = await waitForMusicConnection();
+    if (!lavalinkReady) {
+      console.warn('[Music] Discord is ready, but Lavalink did not finish connecting.');
+    }
   } catch (error) {
-    console.error('[Music] Startup failed; the bot will continue without music until Lavalink reconnects:', error);
+    console.error('[Music] Lavalink readiness check failed; the bot will continue without music:', error);
   }
 
   startTwitchMonitor(client);
