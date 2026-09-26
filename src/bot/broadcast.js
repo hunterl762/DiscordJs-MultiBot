@@ -82,72 +82,91 @@ function ownerDisplayName(owner) {
   return owner.displayName || owner.globalName || owner.username || owner.tag || 'MultiBot Owner';
 }
 
-function buildBroadcastPayload(channel, { title, message, owner }) {
+function parseBroadcastColor(value) {
+  const text = String(value || '').trim();
+  if (!/^#[0-9a-f]{6}$/i.test(text)) return 0x5865f2;
+  return Number.parseInt(text.slice(1), 16);
+}
+
+function safeHttpUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function buildBroadcastPayload(channel, options = {}) {
+  const {
+    title = 'Kryndexa Bot Announcement',
+    message,
+    owner,
+    color = '#5865F2',
+    footer = '',
+    imageUrl = '',
+    thumbnailUrl = '',
+    mentionEveryone = true,
+  } = options;
+
   const me = channel.guild.members.me;
   const canEmbed = channel.permissionsFor(me)?.has(PermissionFlagsBits.EmbedLinks);
   const canMentionEveryone = channel.permissionsFor(me)?.has(PermissionFlagsBits.MentionEveryone);
+  const shouldMentionEveryone = Boolean(mentionEveryone && canMentionEveryone);
   const sentAt = new Date();
   const sentUnix = Math.floor(sentAt.getTime() / 1000);
   const ownerName = ownerDisplayName(owner);
   const ownerAvatar = owner?.displayAvatarURL?.({ size: 128 }) || null;
+  const cleanedImageUrl = safeHttpUrl(imageUrl);
+  const cleanedThumbnailUrl = safeHttpUrl(thumbnailUrl);
 
   if (!canEmbed) {
     return {
       content: [
-        '@everyone',
+        shouldMentionEveryone ? '@everyone' : '',
         '',
-        `📢 **${title}**`,
+        `📢 **${String(title || 'Kryndexa Bot Announcement').slice(0, 256)}**`,
         '',
-        message,
+        String(message || '').slice(0, 1600),
         '',
         `**Broadcast by:** ${ownerName}`,
         `**Sent:** <t:${sentUnix}:F>`,
-        `©️ ${sentAt.getFullYear()} MultiBot`,
-      ].join('\n').slice(0, 2000),
-      allowedMentions: { parse: canMentionEveryone ? ['everyone'] : [] },
+      ].filter(Boolean).join('\n').slice(0, 2000),
+      allowedMentions: { parse: shouldMentionEveryone ? ['everyone'] : [] },
     };
   }
 
   const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
+    .setColor(parseBroadcastColor(color))
     .setAuthor({
       name: `Broadcast from ${ownerName}`,
       ...(ownerAvatar ? { iconURL: ownerAvatar } : {}),
     })
-    .setTitle(`📢 ${title}`)
-    .setDescription(message)
+    .setTitle(String(title || 'Kryndexa Bot Announcement').slice(0, 256))
+    .setDescription(String(message || '').slice(0, 4000))
     .addFields(
-      {
-        name: '👤 Bot Owner',
-        value: ownerName,
-        inline: true,
-      },
-      {
-        name: '🕒 Sent',
-        value: `<t:${sentUnix}:F>\n<t:${sentUnix}:R>`,
-        inline: true,
-      },
-      {
-        name: '🌐 Server',
-        value: channel.guild.name,
-        inline: true,
-      },
+      { name: '👤 Bot Owner', value: ownerName, inline: true },
+      { name: '🕒 Sent', value: `<t:${sentUnix}:F>\n<t:${sentUnix}:R>`, inline: true },
+      { name: '🌐 Server', value: channel.guild.name, inline: true },
     )
     .setFooter({
-      text: `©️ ${sentAt.getFullYear()} MultiBot • Owner Broadcast`,
+      text: String(footer || `©️ ${sentAt.getFullYear()} Kryndexa Bot • Owner Broadcast`).slice(0, 2048),
       ...(me?.user?.displayAvatarURL?.({ size: 64 }) ? { iconURL: me.user.displayAvatarURL({ size: 64 }) } : {}),
     })
     .setTimestamp(sentAt);
 
-  if (ownerAvatar) embed.setThumbnail(ownerAvatar);
+  if (cleanedThumbnailUrl) embed.setThumbnail(cleanedThumbnailUrl);
+  else if (ownerAvatar) embed.setThumbnail(ownerAvatar);
+  if (cleanedImageUrl) embed.setImage(cleanedImageUrl);
 
   return {
-    content: '@everyone',
+    content: shouldMentionEveryone ? '@everyone' : undefined,
     embeds: [embed],
-    allowedMentions: { parse: canMentionEveryone ? ['everyone'] : [] },
+    allowedMentions: { parse: shouldMentionEveryone ? ['everyone'] : [] },
   };
 }
-
 function withTimeout(promise, timeoutMs, label) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -161,7 +180,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function broadcastToGuilds(client, { title = 'MultiBot Announcement', message, dryRun = false, owner = null } = {}) {
+async function broadcastToGuilds(client, {
+  title = 'Kryndexa Bot Announcement',
+  message,
+  dryRun = false,
+  owner = null,
+  color = '#5865F2',
+  footer = '',
+  imageUrl = '',
+  thumbnailUrl = '',
+  mentionEveryone = true,
+} = {}) {
   if (!message?.trim()) throw new Error('Broadcast message is required.');
 
   const results = {
@@ -190,7 +219,16 @@ async function broadcastToGuilds(client, { title = 'MultiBot Announcement', mess
 
       results.channels.push(`${guild.name} → #${channel.name}`);
       if (!dryRun) {
-        await withTimeout(channel.send(buildBroadcastPayload(channel, { title, message, owner })), serverTimeoutMs, `${guild.name} broadcast send`);
+        await withTimeout(channel.send(buildBroadcastPayload(channel, {
+          title,
+          message,
+          owner,
+          color,
+          footer,
+          imageUrl,
+          thumbnailUrl,
+          mentionEveryone,
+        })), serverTimeoutMs, `${guild.name} broadcast send`);
         await sleep(delayMs);
       }
       results.delivered += 1;
