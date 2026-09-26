@@ -2691,3 +2691,202 @@ html[data-theme="light"] .stream-list-meta strong{color:#3b475d}
     align-self:flex-start;
   }
 }
+
+
+/* === Discord login + reliable theme control === */
+.discord-login-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  background:#5865f2;
+  color:#fff !important;
+  border-color:#5865f2;
+  box-shadow:0 7px 18px rgba(88,101,242,.18);
+}
+.discord-login-button:hover{
+  background:#4752c4;
+  border-color:#4752c4;
+  color:#fff !important;
+  transform:translateY(-1px);
+}
+.discord-login-mark{
+  display:grid;
+  place-items:center;
+  width:19px;
+  height:19px;
+  flex:0 0 19px;
+  border-radius:6px;
+  background:rgba(255,255,255,.16);
+  font-size:11px;
+  line-height:1;
+}
+.login-consent-shell{
+  min-height:calc(100vh - 230px);
+  display:grid;
+  place-items:center;
+  padding:48px 0;
+}
+.login-consent-card{
+  width:min(100%,620px);
+  padding:34px;
+  text-align:center;
+}
+.discord-login-logo{
+  width:58px;
+  height:58px;
+  margin:0 auto 15px;
+  display:grid;
+  place-items:center;
+  border-radius:18px;
+  background:#5865f2;
+  color:#fff;
+  font-size:25px;
+  box-shadow:0 14px 30px rgba(88,101,242,.22);
+}
+.login-consent-card h1{
+  margin:7px 0 10px;
+}
+.login-consent-card>p{
+  max-width:520px;
+  margin:0 auto;
+  color:var(--muted);
+  line-height:1.65;
+}
+.login-consent-points{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:22px 0;
+}
+.login-consent-points span{
+  padding:10px 9px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel2);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:750;
+}
+.login-consent-submit{
+  width:100%;
+  min-height:46px;
+}
+.login-consent-links{
+  display:flex;
+  justify-content:center;
+  gap:16px;
+  margin-top:16px;
+  font-size:12px;
+}
+
+/* Explicit theme switch with readable label instead of an icon-only control. */
+.theme-toggle{
+  width:auto !important;
+  min-width:112px;
+  height:42px;
+  padding:0 11px !important;
+  display:inline-flex !important;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  white-space:nowrap;
+}
+.theme-toggle-icon{
+  width:18px;
+  flex:0 0 18px;
+  font-size:15px;
+  line-height:1;
+}
+.theme-toggle-label{
+  font-size:11px;
+  font-weight:800;
+}
+
+/* Final light-mode normalization for dashboard surfaces added after older rules. */
+html[data-theme="light"] main{
+  color:#1b2559;
+}
+html[data-theme="light"] .dashboard-control-shell,
+html[data-theme="light"] .owner-dashboard-shell,
+html[data-theme="light"] .privacy-page{
+  color:#1b2559;
+}
+html[data-theme="light"] .dashboard-home-hero,
+html[data-theme="light"] .owner-dashboard-hero,
+html[data-theme="light"] .owner-section,
+html[data-theme="light"] .command-panel,
+html[data-theme="light"] .stream-alert-panel,
+html[data-theme="light"] .stream-config-form,
+html[data-theme="light"] .stream-embed-editor,
+html[data-theme="light"] .stream-list-row,
+html[data-theme="light"] .settings-group,
+html[data-theme="light"] .settings-toggle-section,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .paid-access-form,
+html[data-theme="light"] .paid-access-card{
+  background:#fff !important;
+  border-color:#dfe5ef !important;
+  color:#1b2559 !important;
+}
+html[data-theme="light"] .dashboard-home-hero,
+html[data-theme="light"] .owner-dashboard-hero{
+  background:
+    radial-gradient(circle at top right,rgba(88,101,242,.10),transparent 38%),
+    #fff !important;
+}
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea{
+  background:#fff !important;
+  color:#1b2559 !important;
+  border-color:#d7deea !important;
+}
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder{
+  color:#8a95a8;
+}
+html[data-theme="light"] .stream-access-pill,
+html[data-theme="light"] .dashboard-online-pill,
+html[data-theme="light"] .pill.subtle{
+  background:#f3f5fb !important;
+  border-color:#dfe5ef !important;
+  color:#536079 !important;
+}
+html[data-theme="light"] .mini-label,
+html[data-theme="light"] .command-meta,
+html[data-theme="light"] .stream-list-meta,
+html[data-theme="light"] .owner-section p{
+  color:#707eae;
+}
+html[data-theme="light"] .site-nav.open{
+  background:#fff;
+  border-color:#dfe5ef;
+}
+html[data-theme="light"] .theme-toggle{
+  background:#fff;
+  color:#29344a;
+  border-color:#d8e0ea;
+  box-shadow:0 4px 12px rgba(31,51,89,.06);
+}
+html[data-theme="dark"] .theme-toggle{
+  background:#242832;
+  color:#f5f7fb;
+  border-color:#303644;
+}
+
+@media(max-width:1080px){
+  .theme-toggle{
+    min-width:42px;
+  }
+  .theme-toggle-label{
+    display:none;
+  }
+}
+@media(max-width:620px){
+  .login-consent-card{padding:25px 18px}
+  .login-consent-points{grid-template-columns:1fr}
+}
