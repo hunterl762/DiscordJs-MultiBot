@@ -2000,16 +2000,28 @@ function startDashboard(client) {
   });
 
   const port = Number(process.env.PORT || 3000);
-  const server = app.listen(port);
+  const host = String(process.env.WEB_HOST || '0.0.0.0').trim() || '0.0.0.0';
+
+  console.log(`[Dashboard] Starting web panel on ${host}:${port}...`);
+
+  const server = app.listen(port, host);
 
   server.once('listening', () => {
-    console.log(`Dashboard listening on http://127.0.0.1:${port}`);
+    const localHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+    console.log(`[Dashboard] Web panel listening on http://${localHost}:${port}`);
+
+    if (host === '0.0.0.0' || host === '::') {
+      console.log('[Dashboard] Web panel is bound to all network interfaces.');
+    }
+
+    const publicUrl = String(process.env.BASE_URL || '').trim();
+    if (publicUrl) console.log(`[Dashboard] Configured public URL: ${publicUrl}`);
   });
 
   server.on('error', (error) => {
     if (error?.code === 'EADDRINUSE') {
-      console.error(`[Dashboard] Cannot start web panel: port ${port} is already in use.`);
-      console.error('[Dashboard] Change PORT or stop the process using that port.');
+      console.error(`[Dashboard] Cannot start web panel: ${host}:${port} is already in use.`);
+      console.error('[Dashboard] Change PORT/WEB_HOST or stop the process using that address and port.');
       return;
     }
 
