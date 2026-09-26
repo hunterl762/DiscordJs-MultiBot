@@ -195,9 +195,35 @@ function verifyRegistration(label, registered, slashCommands) {
   return registered.length;
 }
 
-async function syncGlobalCommands(rest, applicationId, slashCommands, retries = DEFAULT_RETRIES) {
+function commandSetDiff(previous, current) {
+  const before = new Set(commandNames(previous));
+  const after = new Set(commandNames(current));
+
+  return {
+    added: [...after].filter((name) => !before.has(name)),
+    removed: [...before].filter((name) => !after.has(name)),
+    retained: [...after].filter((name) => before.has(name)),
+  };
+}
+
+async function fetchGlobalCommands(rest, applicationId, retries = DEFAULT_RETRIES) {
+  return withDiscordRetry(
+    'Global command inventory',
+    () => rest.get(Routes.applicationCommands(applicationId)),
+    retries,
+  );
+}
+
+async function rebuildGlobalCommands(rest, applicationId, slashCommands, retries = DEFAULT_RETRIES) {
+  validateSlashCommandPayloads(slashCommands);
+
+  const previous = await fetchGlobalCommands(rest, applicationId, retries);
+  const diff = commandSetDiff(previous, slashCommands);
+
+  // Discord bulk-overwrite is authoritative: commands absent from slashCommands are
+  // removed, existing definitions are updated, and newly loaded commands are created.
   const registered = await withDiscordRetry(
-    'Global command registration',
+    'Global command rebuild',
     () => rest.put(
       Routes.applicationCommands(applicationId),
       { body: slashCommands },
@@ -205,12 +231,41 @@ async function syncGlobalCommands(rest, applicationId, slashCommands, retries = 
     retries,
   );
 
-  const count = verifyRegistration('Global command registration', registered, slashCommands);
-  console.log(
-    `[Slash Commands] Registered and verified ${count} global command(s) for application ${applicationId}.`,
+  verifyRegistration('Global command rebuild', registered, slashCommands);
+
+  const verified = await fetchGlobalCommands(rest, applicationId, retries);
+  const count = verifyRegistration(
+    'Global command post-rebuild verification',
+    verified,
+    slashCommands,
   );
 
-  return registered;
+  console.log(
+    `[Slash Commands] Global rebuild complete: ${count} current command(s), ${diff.added.length} added, ${diff.removed.length} stale removed, ${diff.retained.length} retained/updated.`,
+  );
+
+  if (diff.added.length) {
+    console.log(`[Slash Commands] Added globally: ${diff.added.map((name) => `/${name}`).join(', ')}`);
+  }
+  if (diff.removed.length) {
+    console.log(`[Slash Commands] Removed stale globals: ${diff.removed.map((name) => `/${name}`).join(', ')}`);
+  }
+
+  return {
+    registered: verified,
+    count,
+    ...diff,
+  };
+}
+
+async function syncGlobalCommands(rest, applicationId, slashCommands, retries = DEFAULT_RETRIES) {
+  const result = await rebuildGlobalCommands(
+    rest,
+    applicationId,
+    slashCommands,
+    retries,
+  );
+  return result.registered;
 }
 
 async function syncGuildCommands(
@@ -341,12 +396,24 @@ async function registerSlashCommands(client, slashCommands) {
   const rest = createRestClient();
 
   let globalError = null;
+  let globalSummary = {
+    count: 0,
+    added: [],
+    removed: [],
+    retained: [],
+  };
+
   try {
-    await syncGlobalCommands(rest, applicationId, slashCommands, retries);
+    globalSummary = await rebuildGlobalCommands(
+      rest,
+      applicationId,
+      slashCommands,
+      retries,
+    );
   } catch (error) {
     globalError = error;
     console.error(
-      '[Slash Commands] Global registration failed; continuing with direct multi-guild registration:',
+      '[Slash Commands] Global rebuild failed; continuing with direct multi-guild registration:',
       error,
     );
   }
@@ -381,6 +448,7 @@ async function registerSlashCommands(client, slashCommands) {
     applicationId,
     commandCount: slashCommands.length,
     globalRegistered: !globalError,
+    globalSummary,
     guildSummary,
   };
 }
@@ -424,6 +492,8 @@ module.exports = {
   sameCommandNames,
   validateSlashCommandPayloads,
   createRestClient,
+  fetchGlobalCommands,
+  rebuildGlobalCommands,
   syncGlobalCommands,
   syncGuildCommands,
   syncAllGuildCommands,
