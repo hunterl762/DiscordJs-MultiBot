@@ -159,6 +159,8 @@ Optional custom announcement variables:
 
 The shared check interval defaults to 120 seconds and can be changed with `STREAM_ALERT_CHECK_INTERVAL_MS`. `TWITCH_CHECK_INTERVAL_MS` remains as a legacy fallback. Kryndexa enforces a minimum interval of 60 seconds.
 
+Live-role reconciliation has its own `STREAM_ROLE_CHECK_INTERVAL_MS` interval (default 120 seconds, minimum 60 seconds). It repairs configured Discord live roles from the last known stream state without performing an additional streaming-provider API poll.
+
 ## Web-panel Command Center
 
 Each server page now includes a categorized **Command Center** generated from the live command registry. It automatically lists every loaded module from `commands/`, including descriptions, subcommands, aliases, server/global scope, and whether a prefix fallback is available. Current categories are General, Moderation, Support & Verification, and Owner Tools; future uncategorized modules appear under Other.
