@@ -97,6 +97,16 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   await client.login(process.env.DISCORD_TOKEN);
   await waitForReady();
 
+  // Lavalink should initialize as soon as Discord is ready. Do not make music
+  // wait for the potentially long per-guild slash-command synchronization.
+  try {
+    await initMusic(client);
+  } catch (error) {
+    console.error('[Music] Startup failed; the bot will continue without music until Lavalink reconnects:', error);
+  }
+
+  startTwitchMonitor(client);
+
   try {
     const sync = await registerSlashCommands(client, slashCommands);
     console.log(
@@ -105,9 +115,6 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   } catch (error) {
     console.error('[Slash Commands] Registration failed; the bot and dashboard will continue running:', error);
   }
-
-  startTwitchMonitor(client);
-  await initMusic(client);
 })().catch((error) => {
   console.error('MultiBot startup failed:', error);
   try {
