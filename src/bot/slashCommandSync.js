@@ -385,6 +385,40 @@ async function registerSlashCommands(client, slashCommands) {
   };
 }
 
+function registerGuildJoinSlashSync(client, slashCommands) {
+  client.on('guildCreate', async (guild) => {
+    try {
+      validateSlashCommandPayloads(slashCommands);
+      await client.application.fetch();
+
+      const rest = createRestClient();
+      const applicationId = client.application.id;
+      const retries = clampNumber(
+        process.env.SLASH_COMMAND_SYNC_RETRIES,
+        DEFAULT_RETRIES,
+        0,
+        10,
+      );
+
+      const count = await syncGuildCommands(
+        rest,
+        applicationId,
+        guild,
+        slashCommands,
+        retries,
+      );
+
+      console.log(
+        `[Slash Commands] New server sync complete for ${guild.name} (${guild.id}): ${count} command(s) registered.`,
+      );
+    } catch (error) {
+      console.warn(
+        `[Slash Commands] New server sync failed for ${guild.name} (${guild.id}): ${error?.message || error}`,
+      );
+    }
+  });
+}
+
 module.exports = {
   commandNames,
   sameCommandNames,
@@ -394,4 +428,5 @@ module.exports = {
   syncGuildCommands,
   syncAllGuildCommands,
   registerSlashCommands,
+  registerGuildJoinSlashSync,
 };
