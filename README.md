@@ -150,7 +150,9 @@ Tickets use private Discord channels. When a ticket is closed, MultiBot:
 
 Kryndexa supports live alerts for Twitch, YouTube, and Kick from the dashboard. Configure `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET`, `YOUTUBE_API_KEY`, and/or `KICK_CLIENT_ID`/`KICK_CLIENT_SECRET` for the providers you want to use.
 
-Server administrators can add provider-specific streamer/channel identifiers, choose a Discord announcement channel, set a custom message, and optionally assign a live role. The monitor records live state so it only announces a newly detected stream rather than reposting the same broadcast.
+Server administrators can add provider-specific streamer/channel identifiers, choose a Discord announcement channel, set a custom message, optionally bind a Discord user/live role, and customize separate Twitch, YouTube, and Kick embed templates with a live dashboard preview. The monitor records live state so it only announces a newly detected stream rather than reposting the same broadcast.
+
+Stream Alerts use a server entitlement limit: free servers can configure up to **3** streamers; servers granted paid access by a bot owner can configure up to **15**. The owner dashboard includes entitlement controls. This repository does not currently include a payment processor, so paid access must be granted after payment is verified externally.
 
 Optional custom announcement variables:
 
@@ -168,7 +170,7 @@ Live-role reconciliation has its own `STREAM_ROLE_CHECK_INTERVAL_MS` interval (d
 
 Each server page now includes a categorized **Command Center** generated from the live command registry. It automatically lists every loaded module from `commands/`, including descriptions, subcommands, aliases, server/global scope, and whether a prefix fallback is available. Current categories are General, Moderation, Support & Verification, and Owner Tools; future uncategorized modules appear under Other.
 
-The Twitch section is also presented as streamer cards with live/offline status, target Discord channel, last announcement time, custom-message preview, and quick Twitch/remove controls.
+The Stream Alerts section presents Twitch, YouTube, and Kick streamer cards with provider badges, live/offline status, target Discord channel, last announcement time, custom-message preview, configurable provider embeds, and quick open/remove controls.
 
 
 ## Duty-based command modules
