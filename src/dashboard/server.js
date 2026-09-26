@@ -15,10 +15,9 @@ const {
 } = require('../store');
 const { getPool, pingDatabase } = require('../database');
 const {
-  normalizeIdentifier,
-  listTwitchAnnouncements,
-  upsertTwitchAnnouncement,
-  deleteTwitchAnnouncement,
+  listStreamAnnouncements,
+  upsertStreamAnnouncement,
+  deleteStreamAnnouncement,
 } = require('../twitchStore');
 const {
   DEFAULT_TICKET_TYPES,
@@ -35,8 +34,17 @@ const { listAutomationRules, createAutomationRule, deleteAutomationRule } = requ
 const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encryptedSessionStore');
 const { PROVIDERS, listAiCredentials, saveAiCredential, deleteAiCredential } = require('../aiCredentialStore');
 const { EMBED_MODULES, listEmbedConfigs, saveEmbedConfig } = require('../embedConfigStore');
+const {
+  getStreamAlertAccess,
+  listPaidStreamAlertAccess,
+  setStreamAlertPaidAccess,
+} = require('../streamAccessStore');
 const { getAnalytics } = require('../features/dataStore');
-const { isBotOwner } = require('../bot/broadcast');
+const {
+  isBotOwner,
+  broadcastToGuilds,
+  formatBroadcastSummary,
+} = require('../bot/broadcast');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const GUILD_CACHE_TTL_MS = 60_000;
@@ -578,6 +586,103 @@ function featureFieldHtml(field, value, resources) {
   }
 
   return `<label>${escapeHtml(field.label)}<input type="text" name="cfg_${escapeHtml(field.key)}" value="${escapeHtml(String(safeValue))}"></label>`;
+}
+
+function streamPlatformMeta(platform, identifier = '') {
+  const value = String(identifier || '').trim();
+
+  if (platform === 'youtube') {
+    return {
+      label: 'YouTube',
+      short: 'YT',
+      css: 'youtube',
+      embedKey: 'youtube_live',
+      url: value ? `https://www.youtube.com/channel/${encodeURIComponent(value)}` : 'https://www.youtube.com/',
+    };
+  }
+
+  if (platform === 'kick') {
+    return {
+      label: 'Kick',
+      short: 'K',
+      css: 'kick',
+      embedKey: 'kick_live',
+      url: value ? `https://kick.com/${encodeURIComponent(value)}` : 'https://kick.com/',
+    };
+  }
+
+  return {
+    label: 'Twitch',
+    short: 'T',
+    css: 'twitch',
+    embedKey: 'twitch_live',
+    url: value ? `https://www.twitch.tv/${encodeURIComponent(value)}` : 'https://www.twitch.tv/',
+  };
+}
+
+function renderStreamEmbedEditor(guildId, config, csrf) {
+  const fields = [...(config.fields || [])];
+  while (fields.length < 5) fields.push({ name: '', value: '', inline: false });
+
+  const rows = fields.slice(0, 5).map((field, index) => `
+    <div class="embed-field-row">
+      <input name="fieldName_${index}" data-field-name maxlength="256" value="${escapeHtml(field.name || '')}" placeholder="Field name">
+      <input name="fieldValue_${index}" data-field-value maxlength="1024" value="${escapeHtml(field.value || '')}" placeholder="Field value">
+      <label><input type="checkbox" name="fieldInline_${index}" data-field-inline ${field.inline ? 'checked' : ''}> Inline</label>
+    </div>`
+  ).join('');
+
+  const meta = streamPlatformMeta(config.key.replace('_live', ''));
+
+  return `<form class="stream-embed-editor" data-embed-editor method="post" action="/dashboard/${guildId}/streams/embed/${encodeURIComponent(config.key)}">
+    <input type="hidden" name="_csrf" value="${escapeHtml(csrf)}">
+    <div class="stream-embed-editor-head">
+      <div>
+        <span class="eyebrow">${escapeHtml(meta.label.toUpperCase())} EMBED</span>
+        <h3>${escapeHtml(config.label)}</h3>
+      </div>
+      <span class="provider-chip ${meta.css}">${escapeHtml(meta.label)}</span>
+    </div>
+    <div class="embed-editor-layout">
+      <div class="embed-editor-controls">
+        <label>Title
+          <input name="title" data-embed-title maxlength="256" value="${escapeHtml(config.title)}">
+        </label>
+        <label>Description
+          <textarea name="description" data-embed-description maxlength="4000" rows="4">${escapeHtml(config.description)}</textarea>
+        </label>
+        <div class="form-grid">
+          <label>Color
+            <input name="color" data-embed-color maxlength="7" value="${escapeHtml(config.color)}" placeholder="#5865F2">
+          </label>
+          <label>Footer
+            <input name="footer" data-embed-footer maxlength="2048" value="${escapeHtml(config.footer)}">
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>Image URL
+            <input name="imageUrl" maxlength="1000" value="${escapeHtml(config.imageUrl || '')}" placeholder="https://...">
+          </label>
+          <label>Thumbnail URL
+            <input name="thumbnailUrl" maxlength="1000" value="${escapeHtml(config.thumbnailUrl || '')}" placeholder="https://...">
+          </label>
+        </div>
+        <label class="feature-check"><input type="checkbox" name="fieldsEnabled" data-embed-fields-enabled ${config.fieldsEnabled ? 'checked' : ''}> Show custom embed fields</label>
+        <div class="embed-fields-editor">${rows}</div>
+        <div class="token-row"><span>{user}</span><span>{title}</span><span>{game}</span><span>{viewers}</span><span>{started}</span><span>{url}</span><span>{platform}</span></div>
+        <button class="btn" type="submit">Save ${escapeHtml(meta.label)} Embed</button>
+      </div>
+      <div class="embed-preview-card" data-embed-preview style="--embed-color:${escapeHtml(config.color)}">
+        <div class="embed-preview-bar"></div>
+        <div class="embed-preview-body">
+          <strong data-preview-title>${escapeHtml(config.title)}</strong>
+          <p data-preview-description>${escapeHtml(config.description)}</p>
+          <div class="embed-preview-fields" data-preview-fields></div>
+          <small data-preview-footer>${escapeHtml(config.footer)}</small>
+        </div>
+      </div>
+    </div>
+  </form>`;
 }
 
 function startDashboard(client) {
@@ -1272,13 +1377,15 @@ function startDashboard(client) {
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
       const guild = client.guilds.cache.get(req.params.guildId);
       if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
-      const [settings, tickets, twitchAnnouncements, ticketTypes, featureStates, automationRules] = await Promise.all([
+      const [settings, tickets, streamAnnouncements, ticketTypes, featureStates, automationRules, embedConfigs, streamAccess] = await Promise.all([
         getGuildSettings(guild.id),
         listGuildTickets(guild.id),
-        listTwitchAnnouncements(guild.id),
+        listStreamAnnouncements(guild.id),
         listTicketTypes(guild.id),
         getGuildFeatures(guild.id),
         listAutomationRules(guild.id),
+        listEmbedConfigs(guild.id),
+        getStreamAlertAccess(guild.id),
       ]);
       const textChannels = [...guild.channels.cache.values()].filter((c) => c.type === ChannelType.GuildText).sort((a, b) => a.name.localeCompare(b.name));
       const broadcastChannels = [...guild.channels.cache.values()].filter((c) => [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(c.type)).sort((a, b) => a.name.localeCompare(b.name));
