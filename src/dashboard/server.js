@@ -2124,51 +2124,114 @@ function startDashboard(client) {
     }
   });
 
-  app.post('/dashboard/:guildId/twitch', requireAuth, verifyCsrf, async (req, res) => {
+  app.post('/dashboard/:guildId/streams', requireAuth, verifyCsrf, async (req, res) => {
     try {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
 
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
 
       const channel = guild.channels.cache.get(String(req.body.discordChannelId || ''));
       if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
         return res.status(400).send('Choose a valid Discord text or announcement channel.');
       }
 
-      await upsertTwitchAnnouncement({
+      const roleId = String(req.body.liveRoleId || '').trim();
+      if (roleId && !guild.roles.cache.has(roleId)) return res.status(400).send('Choose a valid Discord live role.');
+
+      const discordUserId = String(req.body.discordUserId || '').trim();
+      if (discordUserId && !/^\d{10,32}$/.test(discordUserId)) return res.status(400).send('Enter a valid Discord user ID for the live-role binding.');
+
+      await upsertStreamAnnouncement({
         guildId: guild.id,
-        twitchLogin: req.body.twitchLogin,
+        platform: req.body.platform,
+        streamerIdentifier: req.body.streamerIdentifier,
         discordChannelId: channel.id,
         customMessage: req.body.customMessage || '',
+        discordUserId,
+        liveRoleId: roleId,
         createdBy: req.session.user.id,
       });
 
-      return res.redirect(`/dashboard/${guild.id}#twitch`);
+      return res.redirect(`/dashboard/${guild.id}#stream-alerts`);
     } catch (error) {
       console.error(error);
-      return res.status(500).send(page(
-        'Dashboard error',
-        `<div class="empty"><strong>Unable to save Twitch announcement.</strong><p>${escapeHtml(error.message || String(error))}</p></div>`,
+      const status = error?.code === 'STREAMER_LIMIT_REACHED' ? 409 : 500;
+      const heading = error?.code === 'STREAMER_LIMIT_REACHED'
+        ? 'Streamer limit reached'
+        : 'Unable to save stream alert';
+      return res.status(status).send(page(
+        `${heading} • Kryndexa Bot`,
+        `<div class="empty"><strong>${escapeHtml(heading)}.</strong><p>${escapeHtml(error.message || String(error))}</p><p><a class="btn secondary" href="/dashboard/${encodeURIComponent(req.params.guildId)}#stream-alerts">Return to Stream Alerts</a></p></div>`,
         req.session.user,
+        { private: true },
       ));
     }
   });
 
-  app.post('/dashboard/:guildId/twitch/:id/delete', requireAuth, verifyCsrf, async (req, res) => {
+  app.post('/dashboard/:guildId/streams/:id/delete', requireAuth, verifyCsrf, async (req, res) => {
     try {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
 
-      await deleteTwitchAnnouncement(req.params.guildId, req.params.id);
-      return res.redirect(`/dashboard/${req.params.guildId}#twitch`);
+      await deleteStreamAnnouncement(req.params.guildId, req.params.id);
+      return res.redirect(`/dashboard/${req.params.guildId}#stream-alerts`);
     } catch (error) {
       console.error(error);
-      return res.status(500).send('Unable to remove Twitch announcement.');
+      return res.status(500).send('Unable to remove stream alert.');
     }
   });
 
+  app.post('/dashboard/:guildId/streams/embed/:embedKey', requireAuth, verifyCsrf, async (req, res) => {
+    try {
+      const guilds = await getManagedGuilds(req, client);
+      if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
+
+      const key = String(req.params.embedKey || '');
+      if (!['twitch_live', 'youtube_live', 'kick_live'].includes(key) || !EMBED_MODULES[key]) {
+        return res.status(400).send('Unknown stream embed module.');
+      }
+
+      const imageUrl = String(req.body.imageUrl || '').trim();
+      const thumbnailUrl = String(req.body.thumbnailUrl || '').trim();
+      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return res.status(400).send('Image URL must use http:// or https://.');
+      if (thumbnailUrl && !/^https?:\/\//i.test(thumbnailUrl)) return res.status(400).send('Thumbnail URL must use http:// or https://.');
+
+      const fields = [];
+      for (let index = 0; index < 5; index += 1) {
+        const name = String(req.body[`fieldName_${index}`] || '').trim();
+        const value = String(req.body[`fieldValue_${index}`] || '').trim();
+        if (!name || !value) continue;
+        fields.push({
+          name,
+          value,
+          inline: req.body[`fieldInline_${index}`] === 'on',
+        });
+      }
+
+      await saveEmbedConfig(req.params.guildId, key, {
+        title: req.body.title,
+        description: req.body.description,
+        color: req.body.color,
+        footer: req.body.footer,
+        imageUrl,
+        thumbnailUrl,
+        fieldsEnabled: req.body.fieldsEnabled === 'on',
+        fields,
+      });
+
+      return res.redirect(`/dashboard/${req.params.guildId}#stream-alerts`);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).send(page(
+        'Embed settings error • Kryndexa Bot',
+        `<div class="empty"><strong>Unable to save the stream embed.</strong><p>${escapeHtml(error.message || String(error))}</p></div>`,
+        req.session.user,
+        { private: true },
+      ));
+    }
+  });
   app.get('/transcripts/:ticketId/view', requireAuth, async (req, res) => {
     try {
       const ticket = await getTicket(req.params.ticketId);
