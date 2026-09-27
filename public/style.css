@@ -2614,3 +2614,81 @@ html[data-theme="dark"] .theme-toggle{
 
 
 
+
+
+/* === Appearance selector: System / Light / Dark === */
+.account-theme-picker{padding:4px 0 7px;border-bottom:1px solid var(--line);margin-bottom:5px}
+.account-theme-title{display:block;padding:5px 10px;color:var(--muted);font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}
+.account-menu-item.theme-choice{position:relative}
+.account-menu-item.theme-choice.is-active{background:var(--panel2)!important;color:var(--text)!important}
+.account-menu-item.theme-choice.is-active::after{content:"✓";margin-left:auto;color:#5865f2;font-weight:900}
+
+/* === Complete web panel light theme === */
+html[data-theme="light"]{
+  --bg:#f4f7fe;
+  --panel:#ffffff;
+  --panel2:#f7f9fc;
+  --text:#1b2559;
+  --muted:#68758b;
+  --line:#dfe5ef;
+  color-scheme:light;
+}
+html[data-theme="light"] body{background:#f4f7fe;color:#1b2559}
+html[data-theme="light"] .site-header{background:rgba(255,255,255,.95);border-color:#dfe5ef}
+html[data-theme="light"] .panel,
+html[data-theme="light"] .dashboard-server-section,
+html[data-theme="light"] .settings-panel,
+html[data-theme="light"] .ticket-config-panel,
+html[data-theme="light"] .ticket-panel-publisher,
+html[data-theme="light"] .ticket-system-panel,
+html[data-theme="light"] .command-center-panel,
+html[data-theme="light"] .automation-builder,
+html[data-theme="light"] .automation-form,
+html[data-theme="light"] .guild-card,
+html[data-theme="light"] .public-feature-section,
+html[data-theme="light"] .public-feature-summary>div{
+  background:#fff!important;border-color:#dfe5ef!important;color:#1b2559!important;
+  box-shadow:0 10px 28px rgba(31,51,89,.055)
+}
+html[data-theme="light"] .dashboard-home-stats>div,
+html[data-theme="light"] .dashboard-server-summary>div,
+html[data-theme="light"] .ticket-stat-grid>div,
+html[data-theme="light"] .guild-mini-stats>div,
+html[data-theme="light"] .public-feature-card{
+  background:#f7f9fc!important;border-color:#e0e6ef!important;color:#1b2559!important
+}
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select{
+  background:#fff!important;color:#1b2559!important;border-color:#ccd5e2!important
+}
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder{color:#8a96a8}
+html[data-theme="light"] .settings-nav,
+html[data-theme="light"] .dashboard-jump,
+html[data-theme="light"] .account-dropdown>summary,
+html[data-theme="light"] .account-dropdown-menu,
+html[data-theme="light"] .nav-dropdown-menu{
+  background:#fff!important;border-color:#dfe5ef!important;color:#1b2559!important
+}
+html[data-theme="light"] .account-menu-item{color:#1b2559!important}
+html[data-theme="light"] .account-menu-item:hover,
+html[data-theme="light"] .account-menu-item.theme-choice.is-active,
+html[data-theme="light"] .nav-dropdown-menu a:hover{background:#f0f3f8!important}
+html[data-theme="light"] .account-logout{color:#dc2626!important}
+html[data-theme="light"] .table-wrap{background:#fff!important;border-color:#dfe5ef!important}
+html[data-theme="light"] table{color:#263248}
+html[data-theme="light"] th{background:#f3f6fa!important;color:#536079!important;border-color:#dfe5ef!important}
+html[data-theme="light"] td{background:#fff!important;color:#263248!important;border-color:#e6ebf2!important}
+html[data-theme="light"] tr:hover td{background:#f8faff!important}
+html[data-theme="light"] .btn.secondary{background:#f5f7fb;color:#334155;border-color:#d8e0ea}
+html[data-theme="light"] .dashboard-home-hero,
+html[data-theme="light"] .owner-dashboard-hero{
+  background:radial-gradient(circle at top right,rgba(88,101,242,.10),transparent 38%),linear-gradient(180deg,#fff,#fafbff)!important;
+  border-color:#dfe5ef!important
+}
+html[data-theme="light"] .mini-label,
+html[data-theme="light"] .dashboard-toolbar-hint,
+html[data-theme="light"] p{color:#68758b}
+html[data-theme="light"] footer{background:#fff;border-color:#dfe5ef;color:#68758b}
+html[data-theme="light"] .cookie-notice{background:#fff;border-color:#dfe5ef;color:#1b2559}
