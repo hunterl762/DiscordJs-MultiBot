@@ -41,16 +41,43 @@ function formatDuration(ms) {
 }
 
 function toTrack(video, requester) {
-  const durationSeconds = Number(video?.durationInSec || 0);
+  const durationSeconds = Number(video?.durationInSec || video?.duration || 0);
+  const videoId = String(video?.id || video?.videoId || '').trim();
+  const videoUrl = String(video?.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '')).trim();
   return {
     title: String(video?.title || 'Unknown track'),
     author: String(video?.channel?.name || video?.channel?.title || 'Unknown'),
-    uri: String(video?.url || ''),
-    realUri: String(video?.url || ''),
+    uri: videoUrl,
+    realUri: videoUrl,
     length: durationSeconds * 1000,
     isStream: Boolean(video?.live),
     requester,
   };
+}
+
+async function resolveYouTubePlaylist(playlistId, requester) {
+  const apiKey = String(process.env.YOUTUBE_API_KEY || '').trim();
+  if (!apiKey) throw new Error('YOUTUBE_API_KEY is required for reliable YouTube playlist playback.');
+  const tracks = [];
+  let pageToken = '';
+  do {
+    const params = new URLSearchParams({ part: 'snippet,contentDetails', playlistId, maxResults: '50', key: apiKey });
+    if (pageToken) params.set('pageToken', pageToken);
+    const response = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?${params}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`YouTube Data API returned ${response.status}: ${data?.error?.message || 'playlist request failed'}`);
+    for (const item of data.items || []) {
+      const videoId = item?.contentDetails?.videoId || item?.snippet?.resourceId?.videoId;
+      if (!videoId || ['Private video', 'Deleted video'].includes(item?.snippet?.title)) continue;
+      tracks.push(toTrack({
+        id: videoId,
+        title: item?.snippet?.title,
+        channel: { name: item?.snippet?.videoOwnerChannelTitle || item?.snippet?.channelTitle },
+      }, requester));
+    }
+    pageToken = String(data.nextPageToken || '');
+  } while (pageToken);
+  return tracks.filter((track) => track.uri);
 }
 
 async function resolveTracks(query, requester) {
@@ -58,10 +85,16 @@ async function resolveTracks(query, requester) {
   if (!value) return { tracks: [], type: 'SEARCH' };
 
   if (/^https?:\/\//i.test(value)) {
-    if (play.yt_validate(value) === 'playlist') {
-      const playlist = await play.playlist_info(value, { incomplete: true });
-      const videos = await playlist.all_videos();
-      return { tracks: videos.map((video) => toTrack(video, requester)), type: 'PLAYLIST' };
+    let parsedUrl = null;
+    try { parsedUrl = new URL(value); } catch {}
+    const host = parsedUrl?.hostname?.replace(/^www\./, '').toLowerCase();
+    const playlistId = parsedUrl?.searchParams?.get('list');
+    const youtubeHost = ['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'].includes(host);
+    if (youtubeHost && playlistId) {
+      const tracks = await resolveYouTubePlaylist(playlistId, requester);
+      if (!tracks.length) throw new Error(`YouTube playlist ${playlistId} contains no playable public videos.`);
+      console.log(`[Music] YouTube Data API resolved playlist ${playlistId}: ${tracks.length} playable track(s).`);
+      return { tracks, type: 'PLAYLIST', playlist: { id: playlistId } };
     }
 
     if (play.yt_validate(value) === 'video') {

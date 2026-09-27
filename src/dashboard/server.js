@@ -134,11 +134,13 @@ function metaDescriptionForTitle(title) {
 function pageMeta(title, meta = {}) {
   const description = String(meta.description || metaDescriptionForTitle(title)).trim();
   const canonical = absoluteWebUrl(meta.path || '/');
-  const image = String(
-    meta.image
-      || process.env.WEB_META_IMAGE_URL
-      || absoluteWebUrl('/favicon.ico'),
-  ).trim();
+  const configuredMetaImage = normalizePublicAssetUrl(
+    meta.image || process.env.WEB_META_IMAGE_URL,
+    '/favicon.ico',
+  );
+  const image = /^https?:\/\//i.test(configuredMetaImage)
+    ? configuredMetaImage
+    : absoluteWebUrl(configuredMetaImage);
   const robots = String(meta.robots || (meta.private ? 'noindex,nofollow,noarchive' : 'index,follow')).trim();
   const fullTitle = String(title || 'Kryndexa Bot').trim();
 
@@ -182,15 +184,26 @@ function cookieSecureForRequest(req) {
   return forwardedProto === 'https';
 }
 
+function normalizePublicAssetUrl(value, fallback = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  // The Express public directory is mounted at the website root, so accept
+  // /img/logo.png, img/logo.png, public/img/logo.png, or /public/img/logo.png.
+  const publicPath = raw
+    .replace(/\\/g, '/')
+    .replace(/^\.?\//, '')
+    .replace(/^public\//i, '');
+
+  return publicPath ? `/${publicPath}` : fallback;
+}
+
 function configuredWebIconUrl() {
   const raw = String(process.env.WEB_ICON_URL || '').trim();
   if (!raw || raw === '/favicon.ico') return '';
-
-  if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) {
-    return raw;
-  }
-
-  return `/${raw.replace(/^\.?\//, '')}`;
+  return normalizePublicAssetUrl(raw);
 }
 
 function renderDiscordLoginButton(label = 'Log in with Discord', extraClass = '') {
@@ -224,7 +237,16 @@ function page(title, body, user, meta = {}) {
           <a class="account-menu-item account-logout" href="/logout">Log out</a>
         </div>
       </details>`
-    : renderDiscordLoginButton('Log in with Discord', 'compact');
+    : `<div class="public-header-actions">
+        <div class="public-theme-toggle" data-public-theme-toggle>
+          <span class="theme-toggle-icon" aria-hidden="true">☀</span>
+          <button type="button" class="theme-toggle-track" data-theme-toggle-button role="switch" aria-checked="false" aria-label="Toggle light and dark mode">
+            <span class="theme-toggle-thumb"></span>
+          </button>
+          <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+        </div>
+        ${renderDiscordLoginButton('Log in with Discord', 'compact')}
+      </div>`;
 
   const addBotButton = renderAddBotButton();
   const webIcon = configuredWebIconUrl() || '/favicon.ico';
@@ -263,28 +285,35 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('kryndexa-theme-mode');const choice=['system','light','dark'].includes(saved)?saved:'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.setAttribute('data-theme',theme);document.documentElement.setAttribute('data-theme-mode',choice);}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-working-search-fields">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link id="mainStylesheet" rel="stylesheet" href="/style.css?v=20260927-theme-split"><link id="lightThemeStylesheet" rel="stylesheet" href="/light.css?v=20260927-theme-split" disabled>
+<script>(()=>{const refreshStyles=()=>{const stamp=Math.floor(Date.now()/300000);for(const id of ['mainStylesheet','lightThemeStylesheet']){const link=document.getElementById(id);if(!link)continue;const url=new URL(link.href,location.href);url.searchParams.set('refresh',stamp);link.href=url.toString();}};setInterval(refreshStyles,300000);})();</script>
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
+    ${user ? `
+    <a href="/">Home</a>
+    <a href="/features">Features</a>
+    <a href="/dashboard">Dashboard</a>
     <details class="nav-dropdown">
-      <summary>Home <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+      <summary>Status &amp; Statistics <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
       <div class="nav-dropdown-menu">
-        <a href="/">Home</a>
-        <a href="/features">Features</a>
-        ${user ? '<a href="/dashboard/statistics">Server Statistics</a>' : ''}
+        <a href="/status">Bot &amp; Panel Status</a>
+        <a href="/dashboard/statistics">Server Statistics</a>
       </div>
     </details>
-    ${user ? `<a href="/dashboard">Dashboard</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
+    ${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}
     <details class="nav-dropdown">
       <summary>Legal <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
-      <div class="nav-dropdown-menu">
-        <a href="/terms">Terms</a>
-        <a href="/privacy">Privacy</a>
-      </div>
-    </details>
+      <div class="nav-dropdown-menu"><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </details>` : `
+      <a href="/">Home</a>
+      <a href="/features">Features</a>
+      <a href="/status">Bot &amp; Panel Status</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+    `}
   </nav>
   <div class="header-actions">${addBotButton}<div class="header-auth">${auth}</div></div>
 </div></header>
@@ -301,6 +330,8 @@ ${cookieNotice}
     root.setAttribute('data-theme',theme);
     root.setAttribute('data-theme-mode',mode);
     root.style.colorScheme=theme;
+    const lightStylesheet=document.getElementById('lightThemeStylesheet');
+    if(lightStylesheet)lightStylesheet.disabled=theme!=='light';
     try{localStorage.setItem('kryndexa-theme-mode',mode);}catch{}
     document.querySelectorAll('[data-theme-choice]').forEach(button=>{
       const active=button.dataset.themeChoice===mode;
@@ -314,10 +345,22 @@ ${cookieNotice}
     event.preventDefault();
     applyTheme(button.dataset.themeChoice);
   });
-  const followSystem=()=>{if((root.dataset.themeMode||'system')==='system')applyTheme('system');};
+  const syncPublicThemeToggle=()=>{
+    const toggle=document.querySelector('[data-theme-toggle-button]');
+    if(!toggle)return;
+    const dark=root.dataset.theme==='dark';
+    toggle.setAttribute('aria-checked',dark?'true':'false');
+    toggle.classList.toggle('is-dark',dark);
+  };
+  document.querySelector('[data-theme-toggle-button]')?.addEventListener('click',()=>{
+    applyTheme(root.dataset.theme==='dark'?'light':'dark');
+    syncPublicThemeToggle();
+  });
+  const followSystem=()=>{if((root.dataset.themeMode||'system')==='system'){applyTheme('system');syncPublicThemeToggle();}};
   if(systemTheme.addEventListener)systemTheme.addEventListener('change',followSystem);
   else if(systemTheme.addListener)systemTheme.addListener(followSystem);
   applyTheme(root.dataset.themeMode||'system');
+  syncPublicThemeToggle();
 
   const nav=document.querySelector('[data-site-nav]');
   document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
@@ -849,6 +892,26 @@ function startDashboard(client) {
   const app = express();
   app.disable('x-powered-by');
 
+  const recordHealthSample = async () => {
+    try {
+      const started = Date.now();
+      let dbUp = false;
+      try { dbUp = await pingDatabase(); } catch {}
+      const latency = Math.max(0, Date.now() - started);
+      await getPool().query(
+        'INSERT INTO service_health_samples (service, is_up, latency_ms, checked_at) VALUES (?, ?, ?, NOW()), (?, ?, ?, NOW())',
+        ['bot', client.isReady() ? 1 : 0, Number.isFinite(client.ws.ping) ? Math.max(0, Math.round(client.ws.ping)) : null,
+         'panel', dbUp ? 1 : 0, latency]
+      );
+      await getPool().query('DELETE FROM service_health_samples WHERE checked_at < DATE_SUB(NOW(), INTERVAL 8 DAY)');
+    } catch (error) {
+      console.warn('[Dashboard] Unable to record service health sample:', error?.message || error);
+    }
+  };
+  const healthSampleTimer = setInterval(recordHealthSample, 5 * 60 * 1000);
+  healthSampleTimer.unref?.();
+  setTimeout(recordHealthSample, 5000).unref?.();
+
   if (process.env.NODE_ENV === 'production') {
     app.set('trust proxy', 1);
   }
@@ -927,6 +990,108 @@ function startDashboard(client) {
     res.send(page('Kryndexa Bot', body, req.session.user, {
       path: '/',
       description: 'Kryndexa Bot is your Discord server command center for moderation, advanced tickets, logging, music, streaming alerts, automations, analytics and server configuration.',
+    }));
+  });
+
+  app.get('/status', async (req, res) => {
+    const checkedAt = new Date();
+    let healthRows = [];
+    try {
+      const [rows] = await getPool().query(
+        `SELECT service, DATE(checked_at) AS day,
+          COUNT(*) AS checks,
+          SUM(is_up = 1) AS up_checks
+         FROM service_health_samples
+         WHERE checked_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+         GROUP BY service, DATE(checked_at)
+         ORDER BY day ASC`
+      );
+      healthRows = rows || [];
+    } catch (error) {
+      console.warn('[Dashboard] Unable to load 7-day uptime history:', error?.message || error);
+    }
+    const historyByService = new Map();
+    for (const row of healthRows) {
+      const key = String(row.service);
+      if (!historyByService.has(key)) historyByService.set(key, new Map());
+      const day = new Date(row.day);
+      const dateKey = [day.getFullYear(), String(day.getMonth()+1).padStart(2,'0'), String(day.getDate()).padStart(2,'0')].join('-');
+      historyByService.get(key).set(dateKey, { checks: Number(row.checks || 0), up: Number(row.up_checks || 0) });
+    }
+    const historyDays = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date();
+      day.setHours(12,0,0,0);
+      day.setDate(day.getDate() - (6 - index));
+      const key = [day.getFullYear(), String(day.getMonth()+1).padStart(2,'0'), String(day.getDate()).padStart(2,'0')].join('-');
+      return { key, label: day.toLocaleDateString([], { weekday: 'short' }), date: day.toLocaleDateString([], { month: 'short', day: 'numeric' }) };
+    });
+    const serviceUptime = (service) => {
+      const map = historyByService.get(service) || new Map();
+      let checks = 0, up = 0;
+      for (const day of historyDays) { const sample = map.get(day.key); if (sample) { checks += sample.checks; up += sample.up; } }
+      return checks ? (up / checks) * 100 : null;
+    };
+    const historyRow = (service, label) => {
+      const map = historyByService.get(service) || new Map();
+      return `<div class="uptime-history-row"><div class="uptime-history-label"><strong>${escapeHtml(label)}</strong><span>${serviceUptime(service) === null ? 'Collecting data' : `${serviceUptime(service).toFixed(2)}% uptime`}</span></div><div class="uptime-day-grid">${historyDays.map((day) => { const sample = map.get(day.key); const pct = sample?.checks ? (sample.up / sample.checks) * 100 : null; const state = pct === null ? 'unknown' : pct >= 99 ? 'good' : pct >= 95 ? 'warning' : 'bad'; return `<div class="uptime-day ${state}" title="${day.date}: ${pct === null ? 'No data yet' : `${pct.toFixed(2)}% uptime from ${sample.checks} checks`}"><i></i><strong>${day.label}</strong><span>${pct === null ? '—' : `${pct.toFixed(1)}%`}</span></div>`; }).join('')}</div></div>`;
+    };
+    const databaseStarted = Date.now();
+    let database = false;
+    try { database = await pingDatabase(); } catch { database = false; }
+    const databaseLatency = Math.max(0, Date.now() - databaseStarted);
+    const botReady = client.isReady();
+    const wsPing = botReady && Number.isFinite(client.ws.ping) ? Math.max(0, Math.round(client.ws.ping)) : null;
+    const uptimeSeconds = Math.max(0, Math.floor(process.uptime()));
+    const memoryMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    const guildCount = client.guilds.cache.size;
+    const userCount = client.guilds.cache.reduce((total, guild) => total + (guild.memberCount || 0), 0);
+    const shardCount = client.ws.shards?.size || 1;
+    const formatUptime = (seconds) => {
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return [days ? `${days}d` : '', hours ? `${hours}h` : '', `${minutes}m`].filter(Boolean).join(' ');
+    };
+    const latencyState = wsPing === null ? 'degraded' : wsPing < 150 ? 'operational' : wsPing < 300 ? 'warning' : 'degraded';
+    const overall = botReady && database;
+    const service = (icon, label, state, detail, metric) => {
+      const stateLabel = state === 'operational' ? 'Operational' : state === 'warning' ? 'Elevated latency' : 'Degraded';
+      return `<article class="status-service-card is-${state}"><div class="status-service-icon">${icon}</div><div class="status-service-content"><div class="status-service-title"><div><h2>${escapeHtml(label)}</h2><p>${escapeHtml(detail)}</p></div><span class="status-badge"><i></i>${stateLabel}</span></div>${metric ? `<div class="status-service-metric">${metric}</div>` : ''}</div></article>`;
+    };
+    const body = `<div class="status-page status-page-v2">
+      <section class="status-hero ${overall ? 'is-operational' : 'is-degraded'}">
+        <div class="status-hero-main"><span class="eyebrow">KRYNDEXA SERVICE HEALTH</span><h1>Bot &amp; Panel Status</h1><p>Real-time health and runtime metrics for Kryndexa's Discord and dashboard infrastructure.</p></div>
+        <div class="status-overall-card"><span class="status-pulse"></span><div><small>CURRENT STATUS</small><strong>${overall ? 'All systems operational' : 'Service disruption detected'}</strong><span>Checked ${escapeHtml(checkedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span></div></div>
+      </section>
+      <section class="status-metric-grid">
+        <article><span class="status-metric-icon">⏱</span><div><small>BOT UPTIME</small><strong>${escapeHtml(formatUptime(uptimeSeconds))}</strong><span>Current process</span></div></article>
+        <article><span class="status-metric-icon">↔</span><div><small>DISCORD PING</small><strong>${wsPing === null ? '—' : `${wsPing} ms`}</strong><span>${latencyState === 'operational' ? 'Healthy latency' : latencyState === 'warning' ? 'Elevated latency' : 'Unavailable / high'}</span></div></article>
+        <article><span class="status-metric-icon">◈</span><div><small>CONNECTED SERVERS</small><strong>${guildCount.toLocaleString()}</strong><span>${userCount.toLocaleString()} members visible</span></div></article>
+        <article><span class="status-metric-icon">▦</span><div><small>SHARDS</small><strong>${shardCount.toLocaleString()}</strong><span>Discord gateway</span></div></article>
+      </section>
+      <section class="status-section">
+        <div class="status-section-heading"><div><span class="eyebrow">CORE SERVICES</span><h2>System availability</h2></div><span class="status-live-label"><i></i> Live</span></div>
+        <div class="status-services">
+          ${service('🤖','Discord Bot',botReady ? latencyState : 'degraded',botReady ? 'Connected to the Discord gateway and accepting events.' : 'Discord gateway connection is not ready.',`<span>Gateway latency</span><strong>${wsPing === null ? 'Unavailable' : `${wsPing} ms`}</strong>`)}
+          ${service('🖥️','Web Panel','operational','Dashboard routes and static assets are being served normally.',`<span>HTTP status</span><strong>Online</strong>`)}
+          ${service('🗄️','Database',database ? 'operational' : 'degraded',database ? 'MySQL is responding to dashboard health checks.' : 'MySQL did not respond successfully to the health check.',`<span>Health-check response</span><strong>${database ? `${databaseLatency} ms` : 'Failed'}</strong>`)}
+        </div>
+      </section>
+      <section class="status-uptime-panel">
+        <div class="status-section-heading"><div><span class="eyebrow">7-DAY UPTIME</span><h2>Availability history</h2><p>Health snapshots are recorded every 5 minutes and retained across restarts.</p></div><span class="status-history-window">Last 7 days</span></div>
+        <div class="uptime-history">${historyRow('bot','Discord Bot')}${historyRow('panel','Web Panel')}</div>
+      </section>
+      <section class="status-runtime-panel">
+        <div><span>Runtime</span><strong>Node.js ${escapeHtml(process.version.replace(/^v/, ''))}</strong></div>
+        <div><span>Memory usage</span><strong>${memoryMb.toLocaleString()} MB</strong></div>
+        <div><span>Auto refresh</span><strong>30 seconds</strong></div>
+        <div><span>Last check</span><strong>${escapeHtml(checkedAt.toLocaleString())}</strong></div>
+      </section>
+      <div class="status-footer-row"><span><i></i> Live status from the running Kryndexa process</span><button class="btn secondary compact" type="button" onclick="location.reload()">Refresh now</button></div>
+    </div><script>setTimeout(()=>location.reload(),30000);</script>`;
+    return res.send(page('Bot & Panel Status • Kryndexa Bot', body, req.session.user, {
+      path: '/status',
+      description: 'Live Kryndexa Bot and web panel service status, uptime, Discord latency and connectivity.',
     }));
   });
 
@@ -1824,6 +1989,7 @@ function startDashboard(client) {
       const featureResources = { channels: featureChannels, voiceChannels, categories, roles };
       const priorityRank = { 'Very High': 0, High: 1, Growing: 2, Popular: 3, Differentiator: 4 };
       const featureCards = [...featureStates]
+        .filter((state) => state.definition.key !== 'dashboard')
         .sort((a, b) => (priorityRank[a.definition.priority] ?? 9) - (priorityRank[b.definition.priority] ?? 9) || a.definition.title.localeCompare(b.definition.title))
         .map((state) => {
           const feature = state.definition;
@@ -1851,8 +2017,13 @@ function startDashboard(client) {
               ${feature.locked ? '<span class="pill subtle">Always On</span>' : `<label class="feature-toggle"><input class="autosave-toggle" type="checkbox" name="enabled" data-autosave-url="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}/toggle" data-csrf="${escapeHtml(req.session.csrf)}" ${state.enabled ? 'checked' : ''}><span>Enabled</span></label>`}
             </div>
             <p class="feature-description">${escapeHtml(feature.description)}</p>
-            ${feature.requirement ? `<div class="feature-requirement">⚙️ ${escapeHtml(feature.requirement)}</div>` : ''}
-            ${fields ? `<div class="feature-fields">${fields}</div>` : ''}
+            ${fields || feature.requirement ? `<details class="feature-config-details">
+              <summary><span>Configure module</span><small>${fields ? 'Show settings' : 'View requirement'}</small></summary>
+              <div class="feature-config-body">
+                ${feature.requirement ? `<div class="feature-requirement">⚙️ ${escapeHtml(feature.requirement)}</div>` : ''}
+                ${fields ? `<div class="feature-fields">${fields}</div>` : ''}
+              </div>
+            </details>` : ''}
             <div class="feature-card-footer">${action}</div>
           </form>`;
         }).join('');
@@ -2756,6 +2927,8 @@ function startDashboard(client) {
 
     console.error('[Dashboard] HTTP server error:', error);
   });
+
+  server.on('close', () => clearInterval(healthSampleTimer));
 
   return server;
 }

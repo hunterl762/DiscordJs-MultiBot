@@ -33,11 +33,6 @@ const FEATURE_CATALOG = [
     ],
   },
   {
-    key: 'dashboard', title: 'Web Dashboard', icon: '🖥️', priority: 'Very High', category: 'Core',
-    description: 'Discord OAuth configuration center for server features, channels, roles and integrations.',
-    maturity: 'core', defaultEnabled: true, locked: true, fields: [],
-  },
-  {
     key: 'logging', title: 'Advanced Logging', icon: '📚', priority: 'High', category: 'Core',
     description: 'Messages, moderation, roles, channels, verification and detailed audit-log attribution.',
     maturity: 'core', defaultEnabled: true, link: '#configuration', fields: [],
