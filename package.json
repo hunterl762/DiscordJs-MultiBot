@@ -20,7 +20,8 @@
     "express-session": "^1.19.0",
     "mysql2": "^3.24.4",
     "@discordjs/voice": "^0.19.2",
-    "@iamtraction/play-dl": "^2.0.1"
+    "@iamtraction/play-dl": "^2.0.1",
+    "ffmpeg-static": "^5.2.0"
   },
   "devDependencies": {},
   "keywords": [
