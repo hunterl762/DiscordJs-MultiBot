@@ -58,10 +58,30 @@ async function resolveTracks(query, requester) {
   if (!value) return { tracks: [], type: 'SEARCH' };
 
   if (/^https?:\/\//i.test(value)) {
-    if (play.yt_validate(value) === 'playlist') {
-      const playlist = await play.playlist_info(value, { incomplete: true });
+    // A YouTube playlist link can also contain a video id (watch?v=...&list=...).
+    // Detect the list parameter first instead of relying only on yt_validate(),
+    // which may classify mixed watch/playlist URLs as a single video.
+    let parsedUrl = null;
+    try { parsedUrl = new URL(value); } catch {}
+    const host = parsedUrl?.hostname?.replace(/^www\./, '').toLowerCase();
+    const playlistId = parsedUrl?.searchParams?.get('list');
+    const isYouTubeHost = ['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'].includes(host);
+    const isPlaylistUrl = Boolean(isYouTubeHost && playlistId);
+
+    if (isPlaylistUrl || play.yt_validate(value) === 'playlist') {
+      // Use a canonical playlist URL so watch?v=...&list=... and music.youtube.com
+      // links resolve as the full playlist instead of only the selected video.
+      const playlistUrl = playlistId
+        ? `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`
+        : value;
+      const playlist = await play.playlist_info(playlistUrl, { incomplete: true });
       const videos = await playlist.all_videos();
-      return { tracks: videos.map((video) => toTrack(video, requester)), type: 'PLAYLIST' };
+      const tracks = videos
+        .filter((video) => video?.url || video?.id)
+        .map((video) => toTrack(video, requester))
+        .filter((track) => track?.uri);
+      console.log(`[Music] Resolved YouTube playlist ${playlistId || playlist?.id || 'unknown'}: ${tracks.length} playable track(s).`);
+      return { tracks, type: 'PLAYLIST', playlist: { id: playlistId || playlist?.id, title: playlist?.title } };
     }
 
     if (play.yt_validate(value) === 'video') {
