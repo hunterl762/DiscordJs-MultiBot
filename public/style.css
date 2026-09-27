@@ -3058,3 +3058,156 @@ html[data-theme="light"] .dashboard-jump a:hover{border-color:#d7dcfb}
   .advanced-feature-search-row{align-items:stretch;flex-direction:column}
   .advanced-feature-count{padding-left:2px}
 }
+
+
+/* === Advanced Server Features UX + comprehensive light-mode normalization === */
+.feature-center-panel{overflow:visible}
+.feature-grid{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:16px!important;
+  align-items:start;
+}
+.feature-card{
+  min-width:0;
+  border-radius:16px!important;
+  padding:18px!important;
+}
+.feature-card-head{align-items:flex-start!important;gap:12px!important}
+.feature-title-wrap{min-width:0;flex:1}
+.feature-label-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.feature-label-row h3{margin:0;line-height:1.25}
+.feature-description{line-height:1.55}
+.feature-fields{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px!important;
+  padding:14px!important;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel2);
+}
+.feature-fields>label{min-width:0}
+.feature-fields input,.feature-fields select,.feature-fields textarea{width:100%;min-width:0}
+.feature-card-footer{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:14px}
+.feature-actions{width:100%;display:flex;justify-content:flex-end;flex-wrap:wrap;gap:9px}
+.feature-requirement{border:1px solid var(--line);border-radius:10px;padding:10px 12px!important}
+.advanced-feature-search-row{
+  position:sticky;top:76px;z-index:8;
+  padding:10px 0;
+  background:var(--panel);
+}
+.advanced-feature-search .feature-search-clear{display:grid;place-items:center}
+
+/* Light mode: eliminate remaining hard-coded dark surfaces throughout server configuration. */
+html[data-theme="light"] .feature-center-panel,
+html[data-theme="light"] .feature-center-content,
+html[data-theme="light"] .feature-grid,
+html[data-theme="light"] .command-center,
+html[data-theme="light"] .ticket-center,
+html[data-theme="light"] .stream-center{
+  color:#18213a!important;
+}
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] form.feature-card{
+  background:#ffffff!important;
+  background-image:none!important;
+  color:#18213a!important;
+  border:1px solid #dce3ee!important;
+  box-shadow:0 7px 20px rgba(31,51,89,.06)!important;
+}
+html[data-theme="light"] .feature-card.feature-enabled{
+  background:#ffffff!important;
+  background-image:none!important;
+}
+html[data-theme="light"] .feature-card h1,
+html[data-theme="light"] .feature-card h2,
+html[data-theme="light"] .feature-card h3,
+html[data-theme="light"] .feature-card h4,
+html[data-theme="light"] .feature-card strong,
+html[data-theme="light"] .feature-card label,
+html[data-theme="light"] .feature-card .feature-title-wrap,
+html[data-theme="light"] .feature-card .feature-label-row{
+  color:#18213a!important;
+}
+html[data-theme="light"] .feature-card .feature-priority,
+html[data-theme="light"] .feature-card .feature-description,
+html[data-theme="light"] .feature-card small{
+  color:#65718a!important;
+}
+html[data-theme="light"] .feature-fields,
+html[data-theme="light"] .feature-requirement{
+  background:#f7f9fc!important;
+  background-image:none!important;
+  border-color:#dce3ee!important;
+  color:#4f5d75!important;
+}
+html[data-theme="light"] .feature-card input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="light"] .feature-card select,
+html[data-theme="light"] .feature-card textarea,
+html[data-theme="light"] .automation-builder input,
+html[data-theme="light"] .automation-builder select,
+html[data-theme="light"] .automation-builder textarea,
+html[data-theme="light"] .ticket-config-panel input,
+html[data-theme="light"] .ticket-config-panel select,
+html[data-theme="light"] .ticket-config-panel textarea{
+  background:#fff!important;
+  background-image:none!important;
+  color:#18213a!important;
+  border:1px solid #cfd8e6!important;
+  box-shadow:none!important;
+}
+html[data-theme="light"] .feature-card input::placeholder,
+html[data-theme="light"] .automation-builder input::placeholder,
+html[data-theme="light"] textarea::placeholder{color:#929caf!important}
+html[data-theme="light"] .feature-toggle{
+  background:#f5f7fb!important;
+  color:#27324b!important;
+  border:1px solid #dce3ee!important;
+}
+html[data-theme="light"] .feature-icon{
+  background:#f3f5fb!important;
+  border-color:#dce3ee!important;
+  color:#253052!important;
+}
+html[data-theme="light"] .feature-status{
+  filter:none!important;
+}
+html[data-theme="light"] .automation-builder,
+html[data-theme="light"] .automation-form,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .ticket-config-panel,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .stream-alert-card,
+html[data-theme="light"] .suggestions-panel,
+html[data-theme="light"] .command-card{
+  background:#fff!important;
+  background-image:none!important;
+  color:#18213a!important;
+  border-color:#dce3ee!important;
+}
+html[data-theme="light"] .automation-builder h3,
+html[data-theme="light"] .ticket-config-panel h3,
+html[data-theme="light"] .ticket-module-card h3,
+html[data-theme="light"] .stream-alert-card h3,
+html[data-theme="light"] .command-card strong{color:#18213a!important}
+html[data-theme="light"] .advanced-feature-search-row{background:#fff!important}
+html[data-theme="light"] .advanced-feature-search input{
+  background:#f8faff!important;
+  color:#18213a!important;
+  border-color:#ccd6e5!important;
+}
+html[data-theme="light"] option{background:#fff;color:#18213a}
+
+@media(max-width:1050px){
+  .feature-grid{grid-template-columns:1fr!important}
+}
+@media(max-width:720px){
+  .feature-card{padding:14px!important}
+  .feature-fields{grid-template-columns:1fr}
+  .feature-card-head{flex-wrap:wrap}
+  .feature-toggle{margin-left:auto}
+  .advanced-feature-search-row{position:static}
+  .feature-actions,.feature-card-footer{justify-content:stretch}
+  .feature-actions .btn,.feature-card-footer>.btn{flex:1}
+}
