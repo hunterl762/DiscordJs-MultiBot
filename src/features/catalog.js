@@ -117,9 +117,9 @@ const FEATURE_CATALOG = [
   },
   {
     key: 'music', title: 'Music', icon: '🎵', priority: 'Popular', category: 'Voice',
-    description: 'Lavalink-backed music playback with queue, pause/resume, skip, volume, shuffle and loop controls.',
+    description: 'Local @discordjs/voice music playback with queue, pause/resume, skip, volume, shuffle and loop controls.',
     maturity: 'integration', defaultEnabled: false, environmentFlag: 'MUSIC_ENABLED',
-    requirement: 'Requires MUSIC_ENABLED=true and a Lavalink-compatible backend.',
+    requirement: 'Requires MUSIC_ENABLED=true and Node.js 22.12+.',
     fields: [
       { key: 'defaultVolume', label: 'Default volume', type: 'number', min: 1, max: 200, default: 75 },
       { key: 'autoplay', label: 'Autoplay', type: 'boolean', default: false },
