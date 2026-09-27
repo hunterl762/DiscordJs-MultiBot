@@ -233,9 +233,22 @@ function page(title, body, user, meta = {}) {
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
-    <a href="/">Home</a><a href="/features">Features</a>
-    ${user ? `<a href="/dashboard">Dashboard</a><a href="/dashboard/statistics">Server Statistics</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
-    <a href="/privacy">Privacy</a><a href="/terms">Terms</a>
+    <details class="nav-dropdown">
+      <summary>Explore <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+      <div class="nav-dropdown-menu">
+        <a href="/">Home</a>
+        <a href="/features">Features</a>
+        ${user ? '<a href="/dashboard/statistics">Server Statistics</a>' : ''}
+      </div>
+    </details>
+    ${user ? `<a href="/dashboard">Dashboard</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
+    <details class="nav-dropdown">
+      <summary>Legal <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+      <div class="nav-dropdown-menu">
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </details>
   </nav>
   <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false"><span class="theme-toggle-icon" data-theme-icon aria-hidden="true">☀</span><span class="theme-toggle-label" data-theme-label>Light Mode</span></button><div class="header-auth">${auth}</div></div>
 </div></header>
