@@ -212,7 +212,6 @@ function page(title, body, user, meta = {}) {
     ? `<details class="account-dropdown">
         <summary class="account-dropdown-trigger"><span class="account-name">${escapeHtml(user.username)}</span><span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
         <div class="account-dropdown-menu">
-          <button class="account-menu-item theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false"><span class="theme-toggle-icon" data-theme-icon aria-hidden="true">☀</span><span class="theme-toggle-label" data-theme-label>Light Mode</span></button>
           <a class="account-menu-item account-logout" href="/logout">Log out</a>
         </div>
       </details>`
@@ -253,9 +252,8 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:title" content="${escapeHtml(seo.title)}">
 <meta name="twitter:description" content="${escapeHtml(seo.description)}">
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
-<meta name="color-scheme" content="dark light">
-<script>(()=>{try{const legacy=localStorage.getItem('multibot-theme');const saved=localStorage.getItem('kryndexa-theme')||legacy;const valid=saved==='light'||saved==='dark'?saved:null;const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';const theme=valid||preferred;document.documentElement.dataset.theme=theme;if(legacy&&!localStorage.getItem('kryndexa-theme'))localStorage.setItem('kryndexa-theme',theme);}catch{document.documentElement.dataset.theme='dark';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-dashboard-light-mode">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-dark-only">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -278,48 +276,13 @@ function page(title, body, user, meta = {}) {
       </div>
     </details>
   </nav>
-  <div class="header-actions">${addBotButton}${user ? '' : '<button class="theme-toggle header-theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false"><span class="theme-toggle-icon" data-theme-icon aria-hidden="true">☀</span><span class="theme-toggle-label" data-theme-label>Light Mode</span></button>'}<div class="header-auth">${auth}</div></div>
+  <div class="header-actions">${addBotButton}<div class="header-auth">${auth}</div></div>
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
 <footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
 ${cookieNotice}
 <script>(() => {
-  const root=document.documentElement;
-  const themeButtons=()=>Array.from(document.querySelectorAll('[data-theme-toggle]'));
-  const themeMeta=document.querySelector('meta[name="theme-color"]');
-  const refreshTheme=()=>{
-    const dark=root.getAttribute('data-theme')!=='light';
-    themeButtons().forEach(button=>{
-      const icon=button.querySelector('[data-theme-icon]');
-      const label=button.querySelector('[data-theme-label]');
-      if(icon)icon.textContent=dark?'☀':'☾';
-      if(label)label.textContent=dark?'Light Mode':'Dark Mode';
-      button.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
-      button.setAttribute('aria-pressed',dark?'false':'true');
-      button.title=dark?'Switch to light mode':'Switch to dark mode';
-    });
-    if(themeMeta)themeMeta.setAttribute('content',dark?'#111318':'#f4f7fe');
-  };
-  const setTheme=(theme)=>{
-    const next=theme==='light'?'light':'dark';
-    root.setAttribute('data-theme',next);
-    root.style.colorScheme=next;
-    try{
-      localStorage.setItem('kryndexa-theme',next);
-      localStorage.removeItem('multibot-theme');
-    }catch{}
-    refreshTheme();
-  };
-  document.addEventListener('click',event=>{
-    const button=event.target.closest('[data-theme-toggle]');
-    if(!button)return;
-    event.preventDefault();
-    event.stopPropagation();
-    setTheme(root.getAttribute('data-theme')==='light'?'dark':'light');
-  });
-  refreshTheme();
-
   const nav=document.querySelector('[data-site-nav]');
   document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
 
