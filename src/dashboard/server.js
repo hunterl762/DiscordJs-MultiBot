@@ -224,7 +224,13 @@ function page(title, body, user, meta = {}) {
           <a class="account-menu-item account-logout" href="/logout">Log out</a>
         </div>
       </details>`
-    : renderDiscordLoginButton('Log in with Discord', 'compact');
+    : `<div class="public-header-actions">
+        <div class="public-theme-switch" role="group" aria-label="Color theme">
+          <button type="button" data-theme-choice="light" aria-label="Use light mode" title="Light mode">☀ <span>Light</span></button>
+          <button type="button" data-theme-choice="dark" aria-label="Use dark mode" title="Dark mode">☾ <span>Dark</span></button>
+        </div>
+        ${renderDiscordLoginButton('Log in with Discord', 'compact')}
+      </div>`;
 
   const addBotButton = renderAddBotButton();
   const webIcon = configuredWebIconUrl() || '/favicon.ico';
@@ -269,23 +275,24 @@ function page(title, body, user, meta = {}) {
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
-    <details class="nav-dropdown">
+    ${user ? `<details class="nav-dropdown">
       <summary>Home <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
       <div class="nav-dropdown-menu">
-        <a href="/">Home</a>
-        <a href="/features">Features</a>
-        <a href="/status">Bot &amp; Panel Status</a>
-        ${user ? '<a href="/dashboard/statistics">Server Statistics</a>' : ''}
+        <a href="/">Home</a><a href="/features">Features</a><a href="/status">Bot &amp; Panel Status</a><a href="/dashboard/statistics">Server Statistics</a>
       </div>
     </details>
-    ${user ? `<a href="/dashboard">Dashboard</a>${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}` : ''}
+    <a href="/dashboard">Dashboard</a>
+    ${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}
     <details class="nav-dropdown">
       <summary>Legal <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
-      <div class="nav-dropdown-menu">
-        <a href="/terms">Terms</a>
-        <a href="/privacy">Privacy</a>
-      </div>
-    </details>
+      <div class="nav-dropdown-menu"><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </details>` : `
+      <a href="/">Home</a>
+      <a href="/features">Features</a>
+      <a href="/status">Bot &amp; Panel Status</a>
+      <a href="/terms">Terms</a>
+      <a href="/privacy">Privacy</a>
+    `}
   </nav>
   <div class="header-actions">${addBotButton}<div class="header-auth">${auth}</div></div>
 </div></header>
