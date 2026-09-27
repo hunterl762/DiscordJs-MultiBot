@@ -3258,3 +3258,23 @@ html[data-theme="light"] #features .feature-card .btn.secondary:hover{
   #features .feature-card-footer,#features .feature-actions{min-height:0!important}
   #features .feature-card-footer .btn,#features .feature-actions .btn{width:100%!important}
 }
+
+
+/* === Seven-day uptime history === */
+.status-uptime-panel{margin-top:14px;padding:20px;border:1px solid var(--line);border-radius:17px;background:var(--panel)}
+.status-uptime-panel .status-section-heading{margin-bottom:16px}
+.status-uptime-panel .status-section-heading p{margin:4px 0 0;color:var(--muted);font-size:11px}
+.status-history-window{padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--muted);font-size:9px;font-weight:850;text-transform:uppercase;white-space:nowrap}
+.uptime-history{display:grid;gap:12px}
+.uptime-history-row{display:grid;grid-template-columns:150px minmax(0,1fr);align-items:center;gap:14px;padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--panel2)}
+.uptime-history-label{display:flex;flex-direction:column;gap:3px}
+.uptime-history-label strong{color:var(--text);font-size:13px}
+.uptime-history-label span{color:var(--muted);font-size:9px}
+.uptime-day-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+.uptime-day{display:flex;min-width:0;flex-direction:column;align-items:center;gap:4px;padding:9px 5px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.uptime-day i{width:100%;height:5px;border-radius:999px;background:#7d8799}
+.uptime-day.good i{background:#57f287}.uptime-day.warning i{background:#f0b232}.uptime-day.bad i{background:#ed4245}
+.uptime-day strong{color:var(--text);font-size:9px;text-transform:uppercase}
+.uptime-day span{color:var(--muted);font-size:9px;font-variant-numeric:tabular-nums}
+@media(max-width:850px){.uptime-history-row{grid-template-columns:1fr}.uptime-day-grid{overflow-x:auto;grid-template-columns:repeat(7,minmax(72px,1fr));padding-bottom:3px}}
+@media(max-width:580px){.status-uptime-panel{padding:14px}.status-uptime-panel .status-section-heading{align-items:flex-start;flex-direction:column}.uptime-history-row{padding:10px}}
