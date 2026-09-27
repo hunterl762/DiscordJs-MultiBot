@@ -934,36 +934,56 @@ function startDashboard(client) {
   });
 
   app.get('/status', async (req, res) => {
+    const checkedAt = new Date();
+    const databaseStarted = Date.now();
     let database = false;
     try { database = await pingDatabase(); } catch { database = false; }
+    const databaseLatency = Math.max(0, Date.now() - databaseStarted);
     const botReady = client.isReady();
     const wsPing = botReady && Number.isFinite(client.ws.ping) ? Math.max(0, Math.round(client.ws.ping)) : null;
     const uptimeSeconds = Math.max(0, Math.floor(process.uptime()));
+    const memoryMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    const guildCount = client.guilds.cache.size;
+    const userCount = client.guilds.cache.reduce((total, guild) => total + (guild.memberCount || 0), 0);
+    const shardCount = client.ws.shards?.size || 1;
     const formatUptime = (seconds) => {
       const days = Math.floor(seconds / 86400);
       const hours = Math.floor((seconds % 86400) / 3600);
       const minutes = Math.floor((seconds % 3600) / 60);
       return [days ? `${days}d` : '', hours ? `${hours}h` : '', `${minutes}m`].filter(Boolean).join(' ');
     };
+    const latencyState = wsPing === null ? 'degraded' : wsPing < 150 ? 'operational' : wsPing < 300 ? 'warning' : 'degraded';
     const overall = botReady && database;
-    const statusCard = (label, ok, detail) => `<article class="status-service-card ${ok ? 'is-operational' : 'is-degraded'}"><div class="status-service-head"><span class="status-dot"></span><div><span class="mini-label">SERVICE</span><h2>${escapeHtml(label)}</h2></div><strong>${ok ? 'Operational' : 'Degraded'}</strong></div><p>${escapeHtml(detail)}</p></article>`;
-    const body = `<div class="status-page">
+    const service = (icon, label, state, detail, metric) => {
+      const stateLabel = state === 'operational' ? 'Operational' : state === 'warning' ? 'Elevated latency' : 'Degraded';
+      return `<article class="status-service-card is-${state}"><div class="status-service-icon">${icon}</div><div class="status-service-content"><div class="status-service-title"><div><h2>${escapeHtml(label)}</h2><p>${escapeHtml(detail)}</p></div><span class="status-badge"><i></i>${stateLabel}</span></div>${metric ? `<div class="status-service-metric">${metric}</div>` : ''}</div></article>`;
+    };
+    const body = `<div class="status-page status-page-v2">
       <section class="status-hero ${overall ? 'is-operational' : 'is-degraded'}">
-        <span class="eyebrow">LIVE SYSTEM STATUS</span>
-        <div class="status-hero-row"><div><h1>Bot &amp; Panel Status</h1><p>Live health information for Kryndexa Bot and its web control panel.</p></div><span class="status-overall"><i></i>${overall ? 'All core systems operational' : 'Some systems are degraded'}</span></div>
+        <div class="status-hero-main"><span class="eyebrow">KRYNDEXA SERVICE HEALTH</span><h1>Bot &amp; Panel Status</h1><p>Real-time health and runtime metrics for Kryndexa's Discord and dashboard infrastructure.</p></div>
+        <div class="status-overall-card"><span class="status-pulse"></span><div><small>CURRENT STATUS</small><strong>${overall ? 'All systems operational' : 'Service disruption detected'}</strong><span>Checked ${escapeHtml(checkedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span></div></div>
       </section>
-      <section class="status-summary-grid">
-        <div><span>Process uptime</span><strong>${escapeHtml(formatUptime(uptimeSeconds))}</strong></div>
-        <div><span>Discord latency</span><strong>${wsPing === null ? 'Unavailable' : `${wsPing} ms`}</strong></div>
-        <div><span>Connected servers</span><strong>${client.guilds.cache.size.toLocaleString()}</strong></div>
-        <div><span>Last checked</span><strong data-status-clock>Just now</strong></div>
+      <section class="status-metric-grid">
+        <article><span class="status-metric-icon">⏱</span><div><small>BOT UPTIME</small><strong>${escapeHtml(formatUptime(uptimeSeconds))}</strong><span>Current process</span></div></article>
+        <article><span class="status-metric-icon">↔</span><div><small>DISCORD PING</small><strong>${wsPing === null ? '—' : `${wsPing} ms`}</strong><span>${latencyState === 'operational' ? 'Healthy latency' : latencyState === 'warning' ? 'Elevated latency' : 'Unavailable / high'}</span></div></article>
+        <article><span class="status-metric-icon">◈</span><div><small>CONNECTED SERVERS</small><strong>${guildCount.toLocaleString()}</strong><span>${userCount.toLocaleString()} members visible</span></div></article>
+        <article><span class="status-metric-icon">▦</span><div><small>SHARDS</small><strong>${shardCount.toLocaleString()}</strong><span>Discord gateway</span></div></article>
       </section>
-      <section class="status-services">
-        ${statusCard('Discord Bot', botReady, botReady ? `Connected to Discord across ${client.guilds.cache.size.toLocaleString()} server(s).` : 'The Discord gateway connection is not ready.')}
-        ${statusCard('Web Panel', true, 'This status page was served successfully by the Kryndexa dashboard.')}
-        ${statusCard('Database', database, database ? 'The dashboard can reach its MySQL data store.' : 'The dashboard cannot currently reach its MySQL data store.')}
+      <section class="status-section">
+        <div class="status-section-heading"><div><span class="eyebrow">CORE SERVICES</span><h2>System availability</h2></div><span class="status-live-label"><i></i> Live</span></div>
+        <div class="status-services">
+          ${service('🤖','Discord Bot',botReady ? latencyState : 'degraded',botReady ? 'Connected to the Discord gateway and accepting events.' : 'Discord gateway connection is not ready.',`<span>Gateway latency</span><strong>${wsPing === null ? 'Unavailable' : `${wsPing} ms`}</strong>`)}
+          ${service('🖥️','Web Panel','operational','Dashboard routes and static assets are being served normally.',`<span>HTTP status</span><strong>Online</strong>`)}
+          ${service('🗄️','Database',database ? 'operational' : 'degraded',database ? 'MySQL is responding to dashboard health checks.' : 'MySQL did not respond successfully to the health check.',`<span>Health-check response</span><strong>${database ? `${databaseLatency} ms` : 'Failed'}</strong>`)}
+        </div>
       </section>
-      <p class="status-refresh-note">This page refreshes automatically every 30 seconds.</p>
+      <section class="status-runtime-panel">
+        <div><span>Runtime</span><strong>Node.js ${escapeHtml(process.version.replace(/^v/, ''))}</strong></div>
+        <div><span>Memory usage</span><strong>${memoryMb.toLocaleString()} MB</strong></div>
+        <div><span>Auto refresh</span><strong>30 seconds</strong></div>
+        <div><span>Last check</span><strong>${escapeHtml(checkedAt.toLocaleString())}</strong></div>
+      </section>
+      <div class="status-footer-row"><span><i></i> Live status from the running Kryndexa process</span><button class="btn secondary compact" type="button" onclick="location.reload()">Refresh now</button></div>
     </div><script>setTimeout(()=>location.reload(),30000);</script>`;
     return res.send(page('Bot & Panel Status • Kryndexa Bot', body, req.session.user, {
       path: '/status',
