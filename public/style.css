@@ -3084,3 +3084,52 @@ html[data-theme="light"] #features .feature-card .btn.secondary:hover{
 .status-refresh-note{text-align:center;color:var(--muted);font-size:11px;margin:16px 0}
 @media(max-width:800px){.status-summary-grid{grid-template-columns:repeat(2,1fr)}.status-hero-row{align-items:flex-start;flex-direction:column}}
 @media(max-width:520px){.status-page{width:min(100% - 20px,1120px);margin-top:18px}.status-summary-grid{grid-template-columns:1fr}.status-overall{white-space:normal}.status-service-head{flex-wrap:wrap}.status-service-head strong{margin-left:23px}}
+
+
+/* === Advanced Status Page v2 === */
+.status-page-v2{max-width:1180px}
+.status-page-v2 .status-hero{display:flex;align-items:center;justify-content:space-between;gap:30px;padding:30px}
+.status-hero-main{max-width:690px}
+.status-hero-main h1{font-size:36px;letter-spacing:-.035em;margin:7px 0 8px}
+.status-overall-card{min-width:310px;display:flex;align-items:center;gap:15px;padding:17px 19px;border:1px solid var(--line);border-radius:15px;background:var(--panel2)}
+.status-overall-card>div{display:flex;flex-direction:column;gap:2px}
+.status-overall-card small{font-size:9px;font-weight:900;letter-spacing:.09em;color:var(--muted)}
+.status-overall-card strong{font-size:14px;color:var(--text)}
+.status-overall-card span:last-child{font-size:10px;color:var(--muted)}
+.status-pulse{width:13px;height:13px;flex:0 0 auto;border-radius:50%;background:#57f287;box-shadow:0 0 0 6px rgba(87,242,135,.1),0 0 20px rgba(87,242,135,.28)}
+.is-degraded .status-pulse{background:#ed4245;box-shadow:0 0 0 6px rgba(237,66,69,.1),0 0 20px rgba(237,66,69,.25)}
+.status-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0 22px}
+.status-metric-grid article{display:flex;align-items:center;gap:13px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.status-metric-icon{display:grid;place-items:center;width:40px;height:40px;flex:0 0 auto;border:1px solid var(--line);border-radius:11px;background:var(--panel2);color:var(--text);font-size:17px}
+.status-metric-grid article>div{min-width:0;display:flex;flex-direction:column}
+.status-metric-grid small{font-size:9px;font-weight:900;letter-spacing:.07em;color:var(--muted)}
+.status-metric-grid strong{margin:2px 0;color:var(--text);font-size:20px}
+.status-metric-grid article>div>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:10px}
+.status-section{padding:21px;border:1px solid var(--line);border-radius:17px;background:var(--panel)}
+.status-section-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:14px}
+.status-section-heading h2{margin:3px 0 0;color:var(--text);font-size:21px}
+.status-live-label{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}
+.status-live-label i{width:7px;height:7px;border-radius:50%;background:#57f287;box-shadow:0 0 8px #57f287}
+.status-page-v2 .status-services{gap:9px}
+.status-page-v2 .status-service-card{display:flex;align-items:center;gap:15px;padding:15px 16px;box-shadow:none}
+.status-service-icon{display:grid;place-items:center;width:42px;height:42px;flex:0 0 auto;border:1px solid var(--line);border-radius:12px;background:var(--panel2);font-size:19px}
+.status-service-content{min-width:0;flex:1}
+.status-service-title{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.status-service-title h2{margin:0 0 3px;font-size:15px;color:var(--text)}
+.status-service-title p{margin:0!important;color:var(--muted);font-size:11px}
+.status-badge{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;padding:6px 9px;border-radius:999px;background:rgba(87,242,135,.1);color:#57c978;font-size:9px;font-weight:900;text-transform:uppercase}
+.status-badge i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.is-warning .status-badge{background:rgba(240,178,50,.11);color:#d9a12c}
+.is-degraded .status-badge{background:rgba(237,66,69,.1);color:#ed6265}
+.status-service-metric{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:8px;color:var(--muted);font-size:9px}
+.status-service-metric strong{color:var(--text);font-size:10px}
+.status-runtime-panel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.status-runtime-panel>div{padding:13px 15px;border-right:1px solid var(--line)}
+.status-runtime-panel>div:last-child{border-right:0}
+.status-runtime-panel span{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;font-weight:850}
+.status-runtime-panel strong{display:block;margin-top:3px;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status-footer-row{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:13px 2px 0;color:var(--muted);font-size:10px}
+.status-footer-row>span{display:flex;align-items:center;gap:7px}
+.status-footer-row i{width:6px;height:6px;border-radius:50%;background:#57f287}
+@media(max-width:900px){.status-page-v2 .status-hero{align-items:flex-start;flex-direction:column}.status-overall-card{width:100%;min-width:0}.status-metric-grid{grid-template-columns:repeat(2,1fr)}.status-runtime-panel{grid-template-columns:repeat(2,1fr)}.status-runtime-panel>div:nth-child(2){border-right:0}.status-runtime-panel>div:nth-child(-n+2){border-bottom:1px solid var(--line)}}
+@media(max-width:600px){.status-page-v2 .status-hero{padding:20px}.status-hero-main h1{font-size:28px}.status-metric-grid{grid-template-columns:1fr}.status-section{padding:14px}.status-service-title{align-items:flex-start;flex-direction:column}.status-badge{align-self:flex-start}.status-service-metric{justify-content:flex-start}.status-runtime-panel{grid-template-columns:1fr}.status-runtime-panel>div{border-right:0!important;border-bottom:1px solid var(--line)}.status-runtime-panel>div:last-child{border-bottom:0}.status-footer-row{align-items:stretch;flex-direction:column}.status-footer-row .btn{width:100%}}
