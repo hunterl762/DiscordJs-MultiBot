@@ -134,11 +134,13 @@ function metaDescriptionForTitle(title) {
 function pageMeta(title, meta = {}) {
   const description = String(meta.description || metaDescriptionForTitle(title)).trim();
   const canonical = absoluteWebUrl(meta.path || '/');
-  const image = String(
-    meta.image
-      || process.env.WEB_META_IMAGE_URL
-      || absoluteWebUrl('/favicon.ico'),
-  ).trim();
+  const configuredMetaImage = normalizePublicAssetUrl(
+    meta.image || process.env.WEB_META_IMAGE_URL,
+    '/favicon.ico',
+  );
+  const image = /^https?:\/\//i.test(configuredMetaImage)
+    ? configuredMetaImage
+    : absoluteWebUrl(configuredMetaImage);
   const robots = String(meta.robots || (meta.private ? 'noindex,nofollow,noarchive' : 'index,follow')).trim();
   const fullTitle = String(title || 'Kryndexa Bot').trim();
 
@@ -182,15 +184,26 @@ function cookieSecureForRequest(req) {
   return forwardedProto === 'https';
 }
 
+function normalizePublicAssetUrl(value, fallback = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  // The Express public directory is mounted at the website root, so accept
+  // /img/logo.png, img/logo.png, public/img/logo.png, or /public/img/logo.png.
+  const publicPath = raw
+    .replace(/\\/g, '/')
+    .replace(/^\.?\//, '')
+    .replace(/^public\//i, '');
+
+  return publicPath ? `/${publicPath}` : fallback;
+}
+
 function configuredWebIconUrl() {
   const raw = String(process.env.WEB_ICON_URL || '').trim();
   if (!raw || raw === '/favicon.ico') return '';
-
-  if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) {
-    return raw;
-  }
-
-  return `/${raw.replace(/^\.?\//, '')}`;
+  return normalizePublicAssetUrl(raw);
 }
 
 function renderDiscordLoginButton(label = 'Log in with Discord', extraClass = '') {
