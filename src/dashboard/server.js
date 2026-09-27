@@ -413,6 +413,15 @@ ${cookieNotice}
     apply();
   };
   document.querySelectorAll('input[type="search"][data-filter-selector]').forEach(setupSearch);
+  document.querySelector('[data-feature-center-toggle]')?.addEventListener('click',event=>{
+    const button=event.currentTarget;const content=document.getElementById('advancedFeatureContent');if(!content)return;
+    const expanded=button.getAttribute('aria-expanded')==='true';
+    button.setAttribute('aria-expanded',expanded?'false':'true');content.hidden=expanded;
+  });
+  document.querySelector('[data-advanced-feature-search-clear]')?.addEventListener('click',()=>{
+    const input=document.getElementById('advancedFeatureSearch');if(!input)return;input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();
+  });
+
   document.querySelector('[data-feature-search-clear]')?.addEventListener('click',()=>{
     const input=document.getElementById('featureSearch');if(!input)return;input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();
   });
@@ -1856,7 +1865,8 @@ function startDashboard(client) {
             ? `<div class="feature-actions"><button class="btn" type="submit">Save Feature</button><a class="btn secondary feature-open" href="${feature.link}">Open Configuration</a></div>`
             : `<button class="btn" type="submit">Save Feature</button>`;
 
-          return `<form class="feature-card priority-${escapeHtml(feature.priority.toLowerCase().replace(/[^a-z]+/g, '-'))} ${state.enabled ? 'feature-enabled' : ''}" method="post" action="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}">
+          const featureSearchText = [feature.title, feature.description, feature.category, feature.priority, feature.requirement || ''].join(' ');
+          return `<form class="feature-card priority-${escapeHtml(feature.priority.toLowerCase().replace(/[^a-z]+/g, '-'))} ${state.enabled ? 'feature-enabled' : ''}" data-advanced-feature data-advanced-feature-search="${escapeHtml(featureSearchText)}" method="post" action="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}">
             <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
             <div class="feature-card-head">
               <div class="feature-icon">${escapeHtml(feature.icon)}</div>
@@ -2063,15 +2073,21 @@ function startDashboard(client) {
       </div><button class="btn" type="submit">Save Settings</button></form>
 
       <section id="features" class="panel feature-center-panel">
-        <div class="panel-heading-row">
-          <div>
+        <button class="feature-center-toggle" type="button" data-feature-center-toggle aria-expanded="true" aria-controls="advancedFeatureContent">
+          <span class="feature-center-heading">
             <span class="eyebrow">MULTIBOT FEATURE CENTER</span>
-            <h2>Advanced Server Features</h2>
-            <p>Enable and configure MultiBot's security, engagement, utility, voice, analytics and integration modules from one place.</p>
+            <strong>Advanced Server Features</strong>
+            <small>Enable and configure MultiBot's security, engagement, utility, voice, analytics and integration modules.</small>
+          </span>
+          <span class="feature-center-toggle-meta"><span class="command-total">${featureStates.filter((feature) => feature.enabled).length}/${featureStates.length} enabled</span><span class="feature-center-chevron" aria-hidden="true">⌃</span></span>
+        </button>
+        <div id="advancedFeatureContent" class="feature-center-content">
+          <div class="advanced-feature-search-row">
+            <div class="feature-search-shell advanced-feature-search"><span class="feature-search-icon" aria-hidden="true">⌕</span><input id="advancedFeatureSearch" type="search" placeholder="Search advanced server features…" autocomplete="off" data-filter-selector="[data-advanced-feature]" data-filter-attribute="data-advanced-feature-search" data-filter-empty="#advancedFeatureSearchEmpty" data-filter-count="#advancedFeatureSearchCount" data-filter-noun="feature"><button type="button" class="feature-search-clear" data-advanced-feature-search-clear aria-label="Clear advanced feature search">×</button></div>
+            <span id="advancedFeatureSearchCount" class="advanced-feature-count">${featureStates.length} features</span>
           </div>
-          <span class="command-total">${featureStates.filter((feature) => feature.enabled).length}/${featureStates.length} enabled</span>
-        </div>
-        <div class="feature-grid">${featureCards}</div>
+          <div id="advancedFeatureSearchEmpty" class="feature-search-empty" hidden><strong>No matching server features</strong><span>Try another feature name, category, or capability.</span></div>
+          <div class="feature-grid">${featureCards}</div>
 
         <div class="automation-builder">
           <div class="category-heading"><h3>⚡ Custom Automation Rules</h3><span>${automationRules.length} rule${automationRules.length === 1 ? '' : 's'}</span></div>
@@ -2101,6 +2117,7 @@ function startDashboard(client) {
             <button class="btn" type="submit">＋ Create Automation</button>
           </form>
           <div class="automation-rule-list">${automationCards}</div>
+        </div>
         </div>
       </section>
 
