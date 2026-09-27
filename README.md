@@ -70,9 +70,6 @@ STREAM_ALERT_CHECK_INTERVAL_MS=120000
 STREAM_ROLE_CHECK_INTERVAL_MS=120000
 
 MUSIC_ENABLED=false
-LAVALINK_URL=localhost:2333
-LAVALINK_PASSWORD=
-LAVALINK_SECURE=false
 MUSIC_DEFAULT_SEARCH_ENGINE=youtube
 ```
 
@@ -265,7 +262,7 @@ Every server page now has a **Feature Center** with priority badges, operational
 
 - **Giveaways** — timed, multi-winner giveaways are operational; restart persistence, advanced entry requirements and reroll history are still an expansion point.
 - **AI Assistant** — dashboard integration slot is present but requires an AI provider/API implementation.
-- **Music** — playback commands and dashboard settings are implemented through Kazagumo/Lavalink; a Lavalink-compatible backend must be configured and enabled.
+- **Music** — playback commands and dashboard settings are implemented through Kazagumo/Lavalink; a local Discord voice backend must be configured and enabled.
 
 The dashboard intentionally labels these integration-dependent modules instead of reporting them as fully operational without their external services.
 
