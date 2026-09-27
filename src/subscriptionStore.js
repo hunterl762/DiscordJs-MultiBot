@@ -88,9 +88,36 @@ async function setGuildSubscription(guildId, data = {}) {
   return getGuildSubscription(id);
 }
 
+async function getUserSubscription(userId) {
+  const id = String(userId || '').trim();
+  const row = await getSecureRecord('user:' + id, SUB_NS, 'current');
+  const payload = row?.payload || {};
+  return { userId: id, tier: normalizeTier(payload.tier), status: String(payload.status || (payload.tier ? 'active' : 'free')), provider: String(payload.provider || 'manual'), note: String(payload.note || ''), updatedAt: row?.updatedAt || null };
+}
+
+async function setUserSubscription(userId, data = {}) {
+  const id = String(userId || '').trim();
+  if (!/^\d{10,32}$/.test(id)) throw new Error('A valid Discord user ID is required.');
+  const tier = normalizeTier(data.tier);
+  if (tier === 'free') {
+    await deleteSecureRecord('user:' + id, SUB_NS, 'current');
+    return getUserSubscription(id);
+  }
+  await putSecureRecord('user:' + id, SUB_NS, 'current', {
+    tier, status: String(data.status || 'active').slice(0, 32), provider: String(data.provider || 'manual').slice(0, 32),
+    note: String(data.note || '').slice(0, 500), grantedBy: String(data.grantedBy || '').slice(0, 32),
+  });
+  return getUserSubscription(id);
+}
+
+async function listUserSubscriptions() {
+  const rows = await listSecureNamespace(SUB_NS);
+  return Promise.all(rows.filter(r => r.recordKey === 'current' && String(r.guildId).startsWith('user:')).map(r => getUserSubscription(String(r.guildId).slice(5))));
+}
+
 async function listSubscriptions() {
   const rows = await listSecureNamespace(SUB_NS);
-  return Promise.all(rows.filter(r => r.recordKey === 'current').map(r => getGuildSubscription(r.guildId)));
+  return Promise.all(rows.filter(r => r.recordKey === 'current' && !String(r.guildId).startsWith('user:')).map(r => getGuildSubscription(r.guildId)));
 }
 
 async function canUseFeature(guildId, featureKey) {
@@ -134,5 +161,6 @@ async function listUsage() {
 module.exports = {
   TIERS, DEFAULTS, getPlan, listPlans, savePlan,
   getGuildSubscription, setGuildSubscription, listSubscriptions,
+  getUserSubscription, setUserSubscription, listUserSubscriptions,
   canUseFeature, logInvoice, listInvoices, recordUsage, listUsage,
 };
