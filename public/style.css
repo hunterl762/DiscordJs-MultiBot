@@ -3024,3 +3024,37 @@ html[data-theme="light"] #features .feature-card .btn.secondary{
 html[data-theme="light"] #features .feature-card .btn.secondary:hover{
   background:#e9edf5!important;
 }
+
+
+/* === Feature Center usability redesign === */
+.feature-grid{grid-template-columns:1fr!important;gap:12px!important}
+.feature-card{width:100%;padding:16px 18px!important}
+.feature-card-head{align-items:center}
+.feature-description{margin:9px 0 12px!important;max-width:920px}
+.feature-card-footer{margin-top:12px!important}
+.feature-config-details{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+.feature-config-details>summary{
+  list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-height:46px;padding:10px 13px;cursor:pointer;color:var(--text);font-weight:800;
+  background:var(--panel2);user-select:none
+}
+.feature-config-details>summary::-webkit-details-marker{display:none}
+.feature-config-details>summary:after{content:"＋";font-size:18px;line-height:1;color:var(--muted)}
+.feature-config-details[open]>summary:after{content:"−"}
+.feature-config-details>summary small{margin-left:auto;color:var(--muted);font-size:11px;font-weight:650}
+.feature-config-body{padding:14px}
+.feature-config-body .feature-fields{margin:0}
+.feature-config-body .feature-requirement{margin:0 0 12px}
+.feature-config-body .feature-requirement:last-child{margin-bottom:0}
+.feature-fields{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.feature-actions{width:auto!important}
+.feature-card-footer>.btn,.feature-actions .btn{min-width:132px}
+@media(max-width:1000px){.feature-fields{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:680px){
+  .feature-card{padding:14px!important}
+  .feature-card-head{align-items:flex-start}
+  .feature-fields{grid-template-columns:1fr!important}
+  .feature-config-details>summary small{display:none}
+  .feature-card-footer,.feature-actions{width:100%!important}
+  .feature-card-footer>.btn,.feature-actions .btn{width:100%;min-width:0}
+}
