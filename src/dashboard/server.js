@@ -1885,6 +1885,7 @@ function startDashboard(client) {
       const featureResources = { channels: featureChannels, voiceChannels, categories, roles };
       const priorityRank = { 'Very High': 0, High: 1, Growing: 2, Popular: 3, Differentiator: 4 };
       const featureCards = [...featureStates]
+        .filter((state) => state.definition.key !== 'dashboard')
         .sort((a, b) => (priorityRank[a.definition.priority] ?? 9) - (priorityRank[b.definition.priority] ?? 9) || a.definition.title.localeCompare(b.definition.title))
         .map((state) => {
           const feature = state.definition;
