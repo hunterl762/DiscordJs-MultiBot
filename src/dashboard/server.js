@@ -274,6 +274,7 @@ function page(title, body, user, meta = {}) {
       <div class="nav-dropdown-menu">
         <a href="/">Home</a>
         <a href="/features">Features</a>
+        <a href="/status">Bot &amp; Panel Status</a>
         ${user ? '<a href="/dashboard/statistics">Server Statistics</a>' : ''}
       </div>
     </details>
@@ -929,6 +930,44 @@ function startDashboard(client) {
     res.send(page('Kryndexa Bot', body, req.session.user, {
       path: '/',
       description: 'Kryndexa Bot is your Discord server command center for moderation, advanced tickets, logging, music, streaming alerts, automations, analytics and server configuration.',
+    }));
+  });
+
+  app.get('/status', async (req, res) => {
+    let database = false;
+    try { database = await pingDatabase(); } catch { database = false; }
+    const botReady = client.isReady();
+    const wsPing = botReady && Number.isFinite(client.ws.ping) ? Math.max(0, Math.round(client.ws.ping)) : null;
+    const uptimeSeconds = Math.max(0, Math.floor(process.uptime()));
+    const formatUptime = (seconds) => {
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return [days ? `${days}d` : '', hours ? `${hours}h` : '', `${minutes}m`].filter(Boolean).join(' ');
+    };
+    const overall = botReady && database;
+    const statusCard = (label, ok, detail) => `<article class="status-service-card ${ok ? 'is-operational' : 'is-degraded'}"><div class="status-service-head"><span class="status-dot"></span><div><span class="mini-label">SERVICE</span><h2>${escapeHtml(label)}</h2></div><strong>${ok ? 'Operational' : 'Degraded'}</strong></div><p>${escapeHtml(detail)}</p></article>`;
+    const body = `<div class="status-page">
+      <section class="status-hero ${overall ? 'is-operational' : 'is-degraded'}">
+        <span class="eyebrow">LIVE SYSTEM STATUS</span>
+        <div class="status-hero-row"><div><h1>Bot &amp; Panel Status</h1><p>Live health information for Kryndexa Bot and its web control panel.</p></div><span class="status-overall"><i></i>${overall ? 'All core systems operational' : 'Some systems are degraded'}</span></div>
+      </section>
+      <section class="status-summary-grid">
+        <div><span>Process uptime</span><strong>${escapeHtml(formatUptime(uptimeSeconds))}</strong></div>
+        <div><span>Discord latency</span><strong>${wsPing === null ? 'Unavailable' : `${wsPing} ms`}</strong></div>
+        <div><span>Connected servers</span><strong>${client.guilds.cache.size.toLocaleString()}</strong></div>
+        <div><span>Last checked</span><strong data-status-clock>Just now</strong></div>
+      </section>
+      <section class="status-services">
+        ${statusCard('Discord Bot', botReady, botReady ? `Connected to Discord across ${client.guilds.cache.size.toLocaleString()} server(s).` : 'The Discord gateway connection is not ready.')}
+        ${statusCard('Web Panel', true, 'This status page was served successfully by the Kryndexa dashboard.')}
+        ${statusCard('Database', database, database ? 'The dashboard can reach its MySQL data store.' : 'The dashboard cannot currently reach its MySQL data store.')}
+      </section>
+      <p class="status-refresh-note">This page refreshes automatically every 30 seconds.</p>
+    </div><script>setTimeout(()=>location.reload(),30000);</script>`;
+    return res.send(page('Bot & Panel Status • Kryndexa Bot', body, req.session.user, {
+      path: '/status',
+      description: 'Live Kryndexa Bot and web panel service status, uptime, Discord latency and connectivity.',
     }));
   });
 
