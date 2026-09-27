@@ -62,6 +62,14 @@ function lavalinkConfigured() {
   );
 }
 
+function cleanEnvSecret(value) {
+  const raw = String(value || '').trim();
+  if (raw.length >= 2 && ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))) {
+    return raw.slice(1, -1).trim();
+  }
+  return raw;
+}
+
 function lavalinkNode() {
   const raw = String(process.env.LAVALINK_URL || '127.0.0.1:2333').trim();
   const secureFromUrl = /^(?:wss|https):/i.test(raw);
@@ -73,7 +81,7 @@ function lavalinkNode() {
   return {
     name: String(process.env.LAVALINK_NODE_NAME || 'Kryndexa').trim() || 'Kryndexa',
     url,
-    auth: String(process.env.LAVALINK_PASSWORD || ''),
+    auth: cleanEnvSecret(process.env.LAVALINK_PASSWORD),
     secure: secureFromUrl || envEnabled(process.env.LAVALINK_SECURE),
   };
 }
@@ -107,6 +115,10 @@ function musicUnavailableMessage() {
 
   if (status.state === 'connecting') {
     return `Lavalink is still connecting to ${status.endpoint || 'the configured node'}. Try the command again in a few seconds.`;
+  }
+
+  if (status.state === 'auth_error') {
+    return status.lastError || 'Lavalink authentication failed. Check LAVALINK_PASSWORD.';
   }
 
   if (status.state === 'error') {
@@ -178,6 +190,33 @@ async function probeLavalinkInfo() {
     );
     return null;
   }
+}
+
+async function validateLavalinkConnection(node) {
+  const protocol = node.secure ? 'https' : 'http';
+  const endpoint = `${protocol}://${node.url}/v4/info`;
+
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      headers: { Authorization: node.auth, Accept: 'application/json' },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (error) {
+    throw new Error(`Unable to reach Lavalink at ${endpoint}: ${error?.message || error}`);
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      `Lavalink rejected LAVALINK_PASSWORD (HTTP ${response.status}). The bot reached the correct Lavalink server, but its Authorization password does not match the password Lavalink is actually running with. Make LAVALINK_PASSWORD match lavalink.server.password in application.yml (or LAVALINK_SERVER_PASSWORD if Lavalink is being overridden by an environment variable), then restart Lavalink and Kryndexa.`,
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`Lavalink preflight failed at ${endpoint} with HTTP ${response.status}.`);
+  }
+
+  return true;
 }
 
 function playbackFallbackEnabled() {
@@ -311,7 +350,7 @@ async function waitForMusicReady(timeoutMs) {
     if (connectionState.ready) return true;
 
     // Stop waiting early for failures that will not resolve without configuration changes.
-    if (['dependency_error', 'disabled', 'unconfigured'].includes(connectionState.state)) {
+    if (['dependency_error', 'disabled', 'unconfigured', 'auth_error'].includes(connectionState.state)) {
       return false;
     }
 
@@ -369,6 +408,17 @@ async function initMusic(client, { waitForReady = true } = {}) {
   console.log(
     `[Music] Connecting to Lavalink node ${node.name} at ${endpoint} (timeout ${connectTimeoutMs}ms)...`,
   );
+
+  try {
+    await validateLavalinkConnection(node);
+    console.log(`[Music] Lavalink authentication preflight succeeded for ${endpoint}.`);
+  } catch (error) {
+    const message = error?.message || String(error);
+    initialized = false;
+    setConnectionState('auth_error', { lastError: message });
+    console.error(`[Music] ${message}`);
+    return null;
+  }
 
   try {
     kazagumo = new Kazagumo(
