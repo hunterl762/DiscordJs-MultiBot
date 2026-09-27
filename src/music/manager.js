@@ -116,8 +116,12 @@ class LocalMusicPlayer {
       selfDeaf: true,
     });
     this.audioPlayer = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
-    this.connection.subscribe(this.audioPlayer);
+    this.subscription = this.connection.subscribe(this.audioPlayer);
+    if (!this.subscription) throw new Error('Failed to subscribe the audio player to the Discord voice connection.');
 
+    this.audioPlayer.on(AudioPlayerStatus.Playing, () => {
+      console.log(`[Music] Audio is playing in guild ${this.guildId}; voice=${this.voiceId}; volume=${this.volume}%.`);
+    });
     this.audioPlayer.on(AudioPlayerStatus.Idle, () => this.onIdle().catch((error) => this.fail(error)));
     this.audioPlayer.on('error', (error) => this.fail(error));
   }
@@ -155,8 +159,15 @@ class LocalMusicPlayer {
     this.paused = false;
 
     try {
-      const stream = await play.stream(track.uri, { discordPlayerCompatibility: false });
-      this.resource = createAudioResource(stream.stream, { inputType: stream.type, inlineVolume: true });
+      // Compatibility mode avoids handing raw optimized Opus packets to a pipeline
+      // that also needs inline volume transformation. Let @discordjs/voice probe/
+      // transcode the compatible stream so volume + Opus encoding remain reliable.
+      const stream = await play.stream(track.uri, { discordPlayerCompatibility: true });
+      this.resource = createAudioResource(stream.stream, {
+        inputType: stream.type,
+        inlineVolume: true,
+        metadata: { title: track.title, uri: track.uri },
+      });
       this.resource.volume?.setVolume(this.volume / 100);
       this.audioPlayer.play(this.resource);
 
