@@ -225,10 +225,15 @@ function page(title, body, user, meta = {}) {
         </div>
       </details>`
     : `<div class="public-header-actions">
-        <div class="public-theme-switch" role="group" aria-label="Color theme">
-          <button type="button" data-theme-choice="light" aria-label="Use light mode" title="Light mode">☀ <span>Light</span></button>
-          <button type="button" data-theme-choice="dark" aria-label="Use dark mode" title="Dark mode">☾ <span>Dark</span></button>
-        </div>
+        <details class="nav-dropdown public-theme-dropdown">
+          <summary>Appearance <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+          <div class="nav-dropdown-menu theme-dropdown-menu">
+            <small>Theme</small>
+            <button type="button" data-theme-choice="system"><span>◐</span><span>System</span><b>✓</b></button>
+            <button type="button" data-theme-choice="light"><span>☀</span><span>Light</span><b>✓</b></button>
+            <button type="button" data-theme-choice="dark"><span>☾</span><span>Dark</span><b>✓</b></button>
+          </div>
+        </details>
         ${renderDiscordLoginButton('Log in with Discord', 'compact')}
       </div>`;
 
