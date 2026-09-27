@@ -3250,3 +3250,16 @@ html[data-theme="light"] .public-feature-section .category-heading span{
   .public-feature-section{padding:14px}
   .public-feature-card{min-height:0}
 }
+
+
+/* Discord brand mark inside OAuth login buttons */
+.discord-login-icon{
+  display:block;
+  width:16px;
+  height:13px;
+  color:#fff;
+}
+.discord-login-mark{
+  background:transparent;
+  border-radius:0;
+}
