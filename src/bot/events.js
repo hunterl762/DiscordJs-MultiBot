@@ -26,6 +26,34 @@ function roleList(roles) {
   return values.length ? values.join(', ') : 'None';
 }
 
+const messageSnapshots = new Map();
+const MESSAGE_SNAPSHOT_TTL_MS = 6 * 60 * 60 * 1000;
+const MESSAGE_SNAPSHOT_MAX = 50_000;
+
+function snapshotMessage(message) {
+  if (!message?.id || !message.guildId || message.author?.bot) return;
+  messageSnapshots.set(message.id, {
+    authorTag: message.author?.tag || message.author?.username || 'Unknown',
+    authorId: message.author?.id || '',
+    channelId: message.channelId || '',
+    content: message.content || '',
+    attachments: message.attachments?.size ? [...message.attachments.values()].map((item) => item.url) : [],
+    savedAt: Date.now(),
+  });
+  if (messageSnapshots.size > MESSAGE_SNAPSHOT_MAX) {
+    const cutoff = Date.now() - MESSAGE_SNAPSHOT_TTL_MS;
+    for (const [id, item] of messageSnapshots) {
+      if (item.savedAt < cutoff || messageSnapshots.size > MESSAGE_SNAPSHOT_MAX) messageSnapshots.delete(id);
+      if (messageSnapshots.size <= MESSAGE_SNAPSHOT_MAX) break;
+    }
+  }
+}
+
+async function hydrateMessage(message) {
+  if (!message?.partial) return message;
+  try { return await message.fetch(); } catch { return message; }
+}
+
 function registerEvents(client) {
   const updateBotActivity = (readyClient) => {
     const shardCount = Math.max(1, readyClient.ws.shards.size || 1);
@@ -41,7 +69,10 @@ function registerEvents(client) {
     if (client.isReady()) updateBotActivity(client);
   });
 
-  client.on(Events.MessageCreate, executePrefix);
+  client.on(Events.MessageCreate, (message) => {
+    snapshotMessage(message);
+    return executePrefix(message);
+  });
 
   client.on(Events.GuildMemberAdd, async (member) => {
     await prepareNewMember(member);
@@ -280,34 +311,57 @@ function registerEvents(client) {
   });
 
   client.on(Events.MessageDelete, async (message) => {
-    if (!message.guild || message.author?.bot) return;
+    if (!message.guild) return;
+    const cached = messageSnapshots.get(message.id);
+    const hydrated = await hydrateMessage(message);
+    const author = hydrated.author;
+    if (author?.bot) return;
+    const authorText = author
+      ? `${author.tag || author.username}\n${author.id}`
+      : cached?.authorId ? `${cached.authorTag}\n${cached.authorId}` : 'Unknown';
+    const content = hydrated.content || cached?.content || '[content unavailable — message was not cached before deletion]';
+    const attachments = hydrated.attachments?.size
+      ? [...hydrated.attachments.values()].map((item) => item.url)
+      : cached?.attachments || [];
+    messageSnapshots.delete(message.id);
 
     await sendLog(message.guild, 'general',
       baseEmbed(message.guild, '🗑️ Message Deleted', 0xed4245)
         .addFields(
-          { name: 'Author', value: message.author ? `${message.author.tag}\n${message.author.id}` : 'Unknown', inline: true },
-          { name: 'Channel', value: `${message.channel}\n${message.channelId}`, inline: true },
+          { name: 'Author', value: authorText, inline: true },
+          { name: 'Channel', value: `${message.channel || `<#${cached?.channelId || message.channelId}>`}\n${cached?.channelId || message.channelId}`, inline: true },
           { name: 'Message ID', value: message.id || 'Unknown', inline: true },
-          { name: 'Content', value: truncate(message.content || '[content unavailable]', 1000), inline: false },
-          { name: 'Attachments', value: message.attachments?.size ? truncate([...message.attachments.values()].map((item) => item.url).join('\n'), 1000) : 'None', inline: false },
+          { name: 'Content', value: truncate(content, 1000), inline: false },
+          { name: 'Attachments', value: attachments.length ? truncate(attachments.join('\n'), 1000) : 'None', inline: false },
         ),
     );
   });
 
   client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
-    if (!oldMessage.guild || oldMessage.author?.bot || oldMessage.content === newMessage.content) return;
+    if (!oldMessage.guild) return;
+    const cached = messageSnapshots.get(oldMessage.id);
+    const hydratedNew = await hydrateMessage(newMessage);
+    const author = hydratedNew.author || oldMessage.author;
+    if (author?.bot) return;
+    const before = oldMessage.content || cached?.content || '[content unavailable]';
+    const after = hydratedNew.content || newMessage.content || '[content unavailable]';
+    if (before === after) { snapshotMessage(hydratedNew); return; }
+    const authorText = author
+      ? `${author.tag || author.username}\n${author.id}`
+      : cached?.authorId ? `${cached.authorTag}\n${cached.authorId}` : 'Unknown';
 
     await sendLog(oldMessage.guild, 'general',
       baseEmbed(oldMessage.guild, '✏️ Message Edited', 0xfee75c)
         .addFields(
-          { name: 'Author', value: oldMessage.author ? `${oldMessage.author.tag}\n${oldMessage.author.id}` : 'Unknown', inline: true },
-          { name: 'Channel', value: `${oldMessage.channel}\n${oldMessage.channelId}`, inline: true },
+          { name: 'Author', value: authorText, inline: true },
+          { name: 'Channel', value: `${hydratedNew.channel || oldMessage.channel}\n${hydratedNew.channelId || oldMessage.channelId}`, inline: true },
           { name: 'Message ID', value: oldMessage.id || 'Unknown', inline: true },
-          { name: 'Before', value: truncate(oldMessage.content || '[content unavailable]', 1000), inline: false },
-          { name: 'After', value: truncate(newMessage.content || '[content unavailable]', 1000), inline: false },
-          { name: 'Jump to Message', value: newMessage.url || 'Unavailable', inline: false },
+          { name: 'Before', value: truncate(before, 1000), inline: false },
+          { name: 'After', value: truncate(after, 1000), inline: false },
+          { name: 'Jump to Message', value: hydratedNew.url || newMessage.url || 'Unavailable', inline: false },
         ),
     );
+    snapshotMessage(hydratedNew);
   });
 }
 
