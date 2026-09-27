@@ -1,0 +1,43 @@
+/* Kryndexa dedicated Light Mode stylesheet.
+   This file is enabled only when the resolved dashboard theme is light. */
+:root{
+  --bg:#f4f7fe;
+  --panel:#ffffff;
+  --panel2:#f7f9fc;
+  --text:#1b2559;
+  --muted:#68758b;
+  --line:#dfe5ef;
+  --accent:#5865f2;
+}
+body{background:radial-gradient(circle at top,#fff 0,#f4f7fe 48%)!important;color:var(--text)!important}
+header,.site-header{background:rgba(255,255,255,.95)!important;border-color:var(--line)!important}
+.panel,.guild-card,.feature-center-panel,.feature-card,.command-card,.ticket-config-panel,.ticket-module-card,
+.automation-builder,.automation-form,.automation-rule-card,.stream-alert-card,.embed-editor,.embed-preview-card,
+.suggestions-panel,.paid-access-card,.owner-section,.dashboard-toolbar,.empty{
+  background:#fff!important;background-image:none!important;color:var(--text)!important;border-color:var(--line)!important;
+}
+.feature-card{box-shadow:0 8px 22px rgba(31,51,89,.07)!important}
+.feature-card:hover{background:#fbfcff!important;border-color:#cfd6f6!important}
+.feature-fields,.feature-requirement,.feature-toggle,.checks label,.dashboard-home-stats>div,.server-stats-summary>div{
+  background:var(--panel2)!important;background-image:none!important;color:var(--text)!important;border-color:var(--line)!important;
+}
+.feature-icon{background:#eef2ff!important;color:#4353cf!important;border-color:#d9def8!important}
+.feature-card h1,.feature-card h2,.feature-card h3,.feature-card h4,.feature-card strong,.feature-card label,
+.feature-title-wrap,.feature-label-row,.command-card strong,.ticket-module-card h3,.automation-builder h3{color:var(--text)!important}
+.feature-description,.feature-priority,.feature-card small,.command-card p,.ticket-module-card p,
+.automation-rule-card span,.feature-requirement,p{color:var(--muted)!important}
+input:not([type="checkbox"]):not([type="radio"]),select,textarea,input[type="search"]{
+  background:#fff!important;background-image:none!important;color:var(--text)!important;border-color:#ccd5e2!important;caret-color:var(--text)!important;
+}
+input::placeholder,textarea::placeholder{color:#7b879b!important}
+option{background:#fff!important;color:var(--text)!important}
+.dashboard-jump{background:rgba(255,255,255,.96)!important;border-color:var(--line)!important}
+.dashboard-jump a{background:#f1f4f9!important;color:#43506a!important}
+.dashboard-jump a:hover{background:#e7ebff!important;color:#3544c7!important}
+.btn.secondary,.feature-card .btn.secondary{background:#f4f6fa!important;color:var(--text)!important;border-color:#d7deea!important}
+.btn.secondary:hover,.feature-card .btn.secondary:hover{background:#e9edf5!important}
+.account-dropdown-menu,.nav-dropdown-menu{background:#fff!important;color:var(--text)!important;border-color:var(--line)!important}
+table,th,td{border-color:var(--line)!important}
+tr:hover td{background:#f8faff!important}
+footer{background:#fff!important;border-color:var(--line)!important;color:var(--muted)!important}
+.cookie-notice{background:#fff!important;border-color:var(--line)!important;color:var(--text)!important}
