@@ -225,15 +225,13 @@ function page(title, body, user, meta = {}) {
         </div>
       </details>`
     : `<div class="public-header-actions">
-        <details class="nav-dropdown public-theme-dropdown">
-          <summary>Appearance <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
-          <div class="nav-dropdown-menu theme-dropdown-menu">
-            <small>Theme</small>
-            <button type="button" data-theme-choice="system"><span>◐</span><span>System</span><b>✓</b></button>
-            <button type="button" data-theme-choice="light"><span>☀</span><span>Light</span><b>✓</b></button>
-            <button type="button" data-theme-choice="dark"><span>☾</span><span>Dark</span><b>✓</b></button>
-          </div>
-        </details>
+        <div class="public-theme-toggle" data-public-theme-toggle>
+          <span class="theme-toggle-icon" aria-hidden="true">☀</span>
+          <button type="button" class="theme-toggle-track" data-theme-toggle-button role="switch" aria-checked="false" aria-label="Toggle light and dark mode">
+            <span class="theme-toggle-thumb"></span>
+          </button>
+          <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+        </div>
         ${renderDiscordLoginButton('Log in with Discord', 'compact')}
       </div>`;
 
@@ -330,10 +328,22 @@ ${cookieNotice}
     event.preventDefault();
     applyTheme(button.dataset.themeChoice);
   });
-  const followSystem=()=>{if((root.dataset.themeMode||'system')==='system')applyTheme('system');};
+  const syncPublicThemeToggle=()=>{
+    const toggle=document.querySelector('[data-theme-toggle-button]');
+    if(!toggle)return;
+    const dark=root.dataset.theme==='dark';
+    toggle.setAttribute('aria-checked',dark?'true':'false');
+    toggle.classList.toggle('is-dark',dark);
+  };
+  document.querySelector('[data-theme-toggle-button]')?.addEventListener('click',()=>{
+    applyTheme(root.dataset.theme==='dark'?'light':'dark');
+    syncPublicThemeToggle();
+  });
+  const followSystem=()=>{if((root.dataset.themeMode||'system')==='system'){applyTheme('system');syncPublicThemeToggle();}};
   if(systemTheme.addEventListener)systemTheme.addEventListener('change',followSystem);
   else if(systemTheme.addListener)systemTheme.addListener(followSystem);
   applyTheme(root.dataset.themeMode||'system');
+  syncPublicThemeToggle();
 
   const nav=document.querySelector('[data-site-nav]');
   document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
