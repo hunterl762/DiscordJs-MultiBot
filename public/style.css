@@ -2988,3 +2988,73 @@ html[data-theme="light"] .feature-search-clear:hover{background:#f0f3f8}
   .nav-dropdown-menu{position:static;width:100%;margin-top:5px;box-shadow:none}
   .feature-search-status span:last-child{display:none}
 }
+
+
+/* === Recording-driven light theme consistency + collapsible Feature Center === */
+.feature-center-toggle{
+  width:100%;display:flex;align-items:center;justify-content:space-between;gap:18px;
+  padding:0 0 18px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);
+  text-align:left;cursor:pointer;font:inherit;
+}
+.feature-center-heading{display:flex;flex-direction:column;gap:5px}
+.feature-center-heading strong{font-size:22px;letter-spacing:-.02em}
+.feature-center-heading small{max-width:760px;color:var(--muted);font-size:13px;font-weight:500;line-height:1.5}
+.feature-center-toggle-meta{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.feature-center-chevron{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);transition:transform .18s ease}
+.feature-center-toggle[aria-expanded="false"] .feature-center-chevron{transform:rotate(180deg)}
+.feature-center-content{padding-top:18px}
+.feature-center-content[hidden]{display:none!important}
+.advanced-feature-search-row{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.advanced-feature-search{flex:1;margin:0}
+.advanced-feature-count{flex:0 0 auto;color:var(--muted);font-size:11px;font-weight:800}
+.feature-card[hidden]{display:none!important}
+
+/* Remove hard-coded dark islands when the dashboard is in light mode. */
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .ticket-config-panel,
+html[data-theme="light"] .ticket-system-panel,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-builder,
+html[data-theme="light"] .automation-form,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .twitch-config-form,
+html[data-theme="light"] .stream-alert-card,
+html[data-theme="light"] .embed-editor,
+html[data-theme="light"] .embed-preview,
+html[data-theme="light"] .suggestions-panel,
+html[data-theme="light"] .feature-fields,
+html[data-theme="light"] .feature-requirement{
+  background:#fff!important;color:#1b2559!important;border-color:#dfe5ef!important;
+}
+html[data-theme="light"] .feature-card{box-shadow:0 8px 22px rgba(31,51,89,.055)}
+html[data-theme="light"] .feature-card:hover{background:#fbfcff!important;border-color:#cfd6f6!important}
+html[data-theme="light"] .feature-card p,
+html[data-theme="light"] .feature-description,
+html[data-theme="light"] .feature-requirement,
+html[data-theme="light"] .command-card p,
+html[data-theme="light"] .command-card small,
+html[data-theme="light"] .automation-rule-card span{color:#68758b!important}
+html[data-theme="light"] .feature-toggle,
+html[data-theme="light"] .checks label,
+html[data-theme="light"] .ticket-config-panel .checks label{
+  background:#f7f9fc!important;color:#1b2559!important;border-color:#dfe5ef!important;
+}
+html[data-theme="light"] .feature-fields input,
+html[data-theme="light"] .feature-fields select,
+html[data-theme="light"] .feature-fields textarea,
+html[data-theme="light"] .ticket-config-panel input,
+html[data-theme="light"] .ticket-config-panel select{
+  background:#fff!important;color:#1b2559!important;border-color:#ccd5e2!important;
+}
+html[data-theme="light"] .feature-center-toggle{color:#1b2559;border-color:#dfe5ef}
+html[data-theme="light"] .feature-center-chevron{background:#f7f9fc;border-color:#dfe5ef;color:#1b2559}
+html[data-theme="light"] .dashboard-jump{box-shadow:0 8px 24px rgba(31,51,89,.06)}
+html[data-theme="light"] .dashboard-jump a{border:1px solid transparent}
+html[data-theme="light"] .dashboard-jump a:hover{border-color:#d7dcfb}
+@media(max-width:720px){
+  .feature-center-toggle{align-items:flex-start}
+  .feature-center-toggle-meta{flex-direction:column;align-items:flex-end}
+  .advanced-feature-search-row{align-items:stretch;flex-direction:column}
+  .advanced-feature-count{padding-left:2px}
+}
