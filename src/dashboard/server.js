@@ -1853,8 +1853,13 @@ function startDashboard(client) {
               ${feature.locked ? '<span class="pill subtle">Always On</span>' : `<label class="feature-toggle"><input class="autosave-toggle" type="checkbox" name="enabled" data-autosave-url="/dashboard/${guild.id}/features/${encodeURIComponent(feature.key)}/toggle" data-csrf="${escapeHtml(req.session.csrf)}" ${state.enabled ? 'checked' : ''}><span>Enabled</span></label>`}
             </div>
             <p class="feature-description">${escapeHtml(feature.description)}</p>
-            ${feature.requirement ? `<div class="feature-requirement">⚙️ ${escapeHtml(feature.requirement)}</div>` : ''}
-            ${fields ? `<div class="feature-fields">${fields}</div>` : ''}
+            ${fields || feature.requirement ? `<details class="feature-config-details">
+              <summary><span>Configure module</span><small>${fields ? 'Show settings' : 'View requirement'}</small></summary>
+              <div class="feature-config-body">
+                ${feature.requirement ? `<div class="feature-requirement">⚙️ ${escapeHtml(feature.requirement)}</div>` : ''}
+                ${fields ? `<div class="feature-fields">${fields}</div>` : ''}
+              </div>
+            </details>` : ''}
             <div class="feature-card-footer">${action}</div>
           </form>`;
         }).join('');
