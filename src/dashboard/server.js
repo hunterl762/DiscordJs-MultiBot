@@ -233,7 +233,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const legacy=localStorage.getItem('multibot-theme');const saved=localStorage.getItem('kryndexa-theme')||legacy;const valid=saved==='light'||saved==='dark'?saved:null;const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';const theme=valid||preferred;document.documentElement.dataset.theme=theme;if(legacy&&!localStorage.getItem('kryndexa-theme'))localStorage.setItem('kryndexa-theme',theme);}catch{document.documentElement.dataset.theme='dark';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-discord-login-icon">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-dashboard-light-mode">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
