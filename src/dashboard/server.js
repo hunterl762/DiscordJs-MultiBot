@@ -263,7 +263,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('kryndexa-theme-mode');const choice=['system','light','dark'].includes(saved)?saved:'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.setAttribute('data-theme',theme);document.documentElement.setAttribute('data-theme-mode',choice);}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-themed-search-fields">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-working-search-fields">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -359,21 +359,6 @@ ${cookieNotice}
     showCookieNotice();
   }));
 
-  const ownerServerSearch=document.querySelector('[data-owner-server-search]');
-  const filterOwnerServers=()=>{
-    if(!ownerServerSearch)return;
-    const query=ownerServerSearch.value.trim().toLowerCase();
-    const rows=Array.from(document.querySelectorAll('[data-owner-guild-row]'));
-    let visible=0;
-    rows.forEach(row=>{const show=!query||row.dataset.search.includes(query);row.hidden=!show;if(show)visible++;});
-    const count=document.querySelector('[data-owner-server-count]');
-    if(count)count.textContent=(query?visible:rows.length).toLocaleString()+' server'+((query?visible:rows.length)===1?'':'s');
-    const empty=document.querySelector('[data-owner-server-empty]');
-    if(empty)empty.hidden=visible!==0;
-  };
-  ownerServerSearch?.addEventListener('input',filterOwnerServers);
-  document.querySelector('[data-owner-server-clear]')?.addEventListener('click',()=>{if(!ownerServerSearch)return;ownerServerSearch.value='';filterOwnerServers();ownerServerSearch.focus();});
-
   const toast=document.getElementById('dashboardToast');let toastTimer;
   const showToast=(message,kind='success')=>{if(!toast)return;toast.textContent=message;toast.className='dashboard-toast is-visible '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.className='dashboard-toast',2300);};
 
@@ -393,12 +378,42 @@ ${cookieNotice}
     });
   });
 
-  document.querySelectorAll('input[type="search"][data-filter-selector]').forEach(input=>{
-    const apply=()=>{const q=input.value.trim().toLowerCase();const selector=input.dataset.filterSelector;const attr=input.dataset.filterAttribute;let visible=0;if(!selector||!attr)return;
-      document.querySelectorAll(selector).forEach(item=>{const match=!q||String(item.getAttribute(attr)||'').toLowerCase().includes(q);item.hidden=!match;if(match)visible++;});
-      const empty=input.dataset.filterEmpty?document.querySelector(input.dataset.filterEmpty):null;if(empty)empty.hidden=visible!==0;};
-    input.addEventListener('input',apply);input.addEventListener('search',apply);apply();
-  });
+  const normalizeSearch=(value)=>String(value||'').toLocaleLowerCase().replace(/\s+/g,' ').trim();
+  const setupSearch=(input)=>{
+    const selector=input.dataset.filterSelector;
+    const attribute=input.dataset.filterAttribute;
+    if(!selector||!attribute)return;
+    const apply=()=>{
+      const query=normalizeSearch(input.value);
+      const terms=query.split(' ').filter(Boolean);
+      const items=Array.from(document.querySelectorAll(selector));
+      let visible=0;
+      items.forEach(item=>{
+        const haystack=normalizeSearch(item.getAttribute(attribute)||item.textContent);
+        const match=terms.length===0||terms.every(term=>haystack.includes(term));
+        item.hidden=!match;
+        item.setAttribute('aria-hidden',match?'false':'true');
+        if(match)visible++;
+      });
+      const empty=input.dataset.filterEmpty?document.querySelector(input.dataset.filterEmpty):null;
+      if(empty)empty.hidden=visible!==0;
+      const count=input.dataset.filterCount?document.querySelector(input.dataset.filterCount):null;
+      if(count){
+        const noun=input.dataset.filterNoun||'result';
+        count.textContent=visible.toLocaleString()+' '+noun+(visible===1?'':'s');
+      }
+      input.dataset.visibleResults=String(visible);
+    };
+    input.addEventListener('input',apply);
+    input.addEventListener('search',apply);
+    input.addEventListener('keyup',event=>{if(event.key==='Escape'&&input.value){input.value='';apply();}});
+    if(input.dataset.filterClear){
+      document.querySelector(input.dataset.filterClear)?.addEventListener('click',()=>{input.value='';apply();input.focus();});
+    }
+    apply();
+  };
+  document.querySelectorAll('input[type="search"][data-filter-selector]').forEach(setupSearch);
+
 
   document.querySelectorAll('[data-stream-platform]').forEach(select=>{
     const form=select.closest('form');const input=form?.querySelector('[data-stream-identifier]');const help=form?.querySelector('[data-stream-help]');
@@ -1569,7 +1584,7 @@ function startDashboard(client) {
           <span class="pill subtle" data-owner-server-count>${ownerGuilds.length.toLocaleString()} servers</span>
         </div>
         <div class="owner-server-toolbar">
-          <label class="owner-server-search"><span>Search servers</span><input type="search" data-owner-server-search placeholder="Search name, server ID, owner, or owner ID…" autocomplete="off"></label>
+          <label class="owner-server-search"><span>Search servers</span><input type="search" data-owner-server-search data-filter-selector="[data-owner-guild-row]" data-filter-attribute="data-search" data-filter-empty="[data-owner-server-empty]" data-filter-count="[data-owner-server-count]" data-filter-noun="server" data-filter-clear="[data-owner-server-clear]" placeholder="Search name, server ID, owner, or owner ID…" autocomplete="off"></label>
           <button class="btn secondary" type="button" data-owner-server-clear>Clear</button>
         </div>
         <div class="table-wrap owner-server-table-wrap">
