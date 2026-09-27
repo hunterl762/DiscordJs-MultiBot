@@ -233,7 +233,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const legacy=localStorage.getItem('multibot-theme');const saved=localStorage.getItem('kryndexa-theme')||legacy;const valid=saved==='light'||saved==='dark'?saved:null;const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';const theme=valid||preferred;document.documentElement.dataset.theme=theme;if(legacy&&!localStorage.getItem('kryndexa-theme'))localStorage.setItem('kryndexa-theme',theme);}catch{document.documentElement.dataset.theme='dark';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-account-theme-menu">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-theme-toggle-fix">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -264,29 +264,37 @@ function page(title, body, user, meta = {}) {
 ${cookieNotice}
 <script>(() => {
   const root=document.documentElement;
-  const themeButton=document.querySelector('[data-theme-toggle]');
-  const themeIcon=document.querySelector('[data-theme-icon]');
-  const themeLabel=document.querySelector('[data-theme-label]');
+  const themeButtons=()=>Array.from(document.querySelectorAll('[data-theme-toggle]'));
   const themeMeta=document.querySelector('meta[name="theme-color"]');
   const refreshTheme=()=>{
-    const dark=root.dataset.theme==='dark';
-    if(themeIcon)themeIcon.textContent=dark?'☀':'☾';
-    if(themeLabel)themeLabel.textContent=dark?'Light Mode':'Dark Mode';
-    if(themeButton){
-      themeButton.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
-      themeButton.setAttribute('aria-pressed',dark?'false':'true');
-      themeButton.title=dark?'Switch to light mode':'Switch to dark mode';
-    }
+    const dark=root.getAttribute('data-theme')!=='light';
+    themeButtons().forEach(button=>{
+      const icon=button.querySelector('[data-theme-icon]');
+      const label=button.querySelector('[data-theme-label]');
+      if(icon)icon.textContent=dark?'☀':'☾';
+      if(label)label.textContent=dark?'Light Mode':'Dark Mode';
+      button.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+      button.setAttribute('aria-pressed',dark?'false':'true');
+      button.title=dark?'Switch to light mode':'Switch to dark mode';
+    });
     if(themeMeta)themeMeta.setAttribute('content',dark?'#111318':'#f4f7fe');
   };
-  themeButton?.addEventListener('click',()=>{
-    const next=root.dataset.theme==='dark'?'light':'dark';
-    root.dataset.theme=next;
+  const setTheme=(theme)=>{
+    const next=theme==='light'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    root.style.colorScheme=next;
     try{
       localStorage.setItem('kryndexa-theme',next);
       localStorage.removeItem('multibot-theme');
     }catch{}
     refreshTheme();
+  };
+  document.addEventListener('click',event=>{
+    const button=event.target.closest('[data-theme-toggle]');
+    if(!button)return;
+    event.preventDefault();
+    event.stopPropagation();
+    setTheme(root.getAttribute('data-theme')==='light'?'dark':'light');
   });
   refreshTheme();
 
