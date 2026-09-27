@@ -44,7 +44,7 @@ const {
 const { getAnalytics } = require('../features/dataStore');
 const {
   listPlans, savePlan, getGuildSubscription, setGuildSubscription,
-  listSubscriptions, canUseFeature, listInvoices, listUsage,
+  listSubscriptions, getUserSubscription, setUserSubscription, listUserSubscriptions, canUseFeature, listInvoices, listUsage,
 } = require('../subscriptionStore');
 const {
   isBotOwner,
@@ -1665,8 +1665,8 @@ function startDashboard(client) {
 
   app.get('/dashboard/owner/subscriptions', requireAuth, requireBotOwner, async (req, res) => {
     try {
-      const [plans, subscriptions, invoices, usage] = await Promise.all([
-        listPlans(), listSubscriptions(), listInvoices(), listUsage(),
+      const [plans, subscriptions, userSubscriptions, invoices, usage] = await Promise.all([
+        listPlans(), listSubscriptions(), listUserSubscriptions(), listInvoices(), listUsage(),
       ]);
       const featureOptions = FEATURE_CATALOG.filter(f => f.key !== 'dashboard');
       const planCards = plans.map(plan => `<form class="owner-section subscription-plan-card" method="post" action="/dashboard/owner/subscriptions/plan/${encodeURIComponent(plan.tier)}">
@@ -1695,7 +1695,7 @@ function startDashboard(client) {
 
       const body = `<section class="owner-dashboard-shell subscription-management-page">
         <section class="owner-dashboard-hero"><div><span class="owner-access-badge"><i></i> OWNER ONLY</span><span class="eyebrow">BILLING & ENTITLEMENTS</span><h1>Subscription Management</h1><p>Configure Free, Premium, and Pro features, assign server subscriptions, and review billing/usage records.</p></div>
-        <div class="owner-dashboard-meta"><span><strong>${subscriptions.length}</strong> paid subscriptions</span><span><strong>${invoices.length}</strong> invoice records</span><span><strong>${usage.length}</strong> usage records</span></div></section>
+        <div class="owner-dashboard-meta"><span><strong>${subscriptions.length}</strong> server subscriptions</span><span><strong>${userSubscriptions.length}</strong> user subscriptions</span><span><strong>${invoices.length}</strong> invoice records</span><span><strong>${usage.length}</strong> usage records</span></div></section>
         <section class="owner-section"><div class="owner-section-heading"><div><span class="eyebrow">SERVER ACCESS</span><h2>Assign Subscription</h2><p>Manual entitlement controls. Payment-provider webhooks can call the same subscription store later.</p></div></div>
           <form class="paid-access-form" method="post" action="/dashboard/owner/subscriptions/assign">
             <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
@@ -1704,6 +1704,14 @@ function startDashboard(client) {
             <label>Internal Note<input name="note" maxlength="500" placeholder="Invoice, order, or support note"></label>
             <button class="btn" type="submit">Update Subscription</button>
           </form>
+          <form class="paid-access-form subscription-user-form" method="post" action="/dashboard/owner/subscriptions/assign-user">
+            <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+            <label>Discord User ID<input name="userId" pattern="[0-9]{10,32}" required placeholder="Discord user ID"></label>
+            <label>User Tier<select name="tier"><option value="free">Free</option><option value="premium">Premium</option><option value="pro">Pro</option></select></label>
+            <label>Internal Note<input name="note" maxlength="500" placeholder="Invoice, order, or support note"></label>
+            <button class="btn" type="submit">Update User Subscription</button>
+          </form>
+          <p class="owner-helper-text">${userSubscriptions.length} active user subscription${userSubscriptions.length === 1 ? '' : 's'} currently tracked.</p>
         </section>
         <div class="subscription-plan-grid">${planCards}</div>
         <section class="owner-section"><div class="owner-section-heading"><div><span class="eyebrow">ACTIVE ENTITLEMENTS</span><h2>Subscriptions</h2></div></div>
@@ -1749,6 +1757,16 @@ function startDashboard(client) {
     } catch (error) {
       console.error('[Subscriptions] Unable to assign subscription:', error);
       return res.status(500).send(error.message || 'Unable to update subscription.');
+    }
+  });
+
+  app.post('/dashboard/owner/subscriptions/assign-user', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      await setUserSubscription(req.body.userId, { tier: req.body.tier, note: req.body.note, grantedBy: req.session.user.id, provider: 'manual', status: 'active' });
+      return res.redirect('/dashboard/owner/subscriptions');
+    } catch (error) {
+      console.error('[Subscriptions] Unable to assign user subscription:', error);
+      return res.status(500).send(error.message || 'Unable to update user subscription.');
     }
   });
 
