@@ -2970,3 +2970,57 @@ html[data-theme="light"] .feature-requirement{color:#68758b!important}
   .feature-card-footer,.feature-actions,.guild-card-actions{justify-content:stretch}
   .feature-card-footer .btn,.feature-actions .btn,.guild-card-actions .btn{width:100%}
 }
+
+
+/* === Light-mode Advanced Server Feature modules === */
+html[data-theme="light"] #features .feature-card,
+html[data-theme="light"] #features form.feature-card{
+  background:#ffffff!important;
+  background-image:none!important;
+  color:#1b2559!important;
+  border-color:#dfe5ef!important;
+  box-shadow:0 8px 22px rgba(31,51,89,.07)!important;
+}
+html[data-theme="light"] #features .feature-card:hover{
+  background:#fbfcff!important;
+  border-color:#cfd6f6!important;
+}
+html[data-theme="light"] #features .feature-card h3,
+html[data-theme="light"] #features .feature-card label,
+html[data-theme="light"] #features .feature-card strong,
+html[data-theme="light"] #features .feature-title-wrap{
+  color:#1b2559!important;
+}
+html[data-theme="light"] #features .feature-description,
+html[data-theme="light"] #features .feature-priority,
+html[data-theme="light"] #features .feature-card small{
+  color:#68758b!important;
+}
+html[data-theme="light"] #features .feature-fields,
+html[data-theme="light"] #features .feature-requirement,
+html[data-theme="light"] #features .feature-toggle{
+  background:#f7f9fc!important;
+  background-image:none!important;
+  color:#1b2559!important;
+  border-color:#dfe5ef!important;
+}
+html[data-theme="light"] #features .feature-fields input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="light"] #features .feature-fields select,
+html[data-theme="light"] #features .feature-fields textarea{
+  background:#ffffff!important;
+  color:#1b2559!important;
+  border-color:#ccd5e2!important;
+}
+html[data-theme="light"] #features .feature-icon{
+  background:#eef2ff!important;
+  color:#4353cf!important;
+  border-color:#d9def8!important;
+}
+html[data-theme="light"] #features .feature-card .btn.secondary{
+  background:#f4f6fa!important;
+  color:#1b2559!important;
+  border-color:#d7deea!important;
+}
+html[data-theme="light"] #features .feature-card .btn.secondary:hover{
+  background:#e9edf5!important;
+}
