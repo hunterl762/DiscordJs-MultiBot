@@ -2692,3 +2692,75 @@ html[data-theme="light"] .dashboard-toolbar-hint,
 html[data-theme="light"] p{color:#68758b}
 html[data-theme="light"] footer{background:#fff;border-color:#dfe5ef;color:#68758b}
 html[data-theme="light"] .cookie-notice{background:#fff;border-color:#dfe5ef;color:#1b2559}
+
+
+/* === Legacy dark-rule compatibility for Light/System appearance === */
+html[data-theme="light"] body{
+  background:radial-gradient(circle at top,#ffffff 0,#f4f7fe 48%)!important;
+}
+html[data-theme="light"] header{
+  background:rgba(255,255,255,.95)!important;
+  border-bottom-color:#dfe5ef!important;
+}
+html[data-theme="light"] .brand,
+html[data-theme="light"] .guild-card,
+html[data-theme="light"] .form-grid input,
+html[data-theme="light"] .form-grid select{
+  color:#1b2559!important;
+}
+html[data-theme="light"] .guild-card,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .empty{
+  background:linear-gradient(180deg,#fff,#f8faff)!important;
+  border-color:#dfe5ef!important;
+}
+html[data-theme="light"] .guild-icon{background:#eef2f7!important;color:#1b2559!important}
+html[data-theme="light"] .form-grid input,
+html[data-theme="light"] .form-grid select,
+html[data-theme="light"] textarea{
+  background:#fff!important;
+  border-color:#ccd5e2!important;
+}
+html[data-theme="light"] .checks label{
+  background:#f7f9fc!important;
+  border-color:#dfe5ef!important;
+  color:#1b2559!important;
+}
+html[data-theme="light"] .dashboard-jump{
+  background:rgba(255,255,255,.94)!important;
+  border-color:#dfe5ef!important;
+}
+html[data-theme="light"] .dashboard-jump a{
+  background:#f1f4f9!important;
+  color:#43506a!important;
+}
+html[data-theme="light"] .dashboard-jump a:hover{
+  background:#e7ebff!important;
+  color:#3544c7!important;
+}
+html[data-theme="light"] .twitch-panel{
+  background:linear-gradient(180deg,#faf7ff,#fff 32%)!important;
+  border-color:#dccaf4!important;
+}
+html[data-theme="light"] .twitch-config-form{
+  background:#fcfaff!important;
+  border-color:#dccaf4!important;
+}
+html[data-theme="light"] .token-row span{
+  background:#f2ebfb!important;
+  color:#67439a!important;
+  border-color:#dccaf4!important;
+}
+html[data-theme="light"] a:not(.btn){color:#4f5ed5}
+html[data-theme="light"] .pill{
+  background:#eef1ff!important;
+  color:#4b58c8!important;
+  border-color:#cfd5fb!important;
+}
+html[data-theme="light"] .policy pre{color:#1b2559!important}
+html[data-theme="light"] .section-title h1,
+html[data-theme="light"] .hero h1,
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] strong{color:#1b2559}
