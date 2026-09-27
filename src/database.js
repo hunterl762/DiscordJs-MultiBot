@@ -21,6 +21,15 @@ const pool = mysql.createPool({
 });
 
 const schemaStatements = [
+  `CREATE TABLE IF NOT EXISTS service_health_samples (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    service VARCHAR(24) NOT NULL,
+    is_up TINYINT(1) NOT NULL,
+    latency_ms INT UNSIGNED NULL,
+    checked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_service_health_service_time (service, checked_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS guild_settings (
     guild_id VARCHAR(32) NOT NULL,
     prefix VARCHAR(5) NOT NULL DEFAULT '!',
