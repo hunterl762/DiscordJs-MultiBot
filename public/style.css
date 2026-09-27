@@ -3058,3 +3058,29 @@ html[data-theme="light"] #features .feature-card .btn.secondary:hover{
   .feature-card-footer,.feature-actions{width:100%!important}
   .feature-card-footer>.btn,.feature-actions .btn{width:100%;min-width:0}
 }
+
+
+/* === Bot & Panel Status === */
+.status-page{width:min(1120px,calc(100% - 32px));margin:34px auto 60px}
+.status-hero{padding:26px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 12px 34px #0002}
+.status-hero-row{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.status-hero h1{margin:6px 0 7px;font-size:32px;color:var(--text)}
+.status-hero p{margin:0;color:var(--muted)}
+.status-overall{display:inline-flex;align-items:center;gap:9px;padding:10px 13px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--text);font-size:12px;font-weight:850;white-space:nowrap}
+.status-overall i,.status-dot{width:10px;height:10px;border-radius:50%;background:#57f287;box-shadow:0 0 0 4px rgba(87,242,135,.12)}
+.is-degraded .status-overall i,.status-service-card.is-degraded .status-dot{background:#f0b232;box-shadow:0 0 0 4px rgba(240,178,50,.12)}
+.status-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.status-summary-grid>div{padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.status-summary-grid span{display:block;margin-bottom:6px;color:var(--muted);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.05em}
+.status-summary-grid strong{color:var(--text);font-size:21px}
+.status-services{display:grid;gap:12px}
+.status-service-card{padding:18px;border:1px solid var(--line);border-radius:15px;background:var(--panel)}
+.status-service-head{display:flex;align-items:center;gap:13px}
+.status-service-head>div{min-width:0;flex:1}
+.status-service-head h2{margin:2px 0 0;color:var(--text);font-size:17px}
+.status-service-head strong{padding:6px 9px;border-radius:999px;background:rgba(87,242,135,.11);color:#57c978;font-size:10px;text-transform:uppercase}
+.status-service-card.is-degraded .status-service-head strong{background:rgba(240,178,50,.12);color:#d59a22}
+.status-service-card p{margin:11px 0 0 23px;color:var(--muted)}
+.status-refresh-note{text-align:center;color:var(--muted);font-size:11px;margin:16px 0}
+@media(max-width:800px){.status-summary-grid{grid-template-columns:repeat(2,1fr)}.status-hero-row{align-items:flex-start;flex-direction:column}}
+@media(max-width:520px){.status-page{width:min(100% - 20px,1120px);margin-top:18px}.status-summary-grid{grid-template-columns:1fr}.status-overall{white-space:normal}.status-service-head{flex-wrap:wrap}.status-service-head strong{margin-left:23px}}
