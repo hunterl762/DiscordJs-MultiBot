@@ -240,7 +240,7 @@ function page(title, body, user, meta = {}) {
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
     <details class="nav-dropdown">
-      <summary>Explore <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+      <summary>Home <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
       <div class="nav-dropdown-menu">
         <a href="/">Home</a>
         <a href="/features">Features</a>
