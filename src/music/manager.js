@@ -57,6 +57,39 @@ function toTrack(video, requester) {
   };
 }
 
+async function resolvePlaylistWithYouTubeApi(playlistId, requester) {
+  const apiKey = String(process.env.YOUTUBE_API_KEY || '').trim();
+  if (!apiKey) return [];
+  const tracks = [];
+  let pageToken = '';
+  do {
+    const params = new URLSearchParams({
+      part: 'snippet,contentDetails',
+      playlistId,
+      maxResults: '50',
+      key: apiKey,
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    const response = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?${params}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`YouTube Data API playlist request failed (${response.status}): ${body.slice(0, 300)}`);
+    }
+    const data = await response.json();
+    for (const item of data.items || []) {
+      const videoId = item?.contentDetails?.videoId || item?.snippet?.resourceId?.videoId;
+      if (!videoId) continue;
+      tracks.push(toTrack({
+        id: videoId,
+        title: item?.snippet?.title,
+        channel: { name: item?.snippet?.videoOwnerChannelTitle || item?.snippet?.channelTitle },
+      }, requester));
+    }
+    pageToken = String(data.nextPageToken || '');
+  } while (pageToken);
+  return tracks.filter((track) => track.uri);
+}
+
 async function resolveTracks(query, requester) {
   const value = String(query || '').trim();
   if (!value) return { tracks: [], type: 'SEARCH' };
@@ -78,21 +111,34 @@ async function resolveTracks(query, requester) {
       const playlistUrl = playlistId
         ? `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`
         : value;
-      const playlist = await play.playlist_info(playlistUrl, { incomplete: true });
-      let videos = [];
+      let playlist = null;
+      let tracks = [];
       try {
-        videos = await playlist.all_videos();
+        playlist = await play.playlist_info(playlistUrl, { incomplete: true });
+        let videos = [];
+        try {
+          videos = await playlist.all_videos();
+        } catch (error) {
+          videos = Array.isArray(playlist.videos) ? playlist.videos : [];
+          console.warn(`[Music] play-dl playlist continuation failed; using ${videos.length} initial entries:`, error?.message || error);
+        }
+        tracks = videos.map((video) => toTrack(video, requester)).filter((track) => track.uri);
       } catch (error) {
-        // all_videos() follows continuation pages. If YouTube changes/breaks a
-        // continuation response, keep the entries already returned on page one.
-        videos = Array.isArray(playlist.videos) ? playlist.videos : [];
-        console.warn(`[Music] Playlist continuation failed; using ${videos.length} initially resolved entries:`, error?.message || error);
+        console.warn(`[Music] play-dl playlist parser failed for ${playlistId || 'unknown'}: ${error?.message || error}`);
       }
-      const tracks = videos
-        .map((video) => toTrack(video, requester))
-        .filter((track) => /^https:\/\/(?:www\.)?youtube\.com\/watch\?v=/i.test(track.uri));
+
+      // play-dl's playlist parser depends on YouTube's webpage layout and can
+      // break when fields such as response.contents move. Kryndexa already uses
+      // YouTube Data API v3 for alerts, so use it as a stable metadata fallback.
+      if (!tracks.length && playlistId && process.env.YOUTUBE_API_KEY) {
+        tracks = await resolvePlaylistWithYouTubeApi(playlistId, requester);
+        console.log(`[Music] YouTube Data API fallback resolved playlist ${playlistId}: ${tracks.length} track(s).`);
+      }
       if (!tracks.length) {
-        throw new Error(`YouTube playlist ${playlistId || playlist?.id || 'unknown'} resolved, but it contained no playable video entries.`);
+        const hint = process.env.YOUTUBE_API_KEY
+          ? 'Both the play-dl parser and YouTube Data API fallback returned no playable entries.'
+          : 'The play-dl playlist parser failed and YOUTUBE_API_KEY is not configured for the fallback.';
+        throw new Error(`Unable to resolve YouTube playlist ${playlistId || 'unknown'}. ${hint}`);
       }
       console.log(`[Music] Resolved YouTube playlist ${playlistId || playlist?.id || 'unknown'}: ${tracks.length} playable track(s).`);
       return { tracks, type: 'PLAYLIST', playlist: { id: playlistId || playlist?.id, title: playlist?.title } };
