@@ -279,13 +279,17 @@ function page(title, body, user, meta = {}) {
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
-    ${user ? `<details class="nav-dropdown">
-      <summary>Home <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+    ${user ? `
+    <a href="/">Home</a>
+    <a href="/features">Features</a>
+    <a href="/dashboard">Dashboard</a>
+    <details class="nav-dropdown">
+      <summary>Status &amp; Statistics <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
       <div class="nav-dropdown-menu">
-        <a href="/">Home</a><a href="/features">Features</a><a href="/status">Bot &amp; Panel Status</a><a href="/dashboard/statistics">Server Statistics</a>
+        <a href="/status">Bot &amp; Panel Status</a>
+        <a href="/dashboard/statistics">Server Statistics</a>
       </div>
     </details>
-    <a href="/dashboard">Dashboard</a>
     ${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}
     <details class="nav-dropdown">
       <summary>Legal <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
