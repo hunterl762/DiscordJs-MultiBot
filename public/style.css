@@ -3452,3 +3452,65 @@ html[data-theme="light"] #features .feature-card .btn.secondary:hover{
   .public-theme-switch button span{display:none}
   .public-theme-switch button{width:32px;padding:6px}
 }
+
+
+/* === Unified header actions, Appearance dropdown, and global hover menus === */
+.site-header .header-inner{display:flex!important;align-items:center!important;gap:18px!important}
+.site-header .header-actions{margin-left:auto!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:9px!important;flex-wrap:nowrap!important}
+.site-header .header-auth,.public-header-actions{display:flex!important;align-items:center!important;gap:9px!important;flex-wrap:nowrap!important}
+.site-header .header-actions .btn,.site-header .header-auth .btn,.public-header-actions .btn{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  min-height:40px!important;height:40px!important;margin:0!important;padding:8px 14px!important;
+  border-radius:10px!important;white-space:nowrap!important;line-height:1!important
+}
+.public-theme-dropdown{position:relative!important;flex:0 0 auto!important}
+.public-theme-dropdown>summary{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;
+  min-height:40px!important;height:40px!important;padding:8px 12px!important;
+  border:1px solid var(--line)!important;border-radius:10px!important;background:var(--panel2)!important;
+  color:var(--text)!important;font-size:11px!important;font-weight:800!important;cursor:pointer!important;list-style:none!important
+}
+.public-theme-dropdown>summary::-webkit-details-marker{display:none!important}
+.public-theme-dropdown .theme-dropdown-menu{right:0!important;left:auto!important;min-width:180px!important}
+.theme-dropdown-menu button{
+  width:100%!important;min-height:38px!important;padding:8px 10px!important;border:0!important;border-radius:8px!important;
+  display:grid!important;grid-template-columns:22px 1fr 18px!important;align-items:center!important;gap:7px!important;
+  background:transparent!important;color:var(--text)!important;text-align:left!important;font:inherit!important;font-size:11px!important;cursor:pointer!important
+}
+.theme-dropdown-menu button:hover{background:var(--panel2)!important}
+.theme-dropdown-menu button b{visibility:hidden!important;color:var(--accent)!important;text-align:right!important}
+.theme-dropdown-menu button.is-active b{visibility:visible!important}
+
+/* Every details-based navigation menu opens on desktop hover/focus on every page. */
+@media(hover:hover) and (pointer:fine){
+  details.nav-dropdown,details.account-dropdown,.account-submenu{position:relative!important}
+  details.nav-dropdown>.nav-dropdown-menu,
+  details.account-dropdown>.account-dropdown-menu,
+  .account-submenu>.account-submenu-menu{
+    display:block!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;
+    transform:translateY(-6px)!important;transition:opacity .14s ease,transform .14s ease,visibility .14s ease!important
+  }
+  details.nav-dropdown:hover>.nav-dropdown-menu,
+  details.nav-dropdown:focus-within>.nav-dropdown-menu,
+  details.nav-dropdown[open]>.nav-dropdown-menu,
+  details.account-dropdown:hover>.account-dropdown-menu,
+  details.account-dropdown:focus-within>.account-dropdown-menu,
+  details.account-dropdown[open]>.account-dropdown-menu,
+  .account-submenu:hover>.account-submenu-menu,
+  .account-submenu:focus-within>.account-submenu-menu{
+    opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:translateY(0)!important
+  }
+}
+@media(max-width:900px){
+  .site-header .header-inner{gap:10px!important}
+  .site-header .header-actions{gap:6px!important}
+  .site-header .header-actions .btn,.site-header .header-auth .btn,.public-header-actions .btn{padding:8px 10px!important}
+  .public-theme-dropdown>summary{padding:8px 10px!important}
+}
+@media(max-width:680px){
+  .site-header .header-actions{flex-wrap:nowrap!important}
+  .public-theme-dropdown>summary{font-size:0!important;width:40px!important;padding:8px!important}
+  .public-theme-dropdown>summary:before{content:"◐";font-size:15px!important}
+  .public-theme-dropdown .nav-dropdown-chevron{display:none!important}
+  .public-header-actions .btn{font-size:10px!important;padding:8px 9px!important}
+}
