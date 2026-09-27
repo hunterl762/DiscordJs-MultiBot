@@ -28,7 +28,7 @@ const { postTicketPanel } = require('../tickets/ticketService');
 const { escapeHtml } = require('../utils/html');
 const { commandCatalog } = require('../bot/commandRegistry');
 const { getCommandStateObject, setCommandEnabled } = require('../commandSettingsStore');
-const { getGuildFeatures, saveFeature } = require('../features/store');
+const { getGuildFeatures, saveFeature, clearFeatureCache } = require('../features/store');
 const { FEATURE_CATALOG, getFeatureDefinition, isFeatureEnvironmentEnabled } = require('../features/catalog');
 const { listAutomationRules, createAutomationRule, deleteAutomationRule } = require('../features/automationStore');
 const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encryptedSessionStore');
@@ -1741,6 +1741,7 @@ function startDashboard(client) {
         streamerLimit: req.body.streamerLimit,
         features: features.filter(key => allowed.has(key)),
       });
+      clearFeatureCache();
       return res.redirect('/dashboard/owner/subscriptions');
     } catch (error) {
       console.error('[Subscriptions] Unable to save plan:', error);
@@ -1753,6 +1754,7 @@ function startDashboard(client) {
       const guildId = String(req.body.guildId || '').trim();
       if (!client.guilds.cache.has(guildId)) return res.status(400).send('Choose a connected Discord server.');
       await setGuildSubscription(guildId, { tier: req.body.tier, note: req.body.note, grantedBy: req.session.user.id, provider: 'manual', status: 'active' });
+      clearFeatureCache(guildId);
       return res.redirect('/dashboard/owner/subscriptions');
     } catch (error) {
       console.error('[Subscriptions] Unable to assign subscription:', error);
