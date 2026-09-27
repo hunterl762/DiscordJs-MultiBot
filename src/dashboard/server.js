@@ -269,7 +269,8 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('kryndexa-theme-mode');const choice=['system','light','dark'].includes(saved)?saved:'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.setAttribute('data-theme',theme);document.documentElement.setAttribute('data-theme-mode',choice);}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260927-theme-split"><link id="lightThemeStylesheet" rel="stylesheet" href="/light.css?v=20260927-theme-split" disabled>
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link id="mainStylesheet" rel="stylesheet" href="/style.css?v=20260927-theme-split"><link id="lightThemeStylesheet" rel="stylesheet" href="/light.css?v=20260927-theme-split" disabled>
+<script>(()=>{const refreshStyles=()=>{const stamp=Math.floor(Date.now()/300000);for(const id of ['mainStylesheet','lightThemeStylesheet']){const link=document.getElementById(id);if(!link)continue;const url=new URL(link.href,location.href);url.searchParams.set('refresh',stamp);link.href=url.toString();}};setInterval(refreshStyles,300000);})();</script>
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
