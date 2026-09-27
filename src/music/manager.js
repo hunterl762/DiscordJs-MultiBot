@@ -9,6 +9,11 @@ const {
   joinVoiceChannel,
 } = require('@discordjs/voice');
 const play = require('@iamtraction/play-dl');
+const ffmpegPath = require('ffmpeg-static');
+
+// prism-media looks for FFMPEG_PATH before falling back to a system PATH lookup.
+// Bundling ffmpeg-static keeps local Windows installs self-contained.
+if (ffmpegPath && !process.env.FFMPEG_PATH) process.env.FFMPEG_PATH = ffmpegPath;
 
 let clientRef = null;
 let initialized = false;
