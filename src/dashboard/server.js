@@ -463,19 +463,35 @@ function renderPrivacyPolicy(markdown) {
 
 function resolveOAuthRedirectUri(req) {
   const configured = String(process.env.DISCORD_REDIRECT_URI || '').trim();
-  if (configured) return configured;
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      url.hash = '';
+      return url.toString();
+    } catch {
+      throw new Error('DISCORD_REDIRECT_URI must be a valid absolute URL.');
+    }
+  }
 
   const baseUrl = String(process.env.BASE_URL || '').trim();
   if (baseUrl) {
     try {
       return new URL('/auth/callback', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
     } catch {
-      // Fall through to the current request URL.
+      throw new Error('BASE_URL must be a valid absolute URL.');
     }
   }
 
-  const protocol = req.protocol || 'http';
-  const host = req.get('host');
+  // Never let a reverse proxy turn the production OAuth callback into an
+  // internal http:// address. This is the exact URI registered with Discord.
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://kryndexabot.xyz/auth/callback';
+  }
+
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol || 'http';
+  const host = forwardedHost || req.get('host');
   return `${protocol}://${host}/auth/callback`;
 }
 
