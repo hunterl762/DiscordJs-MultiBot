@@ -263,7 +263,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('kryndexa-theme-mode');const choice=['system','light','dark'].includes(saved)?saved:'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.setAttribute('data-theme',theme);document.documentElement.setAttribute('data-theme-mode',choice);}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-user-settings">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-owner-server-list">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -358,6 +358,21 @@ ${cookieNotice}
     continueToLogin=true;
     showCookieNotice();
   }));
+
+  const ownerServerSearch=document.querySelector('[data-owner-server-search]');
+  const filterOwnerServers=()=>{
+    if(!ownerServerSearch)return;
+    const query=ownerServerSearch.value.trim().toLowerCase();
+    const rows=Array.from(document.querySelectorAll('[data-owner-guild-row]'));
+    let visible=0;
+    rows.forEach(row=>{const show=!query||row.dataset.search.includes(query);row.hidden=!show;if(show)visible++;});
+    const count=document.querySelector('[data-owner-server-count]');
+    if(count)count.textContent=(query?visible:rows.length).toLocaleString()+' server'+((query?visible:rows.length)===1?'':'s');
+    const empty=document.querySelector('[data-owner-server-empty]');
+    if(empty)empty.hidden=visible!==0;
+  };
+  ownerServerSearch?.addEventListener('input',filterOwnerServers);
+  document.querySelector('[data-owner-server-clear]')?.addEventListener('click',()=>{if(!ownerServerSearch)return;ownerServerSearch.value='';filterOwnerServers();ownerServerSearch.focus();});
 
   const toast=document.getElementById('dashboardToast');let toastTimer;
   const showToast=(message,kind='success')=>{if(!toast)return;toast.textContent=message;toast.className='dashboard-toast is-visible '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.className='dashboard-toast',2300);};
@@ -1504,6 +1519,22 @@ function startDashboard(client) {
       .map((guild) => `<option value="${guild.id}">${escapeHtml(guild.name)} • ${guild.id}</option>`)
       .join('');
 
+    const ownerGuilds = [...client.guilds.cache.values()]
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const ownerGuildRows = ownerGuilds.length
+      ? ownerGuilds.map((guild) => {
+          const owner = guild.members.cache.get(guild.ownerId);
+          const iconUrl = guild.iconURL({ extension: 'png', size: 64 });
+          const joinedAt = guild.joinedAt instanceof Date ? guild.joinedAt.toLocaleDateString('en-US') : 'Unknown';
+          return `<tr data-owner-guild-row data-search="${escapeHtml([guild.name, guild.id, owner?.user?.username || '', guild.ownerId || ''].join(' ').toLowerCase())}">
+            <td><div class="owner-server-name">${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : '<span class="owner-server-icon-fallback">K</span>'}<div><strong>${escapeHtml(guild.name)}</strong><small>${escapeHtml(guild.id)}</small></div></div></td>
+            <td data-sort-value="${Number(guild.memberCount || 0)}">${Number(guild.memberCount || 0).toLocaleString()}</td>
+            <td><strong>${escapeHtml(owner?.user?.username || 'Unknown')}</strong><small class="owner-server-owner-id">${escapeHtml(guild.ownerId || '')}</small></td>
+            <td data-sort-value="${guild.joinedTimestamp || 0}">${escapeHtml(joinedAt)}</td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="4">Kryndexa is not currently connected to any servers.</td></tr>';
+
     const paidAccessCards = paidStreamAccess.length
       ? paidStreamAccess.map((access) => {
           const guild = client.guilds.cache.get(access.guildId);
@@ -1525,6 +1556,28 @@ function startDashboard(client) {
         <div class="owner-dashboard-meta">
           <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
           <span><strong>${paidStreamAccess.length.toLocaleString()}</strong> paid Stream Alert servers</span>
+        </div>
+      </section>
+
+      <section class="owner-section owner-server-directory">
+        <div class="owner-section-heading owner-server-directory-heading">
+          <div>
+            <span class="eyebrow">SERVER DIRECTORY</span>
+            <h2>All Bot Servers</h2>
+            <p>Search every Discord server Kryndexa is currently connected to.</p>
+          </div>
+          <span class="pill subtle" data-owner-server-count>${ownerGuilds.length.toLocaleString()} servers</span>
+        </div>
+        <div class="owner-server-toolbar">
+          <label class="owner-server-search"><span>Search servers</span><input type="search" data-owner-server-search placeholder="Search name, server ID, owner, or owner ID…" autocomplete="off"></label>
+          <button class="btn secondary" type="button" data-owner-server-clear>Clear</button>
+        </div>
+        <div class="table-wrap owner-server-table-wrap">
+          <table class="owner-server-table">
+            <thead><tr><th>Server</th><th>Members</th><th>Owner</th><th>Bot Joined</th></tr></thead>
+            <tbody data-owner-server-body>${ownerGuildRows}</tbody>
+          </table>
+          <div class="empty owner-server-empty" data-owner-server-empty hidden>No servers match that search.</div>
         </div>
       </section>
 
