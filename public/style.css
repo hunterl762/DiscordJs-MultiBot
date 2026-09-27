@@ -3133,3 +3133,50 @@ html[data-theme="light"] #features .feature-card .btn.secondary:hover{
 .status-footer-row i{width:6px;height:6px;border-radius:50%;background:#57f287}
 @media(max-width:900px){.status-page-v2 .status-hero{align-items:flex-start;flex-direction:column}.status-overall-card{width:100%;min-width:0}.status-metric-grid{grid-template-columns:repeat(2,1fr)}.status-runtime-panel{grid-template-columns:repeat(2,1fr)}.status-runtime-panel>div:nth-child(2){border-right:0}.status-runtime-panel>div:nth-child(-n+2){border-bottom:1px solid var(--line)}}
 @media(max-width:600px){.status-page-v2 .status-hero{padding:20px}.status-hero-main h1{font-size:28px}.status-metric-grid{grid-template-columns:1fr}.status-section{padding:14px}.status-service-title{align-items:flex-start;flex-direction:column}.status-badge{align-self:flex-start}.status-service-metric{justify-content:flex-start}.status-runtime-panel{grid-template-columns:1fr}.status-runtime-panel>div{border-right:0!important;border-bottom:1px solid var(--line)}.status-runtime-panel>div:last-child{border-bottom:0}.status-footer-row{align-items:stretch;flex-direction:column}.status-footer-row .btn{width:100%}}
+
+
+/* === Status page v3: website-matched column dashboard === */
+.status-page.status-page-v2{width:min(1240px,calc(100% - 36px));max-width:1240px;margin:32px auto 56px;display:block}
+.status-page-v2 .status-hero{display:grid!important;grid-template-columns:minmax(0,1.5fr) minmax(300px,.7fr)!important;align-items:center!important;gap:24px!important;padding:28px!important;border:1px solid var(--line)!important;border-radius:18px!important;background:var(--panel)!important}
+.status-page-v2 .status-overall-card{width:100%!important;min-width:0!important}
+.status-page-v2 .status-metric-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:12px!important;margin:14px 0!important}
+.status-page-v2 .status-metric-grid article{min-height:104px!important;padding:16px!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--panel)!important}
+.status-page-v2 .status-section{display:block!important;margin-top:14px!important;padding:20px!important;border:1px solid var(--line)!important;border-radius:17px!important;background:var(--panel)!important}
+.status-page-v2 .status-services{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important}
+.status-page-v2 .status-service-card{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:12px!important;min-height:190px!important;padding:18px!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--panel2)!important}
+.status-page-v2 .status-service-icon{width:44px!important;height:44px!important}
+.status-page-v2 .status-service-content{display:flex!important;flex:1!important;flex-direction:column!important}
+.status-page-v2 .status-service-title{display:flex!important;flex:1!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-start!important;gap:9px!important}
+.status-page-v2 .status-service-title>div{width:100%!important}
+.status-page-v2 .status-service-title h2{font-size:17px!important;margin:0 0 5px!important}
+.status-page-v2 .status-service-title p{font-size:11px!important;line-height:1.55!important;margin:0!important}
+.status-page-v2 .status-badge{order:-1!important;align-self:flex-start!important}
+.status-page-v2 .status-service-metric{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;margin-top:14px!important;padding-top:12px!important;border-top:1px solid var(--line)!important}
+.status-page-v2 .status-service-metric span{font-size:10px!important}
+.status-page-v2 .status-service-metric strong{font-size:12px!important}
+.status-page-v2 .status-runtime-panel{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;margin-top:14px!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--panel)!important;overflow:hidden!important}
+.status-page-v2 .status-runtime-panel>div{min-width:0!important;padding:15px 17px!important;border-right:1px solid var(--line)!important;border-bottom:0!important}
+.status-page-v2 .status-runtime-panel>div:last-child{border-right:0!important}
+.status-page-v2 .status-runtime-panel span{font-size:9px!important;letter-spacing:.07em!important}
+.status-page-v2 .status-runtime-panel strong{font-size:12px!important;margin-top:5px!important}
+.status-page-v2 .status-footer-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:14px!important;margin-top:12px!important;padding:12px 14px!important;border:1px solid var(--line)!important;border-radius:12px!important;background:var(--panel)!important}
+.status-page-v2 .status-footer-row .btn{width:auto!important;min-width:112px!important}
+@media(max-width:980px){
+  .status-page-v2 .status-hero{grid-template-columns:1fr!important}
+  .status-page-v2 .status-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .status-page-v2 .status-services{grid-template-columns:1fr!important}
+  .status-page-v2 .status-service-card{min-height:0!important}
+  .status-page-v2 .status-runtime-panel{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .status-page-v2 .status-runtime-panel>div:nth-child(2){border-right:0!important}
+  .status-page-v2 .status-runtime-panel>div:nth-child(-n+2){border-bottom:1px solid var(--line)!important}
+}
+@media(max-width:580px){
+  .status-page.status-page-v2{width:calc(100% - 20px)!important;margin-top:18px!important}
+  .status-page-v2 .status-hero{padding:19px!important}
+  .status-page-v2 .status-metric-grid{grid-template-columns:1fr!important}
+  .status-page-v2 .status-runtime-panel{grid-template-columns:1fr!important}
+  .status-page-v2 .status-runtime-panel>div{border-right:0!important;border-bottom:1px solid var(--line)!important}
+  .status-page-v2 .status-runtime-panel>div:last-child{border-bottom:0!important}
+  .status-page-v2 .status-footer-row{align-items:stretch!important;flex-direction:column!important}
+  .status-page-v2 .status-footer-row .btn{width:100%!important}
+}
