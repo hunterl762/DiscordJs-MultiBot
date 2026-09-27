@@ -1,51 +1,19 @@
 const { EmbedBuilder } = require('discord.js');
+const {
+  AudioPlayerStatus,
+  NoSubscriberBehavior,
+  VoiceConnectionStatus,
+  createAudioPlayer,
+  createAudioResource,
+  entersState,
+  joinVoiceChannel,
+} = require('@discordjs/voice');
+const play = require('@iamtraction/play-dl');
 
-let Kazagumo = null;
-let Connectors = null;
-let kazagumo = null;
+let clientRef = null;
 let initialized = false;
+const players = new Map();
 const manualStopUntil = new Map();
-const playerEndReasons = new WeakMap();
-const playerExceptions = new WeakMap();
-const playerStarted = new WeakSet();
-const playbackFallbackAttempts = new WeakMap();
-
-const connectionState = {
-  state: 'idle',
-  ready: false,
-  nodeName: '',
-  endpoint: '',
-  secure: false,
-  lastError: '',
-  sourceManagers: [],
-  plugins: [],
-  changedAt: null,
-};
-
-function setConnectionState(state, updates = {}) {
-  connectionState.state = state;
-  connectionState.ready = state === 'ready';
-  connectionState.changedAt = new Date().toISOString();
-  Object.assign(connectionState, updates);
-}
-
-function loadMusicDependencies() {
-  if (Kazagumo && Connectors) return true;
-
-  try {
-    ({ Kazagumo } = require('kazagumo'));
-    ({ Connectors } = require('shoukaku'));
-    return true;
-  } catch (error) {
-    const message = error?.message || String(error);
-    setConnectionState('dependency_error', { lastError: message });
-    console.error(
-      '[Music] Kazagumo/Shoukaku dependencies are unavailable. Music will stay disabled; run npm install to enable it:',
-      message,
-    );
-    return false;
-  }
-}
 
 function envEnabled(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
@@ -53,245 +21,6 @@ function envEnabled(value) {
 
 function musicGloballyEnabled() {
   return envEnabled(process.env.MUSIC_ENABLED);
-}
-
-function lavalinkConfigured() {
-  return Boolean(
-    String(process.env.LAVALINK_URL || '').trim()
-    && String(process.env.LAVALINK_PASSWORD || '').trim(),
-  );
-}
-
-function lavalinkNode() {
-  const raw = String(process.env.LAVALINK_URL || '127.0.0.1:2333').trim();
-  const secureFromUrl = /^(?:wss|https):/i.test(raw);
-  const url = raw
-    .replace(/^wss?:\/\//i, '')
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/$/, '');
-
-  return {
-    name: String(process.env.LAVALINK_NODE_NAME || 'Kryndexa').trim() || 'Kryndexa',
-    url,
-    auth: String(process.env.LAVALINK_PASSWORD || ''),
-    secure: secureFromUrl || envEnabled(process.env.LAVALINK_SECURE),
-  };
-}
-
-function getMusicManager() {
-  return kazagumo;
-}
-
-function getMusicStatus() {
-  return { ...connectionState };
-}
-
-function isMusicReady() {
-  return Boolean(kazagumo && connectionState.ready);
-}
-
-function musicUnavailableMessage() {
-  if (!musicGloballyEnabled()) {
-    return 'The Music module is disabled by MUSIC_ENABLED.';
-  }
-
-  if (!lavalinkConfigured()) {
-    return 'Music is enabled, but LAVALINK_URL or LAVALINK_PASSWORD is missing.';
-  }
-
-  const status = getMusicStatus();
-
-  if (status.state === 'dependency_error') {
-    return 'The music dependencies are unavailable. Run npm install and restart the bot.';
-  }
-
-  if (status.state === 'connecting') {
-    return `Lavalink is still connecting to ${status.endpoint || 'the configured node'}. Try the command again in a few seconds.`;
-  }
-
-  if (status.state === 'error') {
-    return `Lavalink connection failed${status.endpoint ? ` for ${status.endpoint}` : ''}: ${status.lastError || 'unknown connection error'}`;
-  }
-
-  if (status.state === 'closed' || status.state === 'disconnected') {
-    return `Lavalink disconnected${status.endpoint ? ` from ${status.endpoint}` : ''}${status.lastError ? `: ${status.lastError}` : '.'}`;
-  }
-
-  if (status.state === 'timeout') {
-    return `Lavalink did not become ready within the startup timeout${status.endpoint ? ` at ${status.endpoint}` : ''}. Check the Lavalink console, port, password, and LAVALINK_SECURE setting.`;
-  }
-
-  return 'The Lavalink music service has not finished initializing yet.';
-}
-
-async function probeLavalinkInfo() {
-  const node = lavalinkNode();
-  const protocol = node.secure ? 'https' : 'http';
-  const endpoint = `${protocol}://${node.url}/v4/info`;
-
-  try {
-    const response = await fetch(endpoint, {
-      headers: {
-        Authorization: node.auth,
-        Accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(5_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const info = await response.json();
-    const sourceManagers = Array.isArray(info?.sourceManagers)
-      ? info.sourceManagers.map((item) => String(item))
-      : [];
-    const plugins = Array.isArray(info?.plugins)
-      ? info.plugins.map((plugin) => ({
-          name: String(plugin?.name || 'unknown'),
-          version: String(plugin?.version || ''),
-        }))
-      : [];
-
-    setConnectionState(connectionState.state, {
-      sourceManagers,
-      plugins,
-    });
-
-    console.log(
-      `[Music] Lavalink sources: ${sourceManagers.length ? sourceManagers.join(', ') : 'none reported'}.`,
-    );
-    console.log(
-      `[Music] Lavalink plugins: ${plugins.length ? plugins.map((plugin) => `${plugin.name}${plugin.version ? `@${plugin.version}` : ''}`).join(', ') : 'none reported'}.`,
-    );
-
-    if (!sourceManagers.some((source) => source.toLowerCase().includes('youtube'))) {
-      console.warn(
-        '[Music] YouTube source is not loaded in Lavalink. YouTube names/URLs will return no playable tracks until the official youtube-source plugin is configured.',
-      );
-    }
-
-    return info;
-  } catch (error) {
-    console.warn(
-      `[Music] Unable to read Lavalink /v4/info diagnostics: ${error?.message || error}`,
-    );
-    return null;
-  }
-}
-
-function playbackFallbackEnabled() {
-  const raw = String(process.env.MUSIC_PLAYBACK_FALLBACK_ENABLED || 'true').trim().toLowerCase();
-  return ['1', 'true', 'yes', 'on'].includes(raw);
-}
-
-function playbackFallbackEngine() {
-  const raw = String(process.env.MUSIC_PLAYBACK_FALLBACK_ENGINE || 'soundcloud').trim().toLowerCase();
-  return ['soundcloud', 'youtube', 'youtube_music'].includes(raw) ? raw : 'soundcloud';
-}
-
-function exceptionSummary(data) {
-  const exception = data?.exception || data || {};
-  return {
-    message: String(exception?.message || '').trim(),
-    cause: String(exception?.cause || '').trim(),
-    severity: String(exception?.severity || '').trim(),
-  };
-}
-
-async function tryPlaybackFallback(player, failedTrack) {
-  if (!playbackFallbackEnabled() || !failedTrack) return false;
-
-  const sourceName = String(failedTrack?.sourceName || '').toLowerCase();
-  const engine = playbackFallbackEngine();
-
-  // Do not retry into the same source after that source has already failed.
-  if (engine === 'soundcloud' && sourceName === 'soundcloud') return false;
-
-  let attempted = playbackFallbackAttempts.get(player);
-  if (!attempted) {
-    attempted = new Set();
-    playbackFallbackAttempts.set(player, attempted);
-  }
-
-  const key = [
-    String(failedTrack?.identifier || ''),
-    String(failedTrack?.title || ''),
-    engine,
-  ].join('|');
-
-  if (attempted.has(key)) return false;
-  attempted.add(key);
-
-  const query = [failedTrack?.title, failedTrack?.author]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ');
-
-  if (!query) return false;
-
-  console.warn(
-    `[Music] Trying ${engine} playback fallback for "${failedTrack.title || query}" in guild ${player.guildId}.`,
-  );
-
-  try {
-    const result = await player.search(query, {
-      requester: failedTrack.requester,
-      engine,
-    });
-
-    const fallbackTrack = result?.tracks?.[0];
-    if (!fallbackTrack) {
-      console.warn(
-        `[Music] ${engine} playback fallback returned no tracks for "${query}".`,
-      );
-      return false;
-    }
-
-    player.queue.add(fallbackTrack);
-    await player.play();
-
-    console.log(
-      `[Music] Playback fallback queued via ${engine}: "${fallbackTrack.title}" by ${fallbackTrack.author || 'Unknown'}.`,
-    );
-
-    return true;
-  } catch (error) {
-    console.warn(
-      `[Music] ${engine} playback fallback failed: ${error?.message || error}`,
-    );
-    return false;
-  }
-}
-
-function markManualStop(guildId, cooldownMs = 2_500) {
-  const id = String(guildId || '');
-  if (!id) return;
-  manualStopUntil.set(id, Date.now() + Math.max(500, Number(cooldownMs || 2_500)));
-}
-
-function manualStopActive(guildId) {
-  const id = String(guildId || '');
-  const until = Number(manualStopUntil.get(id) || 0);
-  if (!until) return false;
-  if (Date.now() >= until) {
-    manualStopUntil.delete(id);
-    return false;
-  }
-  return true;
-}
-
-async function waitForManualStopCooldown(guildId) {
-  const id = String(guildId || '');
-  const until = Number(manualStopUntil.get(id) || 0);
-  const remaining = until - Date.now();
-
-  if (remaining > 0) {
-    console.log(`[Music] Waiting ${remaining}ms for the previous voice session in guild ${id} to finish disconnecting.`);
-    await new Promise((resolve) => setTimeout(resolve, remaining));
-  }
-
-  manualStopUntil.delete(id);
 }
 
 function formatDuration(ms) {
@@ -304,295 +33,272 @@ function formatDuration(ms) {
     : `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-async function waitForMusicReady(timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    if (connectionState.ready) return true;
-
-    // Stop waiting early for failures that will not resolve without configuration changes.
-    if (['dependency_error', 'disabled', 'unconfigured'].includes(connectionState.state)) {
-      return false;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  return connectionState.ready;
+function toTrack(video, requester) {
+  const durationSeconds = Number(video?.durationInSec || 0);
+  return {
+    title: String(video?.title || 'Unknown track'),
+    author: String(video?.channel?.name || video?.channel?.title || 'Unknown'),
+    uri: String(video?.url || ''),
+    realUri: String(video?.url || ''),
+    length: durationSeconds * 1000,
+    isStream: Boolean(video?.live),
+    requester,
+  };
 }
 
-async function initMusic(client, { waitForReady = true } = {}) {
-  if (initialized) return kazagumo;
-  initialized = true;
+async function resolveTracks(query, requester) {
+  const value = String(query || '').trim();
+  if (!value) return { tracks: [], type: 'SEARCH' };
 
-  if (!musicGloballyEnabled()) {
-    setConnectionState('disabled', {
-      nodeName: '',
-      endpoint: '',
-      secure: false,
-      lastError: '',
-    });
-    console.log('[Music] MUSIC_ENABLED is false; music runtime disabled.');
-    return null;
-  }
-
-  if (!lavalinkConfigured()) {
-    setConnectionState('unconfigured', {
-      nodeName: '',
-      endpoint: '',
-      secure: false,
-      lastError: 'LAVALINK_URL or LAVALINK_PASSWORD is missing.',
-    });
-    console.warn('[Music] MUSIC_ENABLED is true, but LAVALINK_URL/LAVALINK_PASSWORD are not configured.');
-    return null;
-  }
-
-  if (!loadMusicDependencies()) {
-    initialized = false;
-    return null;
-  }
-
-  const node = lavalinkNode();
-  const endpoint = `${node.secure ? 'wss' : 'ws'}://${node.url}`;
-  const connectTimeoutMs = Math.max(
-    1_000,
-    Number(process.env.LAVALINK_CONNECT_TIMEOUT_MS || 15_000),
-  );
-
-  setConnectionState('connecting', {
-    nodeName: node.name,
-    endpoint,
-    secure: node.secure,
-    lastError: '',
-  });
-
-  console.log(
-    `[Music] Connecting to Lavalink node ${node.name} at ${endpoint} (timeout ${connectTimeoutMs}ms)...`,
-  );
-
-  try {
-    kazagumo = new Kazagumo(
-      {
-        defaultSearchEngine: process.env.MUSIC_DEFAULT_SEARCH_ENGINE || 'youtube',
-        send: (guildId, payload) => {
-          const guild = client.guilds.cache.get(guildId);
-          if (guild) guild.shard.send(payload);
-        },
-      },
-      new Connectors.DiscordJS(client),
-      [node],
-    );
-  } catch (error) {
-    const message = error?.message || String(error);
-    kazagumo = null;
-    initialized = false;
-    setConnectionState('error', { lastError: message });
-    console.error('[Music] Failed to initialize Kazagumo/Shoukaku:', error);
-    return null;
-  }
-
-  kazagumo.shoukaku.on('ready', (name, reconnected) => {
-    setConnectionState('ready', {
-      nodeName: String(name || node.name),
-      endpoint,
-      secure: node.secure,
-      lastError: '',
-    });
-    console.log(
-      `[Music] Lavalink node ${name || node.name} ready at ${endpoint}${reconnected ? ' (reconnected)' : ''}.`,
-    );
-    probeLavalinkInfo().catch(() => null);
-  });
-
-  kazagumo.shoukaku.on('error', (name, error) => {
-    const message = error?.message || String(error);
-    setConnectionState('error', {
-      nodeName: String(name || node.name),
-      endpoint,
-      lastError: message,
-    });
-    console.error(`[Music] Lavalink node ${name || node.name} error at ${endpoint}:`, error);
-  });
-
-  kazagumo.shoukaku.on('close', (name, code, reason) => {
-    const reasonText = String(reason || '').trim();
-    const detail = [
-      Number.isFinite(Number(code)) ? `code ${code}` : '',
-      reasonText,
-    ].filter(Boolean).join(' • ');
-
-    setConnectionState('closed', {
-      nodeName: String(name || node.name),
-      endpoint,
-      lastError: detail,
-    });
-    console.warn(
-      `[Music] Lavalink node ${name || node.name} closed at ${endpoint}${detail ? `: ${detail}` : ''}.`,
-    );
-  });
-
-  kazagumo.shoukaku.on('disconnect', (name) => {
-    setConnectionState('disconnected', {
-      nodeName: String(name || node.name),
-      endpoint,
-      lastError: 'WebSocket disconnected.',
-    });
-    console.warn(`[Music] Lavalink node ${name || node.name} disconnected from ${endpoint}.`);
-  });
-
-  kazagumo.on('playerCreate', (player) => {
-    // Kazagumo emits playerEmpty for both natural queue exhaustion and loadFailed.
-    // Capture Lavalink's raw end reason before Kazagumo processes it so we can
-    // distinguish an actual empty queue from a failed track load.
-    if (typeof player?.shoukaku?.prependListener === 'function') {
-      player.shoukaku.prependListener('exception', (data) => {
-        const summary = exceptionSummary(data);
-        playerExceptions.set(player, summary);
-        console.error(
-          `[Music] Lavalink track exception in guild ${player.guildId}: severity=${summary.severity || 'unknown'}; message=${summary.message || 'unknown'}; cause=${summary.cause || 'unknown'}.`,
-        );
-      });
-
-      player.shoukaku.prependListener('end', (data) => {
-        playerEndReasons.set(player, String(data?.reason || 'unknown'));
-      });
-    }
-  });
-
-  kazagumo.on('playerStart', (player, track) => {
-    playerStarted.add(player);
-    playerEndReasons.delete(player);
-    playerExceptions.delete(player);
-    const channel = client.channels.cache.get(player.textId);
-    if (!channel?.isTextBased()) return;
-    channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor(0x6c5ce7)
-        .setTitle('🎵 Now Playing')
-        .setDescription(`**[${track.title}](${track.uri || track.realUri || 'https://discord.com'})**`)
-        .addFields(
-          { name: 'Artist', value: String(track.author || 'Unknown').slice(0, 1024), inline: true },
-          { name: 'Duration', value: track.isStream ? 'Live stream' : formatDuration(track.length), inline: true },
-        )
-        .setTimestamp()],
-    }).catch(() => null);
-  });
-
-  kazagumo.on('playerEmpty', async (player) => {
-    const guildId = String(player?.guildId || '');
-    const currentPlayer = guildId ? kazagumo?.players?.get(guildId) : null;
-
-    // A delayed event from a destroyed player must never tear down a newly
-    // created player for the same guild.
-    if (!currentPlayer || currentPlayer !== player) {
-      console.log(`[Music] Ignoring stale playerEmpty event for guild ${guildId}.`);
-      return;
+  if (/^https?:\/\//i.test(value)) {
+    if (play.yt_validate(value) === 'playlist') {
+      const playlist = await play.playlist_info(value, { incomplete: true });
+      const videos = await playlist.all_videos();
+      return { tracks: videos.map((video) => toTrack(video, requester)), type: 'PLAYLIST' };
     }
 
-    // /stop intentionally destroys the player. Suppress the empty-queue
-    // notification/event generated while that old voice session is closing.
-    if (manualStopActive(guildId)) {
-      console.log(`[Music] Suppressed playerEmpty during manual stop for guild ${guildId}.`);
-      return;
+    if (play.yt_validate(value) === 'video') {
+      const info = await play.video_basic_info(value);
+      return { tracks: [toTrack(info.video_details, requester)], type: 'TRACK' };
     }
 
-    const endReason = playerEndReasons.get(player) || 'unknown';
-    const hadStarted = playerStarted.has(player);
-    const channel = client.channels.cache.get(player.textId);
+    return { tracks: [], type: 'SEARCH' };
+  }
 
-    if (endReason === 'loadFailed' || (!hadStarted && endReason !== 'finished')) {
-      const exception = playerExceptions.get(player) || {};
-      const failedTrack = player.queue?.previous?.[0] || null;
+  const videos = await play.search(value, { limit: 10, source: { youtube: 'video' } });
+  return { tracks: videos.map((video) => toTrack(video, requester)), type: 'SEARCH' };
+}
 
-      console.warn(
-        `[Music] Track playback failed in guild ${guildId}. Lavalink end reason=${endReason}; exception=${exception.message || 'none'}; cause=${exception.cause || 'none'}.`,
-      );
+class LocalQueue {
+  constructor() {
+    this.current = null;
+    this.items = [];
+    this.previous = [];
+  }
+  get length() { return this.items.length; }
+  add(value) { Array.isArray(value) ? this.items.push(...value) : this.items.push(value); }
+  shift() { return this.items.shift(); }
+  shuffle() {
+    for (let i = this.items.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this.items[i], this.items[j]] = [this.items[j], this.items[i]];
+    }
+  }
+  [Symbol.iterator]() { return this.items[Symbol.iterator](); }
+}
 
-      const fallbackStarted = await tryPlaybackFallback(player, failedTrack);
+class LocalMusicPlayer {
+  constructor(manager, options) {
+    this.manager = manager;
+    this.guildId = options.guildId;
+    this.textId = options.textId;
+    this.voiceId = options.voiceId;
+    this.volume = Math.max(1, Math.min(200, Number(options.volume || 75)));
+    this.loop = 'none';
+    this.queue = new LocalQueue();
+    this.playing = false;
+    this.paused = false;
+    this.destroyed = false;
+    this.skipping = false;
 
-      if (fallbackStarted) {
-        if (channel?.isTextBased()) {
-          channel.send(
-            `⚠️ YouTube playback failed, so Kryndexa is trying the same song through ${playbackFallbackEngine()}.`,
-          ).catch(() => null);
-        }
-        playerEndReasons.delete(player);
-        playerExceptions.delete(player);
-        return;
+    const guild = clientRef.guilds.cache.get(this.guildId);
+    if (!guild) throw new Error('Guild is unavailable.');
+
+    this.connection = joinVoiceChannel({
+      channelId: this.voiceId,
+      guildId: this.guildId,
+      adapterCreator: guild.voiceAdapterCreator,
+      selfDeaf: true,
+    });
+    this.audioPlayer = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
+    this.connection.subscribe(this.audioPlayer);
+
+    this.audioPlayer.on(AudioPlayerStatus.Idle, () => this.onIdle().catch((error) => this.fail(error)));
+    this.audioPlayer.on('error', (error) => this.fail(error));
+  }
+
+  setTextChannel(channelId) { this.textId = channelId; }
+  async setVolume(value) {
+    this.volume = Math.max(1, Math.min(200, Number(value || 100)));
+    if (this.resource?.volume) this.resource.volume.setVolume(this.volume / 100);
+  }
+  setLoop(mode) { this.loop = ['none', 'track', 'queue'].includes(mode) ? mode : 'none'; }
+
+  async play() {
+    if (this.destroyed || this.playing) return;
+    await entersState(this.connection, VoiceConnectionStatus.Ready, 15_000);
+    await this.playNext();
+  }
+
+  async playNext() {
+    if (this.destroyed) return;
+    const track = this.queue.shift();
+    if (!track) {
+      this.queue.current = null;
+      this.playing = false;
+      this.paused = false;
+      const channel = clientRef.channels.cache.get(this.textId);
+      if (channel?.isTextBased() && !manualStopActive(this.guildId)) {
+        await channel.send('🎵 Music queue finished. Leaving voice.').catch(() => null);
       }
+      await this.destroy();
+      return;
+    }
 
+    this.queue.current = track;
+    this.playing = true;
+    this.paused = false;
+
+    try {
+      const stream = await play.stream(track.uri, { discordPlayerCompatibility: false });
+      this.resource = createAudioResource(stream.stream, { inputType: stream.type, inlineVolume: true });
+      this.resource.volume?.setVolume(this.volume / 100);
+      this.audioPlayer.play(this.resource);
+
+      const channel = clientRef.channels.cache.get(this.textId);
       if (channel?.isTextBased()) {
-        const detail = exception.message || exception.cause || 'Lavalink could not open the audio stream.';
-        channel.send(
-          `⚠️ Lavalink found the track but playback failed: ${String(detail).slice(0, 1200)}`,
-        ).catch(() => null);
+        await channel.send({ embeds: [new EmbedBuilder()
+          .setColor(0x6c5ce7)
+          .setTitle('🎵 Now Playing')
+          .setDescription(`**[${track.title}](${track.uri || 'https://discord.com'})**`)
+          .addFields(
+            { name: 'Artist', value: String(track.author || 'Unknown').slice(0, 1024), inline: true },
+            { name: 'Duration', value: track.isStream ? 'Live stream' : formatDuration(track.length), inline: true },
+          )
+          .setTimestamp()] }).catch(() => null);
       }
-    } else if (channel?.isTextBased()) {
-      channel.send('🎵 Music queue finished. Leaving voice.').catch(() => null);
+    } catch (error) {
+      console.error(`[Music] Stream failed for "${track.title}":`, error);
+      const channel = clientRef.channels.cache.get(this.textId);
+      if (channel?.isTextBased()) {
+        await channel.send(`⚠️ Unable to stream **${track.title}**: ${String(error?.message || error).slice(0, 800)}`).catch(() => null);
+      }
+      this.queue.current = null;
+      this.playing = false;
+      await this.playNext();
     }
-
-    playerEndReasons.delete(player);
-    playerExceptions.delete(player);
-
-    // Only destroy the player if this event still belongs to the active player.
-    if (!currentPlayer || currentPlayer === player) {
-      await player.destroy().catch((error) => {
-        console.warn(`[Music] Unable to destroy empty player for guild ${guildId}: ${error?.message || error}`);
-      });
-    }
-  });
-
-  console.log('[Music] Kazagumo/Shoukaku runtime initialized; waiting for Discord clientReady before node connection.');
-
-  if (!waitForReady) return kazagumo;
-
-  await waitForMusicConnection(connectTimeoutMs);
-  return kazagumo;
-}
-
-async function waitForMusicConnection(timeoutMs = null) {
-  if (!kazagumo) return false;
-  if (connectionState.ready) return true;
-
-  const effectiveTimeout = Math.max(
-    1_000,
-    Number(timeoutMs || process.env.LAVALINK_CONNECT_TIMEOUT_MS || 15_000),
-  );
-
-  const ready = await waitForMusicReady(effectiveTimeout);
-
-  if (!ready) {
-    if (connectionState.state === 'connecting') {
-      setConnectionState('timeout', {
-        lastError: `Node did not emit ready within ${effectiveTimeout}ms after Discord clientReady.`,
-      });
-    }
-
-    console.warn(
-      `[Music] Lavalink node is not ready after startup wait. State=${connectionState.state}; endpoint=${connectionState.endpoint || 'unknown'}; lastError=${connectionState.lastError || 'none'}.`,
-    );
   }
 
-  return ready;
+  async onIdle() {
+    if (this.destroyed || !this.queue.current) return;
+    const finished = this.queue.current;
+    this.queue.previous.unshift(finished);
+    if (this.queue.previous.length > 20) this.queue.previous.length = 20;
+
+    if (!this.skipping) {
+      if (this.loop === 'track') this.queue.items.unshift(finished);
+      else if (this.loop === 'queue') this.queue.items.push(finished);
+    }
+    this.skipping = false;
+    this.queue.current = null;
+    this.playing = false;
+    this.paused = false;
+    await this.playNext();
+  }
+
+  skip() {
+    if (!this.queue.current) return false;
+    this.skipping = true;
+    return this.audioPlayer.stop(true);
+  }
+
+  pause(value = true) {
+    if (value) {
+      const changed = this.audioPlayer.pause();
+      if (changed) { this.paused = true; this.playing = false; }
+      return changed;
+    }
+    const changed = this.audioPlayer.unpause();
+    if (changed) { this.paused = false; this.playing = true; }
+    return changed;
+  }
+
+  async destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.queue.items.length = 0;
+    this.queue.current = null;
+    try { this.audioPlayer.stop(true); } catch {}
+    try { this.connection.destroy(); } catch {}
+    players.delete(this.guildId);
+  }
+
+  async fail(error) {
+    console.error(`[Music] Local audio player error in guild ${this.guildId}:`, error);
+    this.queue.current = null;
+    this.playing = false;
+    await this.playNext();
+  }
 }
+
+const manager = {
+  players,
+  async search(query, options = {}) {
+    return resolveTracks(query, options.requester);
+  },
+  async createPlayer(options) {
+    const existing = players.get(options.guildId);
+    if (existing) return existing;
+    const player = new LocalMusicPlayer(manager, options);
+    players.set(options.guildId, player);
+    return player;
+  },
+};
+
+function getMusicManager() { return initialized ? manager : null; }
+function getMusicStatus() {
+  return {
+    state: initialized ? 'ready' : (musicGloballyEnabled() ? 'idle' : 'disabled'),
+    ready: initialized && musicGloballyEnabled(),
+    backend: '@discordjs/voice',
+    sourceManagers: ['youtube'],
+    plugins: [],
+  };
+}
+function isMusicReady() { return initialized && musicGloballyEnabled(); }
+function musicUnavailableMessage() {
+  return musicGloballyEnabled()
+    ? 'The local Discord voice music runtime has not finished initializing.'
+    : 'The Music module is disabled by MUSIC_ENABLED.';
+}
+function lavalinkConfigured() { return true; }
+
+async function initMusic(client) {
+  clientRef = client;
+  if (!musicGloballyEnabled()) {
+    initialized = false;
+    console.log('[Music] MUSIC_ENABLED is false; local voice runtime disabled.');
+    return null;
+  }
+  initialized = true;
+  console.log('[Music] Local @discordjs/voice runtime initialized; Lavalink is not required.');
+  return manager;
+}
+
+async function waitForMusicConnection() { return isMusicReady(); }
+
+function markManualStop(guildId, cooldownMs = 2_500) {
+  manualStopUntil.set(String(guildId), Date.now() + Math.max(500, Number(cooldownMs || 2_500)));
+}
+function manualStopActive(guildId) {
+  const key = String(guildId);
+  const until = Number(manualStopUntil.get(key) || 0);
+  if (until <= Date.now()) { manualStopUntil.delete(key); return false; }
+  return true;
+}
+async function waitForManualStopCooldown(guildId) {
+  const key = String(guildId);
+  const remaining = Number(manualStopUntil.get(key) || 0) - Date.now();
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  manualStopUntil.delete(key);
+}
+async function probeLavalinkInfo() { return null; }
 
 function stopMusic() {
-  if (kazagumo) {
-    for (const player of kazagumo.players.values()) {
-      try { player.destroy(); } catch {}
-    }
-  }
-
-  kazagumo = null;
-  initialized = false;
+  for (const player of [...players.values()]) player.destroy().catch(() => null);
+  players.clear();
   manualStopUntil.clear();
-  setConnectionState('idle', {
-    ready: false,
-    nodeName: '',
-    endpoint: '',
-    secure: false,
-    lastError: '',
-  });
+  initialized = false;
 }
 
 module.exports = {
