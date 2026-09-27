@@ -240,17 +240,6 @@ async function rebuildGlobalCommands(rest, applicationId, slashCommands, retries
     slashCommands,
   );
 
-  console.log(
-    `[Slash Commands] Global rebuild complete: ${count} current command(s), ${diff.added.length} added, ${diff.removed.length} stale removed, ${diff.retained.length} retained/updated.`,
-  );
-
-  if (diff.added.length) {
-    console.log(`[Slash Commands] Added globally: ${diff.added.map((name) => `/${name}`).join(', ')}`);
-  }
-  if (diff.removed.length) {
-    console.log(`[Slash Commands] Removed stale globals: ${diff.removed.map((name) => `/${name}`).join(', ')}`);
-  }
-
   return {
     registered: verified,
     count,
@@ -328,9 +317,6 @@ async function syncAllGuildCommands(
       );
 
       summary.synced += 1;
-      console.log(
-        `[Slash Commands] [${index + 1}/${guilds.length}] ${guild.name} (${guild.id}): ${count} command(s) registered.`,
-      );
     } catch (error) {
       summary.failed += 1;
       summary.failures.push({
@@ -356,10 +342,6 @@ async function syncAllGuildCommands(
       await sleep(delayMs);
     }
   }
-
-  console.log(
-    `[Slash Commands] Multi-guild sync complete: ${summary.synced}/${summary.total} server(s) synced, ${summary.failed} failed.`,
-  );
 
   return summary;
 }
@@ -442,6 +424,13 @@ async function registerSlashCommands(client, slashCommands) {
 
   if (globalError && guildSummary.synced === 0) {
     throw globalError;
+  }
+
+  const registrationSucceeded = !globalError
+    && (!multiGuildEnabled || guildSummary.failed === 0);
+
+  if (registrationSucceeded) {
+    console.log('[Slash Commands] Pushed all Slash Commands to discord Successfully');
   }
 
   return {

@@ -52,6 +52,28 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const GUILD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
+const oauthCodeExchanges = new Map();
+const OAUTH_CODE_EXCHANGE_TTL_MS = 2 * 60 * 1000;
+
+function oauthCodeKey(code) {
+  return crypto.createHash('sha256').update(String(code || '')).digest('hex');
+}
+
+function beginOAuthCodeExchange(code) {
+  const now = Date.now();
+  for (const [key, startedAt] of oauthCodeExchanges) {
+    if (now - startedAt > OAUTH_CODE_EXCHANGE_TTL_MS) oauthCodeExchanges.delete(key);
+  }
+
+  const key = oauthCodeKey(code);
+  if (oauthCodeExchanges.has(key)) return false;
+  oauthCodeExchanges.set(key, now);
+  return true;
+}
+
+function finishOAuthCodeExchange(code) {
+  oauthCodeExchanges.delete(oauthCodeKey(code));
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -173,7 +195,7 @@ function configuredWebIconUrl() {
 
 function renderDiscordLoginButton(label = 'Log in with Discord', extraClass = '') {
   const classes = ['btn', 'discord-login-button', extraClass].filter(Boolean).join(' ');
-  return `<a class="${classes}" href="/login" data-discord-login><span class="discord-login-mark" aria-hidden="true">◈</span><span>${escapeHtml(label)}</span></a>`;
+  return `<a class="${classes}" href="/login" data-discord-login><span class="discord-login-mark" aria-hidden="true"><svg class="discord-login-icon" viewBox="0 0 127.14 96.36" focusable="false" aria-hidden="true"><path fill="currentColor" d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.15c2.64-27.38-4.51-51.11-18.9-72.14ZM42.45 65.69C36.18 65.69 31 59.93 31 52.86s5-12.85 11.43-12.85 11.58 5.8 11.47 12.85-5.05 12.83-11.45 12.83Zm42.24 0c-6.27 0-11.45-5.76-11.45-12.83s5-12.85 11.45-12.85 11.58 5.8 11.47 12.85-5.04 12.83-11.47 12.83Z"/></svg></span><span>${escapeHtml(label)}</span></a>`;
 }
 
 function renderAddBotButton() {
@@ -181,13 +203,27 @@ function renderAddBotButton() {
   if (!clientId) return '';
 
   const installUrl = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=bot%20applications.commands`;
-  return `<a class="btn add-bot-button" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`;
+  return `<a class="btn add-bot-button compact" href="${escapeHtml(installUrl)}" target="_blank" rel="noreferrer">＋ Add Bot to Server</a>`;
 }
 
 function page(title, body, user, meta = {}) {
   const seo = pageMeta(title, meta);
   const auth = user
-    ? `<div class="user"><span>${escapeHtml(user.username)}</span><a class="btn secondary compact" href="/logout">Log out</a></div>`
+    ? `<details class="account-dropdown">
+        <summary class="account-dropdown-trigger"><span class="account-name">${escapeHtml(user.username)}</span><span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+        <div class="account-dropdown-menu">
+          <details class="account-submenu">
+            <summary class="account-menu-item">Appearance <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+            <div class="account-submenu-menu" role="group" aria-label="Appearance">
+              <button class="account-menu-item theme-choice" type="button" data-theme-choice="system">System</button>
+              <button class="account-menu-item theme-choice" type="button" data-theme-choice="light">Light</button>
+              <button class="account-menu-item theme-choice" type="button" data-theme-choice="dark">Dark</button>
+            </div>
+          </details>
+          <a class="account-menu-item" href="/dashboard/user-settings">User Settings</a>
+          <a class="account-menu-item account-logout" href="/logout">Log out</a>
+        </div>
+      </details>`
     : renderDiscordLoginButton('Log in with Discord', 'compact');
 
   const addBotButton = renderAddBotButton();
@@ -226,15 +262,15 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:description" content="${escapeHtml(seo.description)}">
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
-<script>(()=>{try{const legacy=localStorage.getItem('multibot-theme');const saved=localStorage.getItem('kryndexa-theme')||legacy;const valid=saved==='light'||saved==='dark'?saved:null;const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';const theme=valid||preferred;document.documentElement.dataset.theme=theme;if(legacy&&!localStorage.getItem('kryndexa-theme'))localStorage.setItem('kryndexa-theme',theme);}catch{document.documentElement.dataset.theme='dark';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-login-lightmode-repair">
+<script>(()=>{try{const saved=localStorage.getItem('kryndexa-theme-mode');const choice=['system','light','dark'].includes(saved)?saved:'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.setAttribute('data-theme',theme);document.documentElement.setAttribute('data-theme-mode',choice);}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-working-search-fields">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
   <button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>
   <nav class="site-nav" data-site-nav aria-label="Primary navigation">
     <details class="nav-dropdown">
-      <summary>Explore <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+      <summary>Home <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
       <div class="nav-dropdown-menu">
         <a href="/">Home</a>
         <a href="/features">Features</a>
@@ -250,7 +286,7 @@ function page(title, body, user, meta = {}) {
       </div>
     </details>
   </nav>
-  <div class="header-actions">${addBotButton}<button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false"><span class="theme-toggle-icon" data-theme-icon aria-hidden="true">☀</span><span class="theme-toggle-label" data-theme-label>Light Mode</span></button><div class="header-auth">${auth}</div></div>
+  <div class="header-actions">${addBotButton}<div class="header-auth">${auth}</div></div>
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
@@ -258,31 +294,30 @@ function page(title, body, user, meta = {}) {
 ${cookieNotice}
 <script>(() => {
   const root=document.documentElement;
-  const themeButton=document.querySelector('[data-theme-toggle]');
-  const themeIcon=document.querySelector('[data-theme-icon]');
-  const themeLabel=document.querySelector('[data-theme-label]');
-  const themeMeta=document.querySelector('meta[name="theme-color"]');
-  const refreshTheme=()=>{
-    const dark=root.dataset.theme==='dark';
-    if(themeIcon)themeIcon.textContent=dark?'☀':'☾';
-    if(themeLabel)themeLabel.textContent=dark?'Light Mode':'Dark Mode';
-    if(themeButton){
-      themeButton.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
-      themeButton.setAttribute('aria-pressed',dark?'false':'true');
-      themeButton.title=dark?'Switch to light mode':'Switch to dark mode';
-    }
-    if(themeMeta)themeMeta.setAttribute('content',dark?'#111318':'#f4f7fe');
+  const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+  const applyTheme=(choice)=>{
+    const mode=['system','light','dark'].includes(choice)?choice:'system';
+    const theme=mode==='system'?(systemTheme.matches?'dark':'light'):mode;
+    root.setAttribute('data-theme',theme);
+    root.setAttribute('data-theme-mode',mode);
+    root.style.colorScheme=theme;
+    try{localStorage.setItem('kryndexa-theme-mode',mode);}catch{}
+    document.querySelectorAll('[data-theme-choice]').forEach(button=>{
+      const active=button.dataset.themeChoice===mode;
+      button.classList.toggle('is-active',active);
+      button.setAttribute('aria-pressed',active?'true':'false');
+    });
   };
-  themeButton?.addEventListener('click',()=>{
-    const next=root.dataset.theme==='dark'?'light':'dark';
-    root.dataset.theme=next;
-    try{
-      localStorage.setItem('kryndexa-theme',next);
-      localStorage.removeItem('multibot-theme');
-    }catch{}
-    refreshTheme();
+  document.addEventListener('click',event=>{
+    const button=event.target.closest('[data-theme-choice]');
+    if(!button)return;
+    event.preventDefault();
+    applyTheme(button.dataset.themeChoice);
   });
-  refreshTheme();
+  const followSystem=()=>{if((root.dataset.themeMode||'system')==='system')applyTheme('system');};
+  if(systemTheme.addEventListener)systemTheme.addEventListener('change',followSystem);
+  else if(systemTheme.addListener)systemTheme.addListener(followSystem);
+  applyTheme(root.dataset.themeMode||'system');
 
   const nav=document.querySelector('[data-site-nav]');
   document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
@@ -343,12 +378,42 @@ ${cookieNotice}
     });
   });
 
-  document.querySelectorAll('input[type="search"][data-filter-selector]').forEach(input=>{
-    const apply=()=>{const q=input.value.trim().toLowerCase();const selector=input.dataset.filterSelector;const attr=input.dataset.filterAttribute;let visible=0;if(!selector||!attr)return;
-      document.querySelectorAll(selector).forEach(item=>{const match=!q||String(item.getAttribute(attr)||'').toLowerCase().includes(q);item.hidden=!match;if(match)visible++;});
-      const empty=input.dataset.filterEmpty?document.querySelector(input.dataset.filterEmpty):null;if(empty)empty.hidden=visible!==0;};
-    input.addEventListener('input',apply);input.addEventListener('search',apply);apply();
-  });
+  const normalizeSearch=(value)=>String(value||'').toLocaleLowerCase().replace(/\s+/g,' ').trim();
+  const setupSearch=(input)=>{
+    const selector=input.dataset.filterSelector;
+    const attribute=input.dataset.filterAttribute;
+    if(!selector||!attribute)return;
+    const apply=()=>{
+      const query=normalizeSearch(input.value);
+      const terms=query.split(' ').filter(Boolean);
+      const items=Array.from(document.querySelectorAll(selector));
+      let visible=0;
+      items.forEach(item=>{
+        const haystack=normalizeSearch(item.getAttribute(attribute)||item.textContent);
+        const match=terms.length===0||terms.every(term=>haystack.includes(term));
+        item.hidden=!match;
+        item.setAttribute('aria-hidden',match?'false':'true');
+        if(match)visible++;
+      });
+      const empty=input.dataset.filterEmpty?document.querySelector(input.dataset.filterEmpty):null;
+      if(empty)empty.hidden=visible!==0;
+      const count=input.dataset.filterCount?document.querySelector(input.dataset.filterCount):null;
+      if(count){
+        const noun=input.dataset.filterNoun||'result';
+        count.textContent=visible.toLocaleString()+' '+noun+(visible===1?'':'s');
+      }
+      input.dataset.visibleResults=String(visible);
+    };
+    input.addEventListener('input',apply);
+    input.addEventListener('search',apply);
+    input.addEventListener('keyup',event=>{if(event.key==='Escape'&&input.value){input.value='';apply();}});
+    if(input.dataset.filterClear){
+      document.querySelector(input.dataset.filterClear)?.addEventListener('click',()=>{input.value='';apply();input.focus();});
+    }
+    apply();
+  };
+  document.querySelectorAll('input[type="search"][data-filter-selector]').forEach(setupSearch);
+
 
   document.querySelectorAll('[data-stream-platform]').forEach(select=>{
     const form=select.closest('form');const input=form?.querySelector('[data-stream-identifier]');const help=form?.querySelector('[data-stream-help]');
@@ -371,7 +436,7 @@ ${cookieNotice}
     const update=()=>{const val=(sel)=>editor.querySelector(sel)?.value||'';preview.style.setProperty('--embed-color',val('[data-embed-color]')||'#5865F2');
       const previewTitle=preview.querySelector('[data-preview-title]');const titleValue=val('[data-embed-title]')||'Embed title';const titleUrl=val('[data-embed-title-url]').trim();
       previewTitle.textContent=titleValue;
-      if(previewTitle.tagName==='A'){if(/^https?:\/\//i.test(titleUrl)){previewTitle.href=titleUrl;previewTitle.classList.add('has-link');}else{previewTitle.removeAttribute('href');previewTitle.classList.remove('has-link');}}
+      if(previewTitle.tagName==='A'){if(/^https?:\\/\\//i.test(titleUrl)){previewTitle.href=titleUrl;previewTitle.classList.add('has-link');}else{previewTitle.removeAttribute('href');previewTitle.classList.remove('has-link');}}
       preview.querySelector('[data-preview-description]').textContent=val('[data-embed-description]')||'Embed description';
       preview.querySelector('[data-preview-footer]').textContent=val('[data-embed-footer]');
       const fields=preview.querySelector('[data-preview-fields]');fields.innerHTML='';
@@ -449,19 +514,35 @@ function renderPrivacyPolicy(markdown) {
 
 function resolveOAuthRedirectUri(req) {
   const configured = String(process.env.DISCORD_REDIRECT_URI || '').trim();
-  if (configured) return configured;
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      url.hash = '';
+      return url.toString();
+    } catch {
+      throw new Error('DISCORD_REDIRECT_URI must be a valid absolute URL.');
+    }
+  }
 
   const baseUrl = String(process.env.BASE_URL || '').trim();
   if (baseUrl) {
     try {
       return new URL('/auth/callback', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
     } catch {
-      // Fall through to the current request URL.
+      throw new Error('BASE_URL must be a valid absolute URL.');
     }
   }
 
-  const protocol = req.protocol || 'http';
-  const host = req.get('host');
+  // Never let a reverse proxy turn the production OAuth callback into an
+  // internal http:// address. This is the exact URI registered with Discord.
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://kryndexabot.xyz/auth/callback';
+  }
+
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol || 'http';
+  const host = forwardedHost || req.get('host');
   return `${protocol}://${host}/auth/callback`;
 }
 
@@ -856,7 +937,7 @@ function startDashboard(client) {
       return `<section class="public-feature-section"><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${features.length} module${features.length === 1 ? '' : 's'}</span></div><div class="public-feature-grid">${features.map((feature) => `<article class="public-feature-card"><div class="public-feature-top"><div class="feature-icon">${escapeHtml(feature.icon)}</div><div><span class="mini-label">${escapeHtml(feature.priority)} priority</span><h3>${escapeHtml(feature.title)}</h3></div></div><p>${escapeHtml(feature.description)}</p><div class="public-feature-meta"><span>${feature.locked ? 'Always enabled' : feature.defaultEnabled ? 'Enabled by default' : 'Server configurable'}</span><small>${escapeHtml(feature.requirement || 'Configured directly from the server dashboard.')}</small></div></article>`).join('')}</div></section>`;
     }).join('');
 
-    const body = `<section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section>${cards}`;
+    const body = `<div class="features-page"><section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section><div class="public-feature-categories">${cards}</div></div>`;
     return res.send(page('Features • Kryndexa Bot', body, req.session.user, {
       path: '/features',
       description: 'Explore Kryndexa Bot modules for moderation, tickets, logging, verification, music, automations, streaming alerts, analytics and Discord community management.',
@@ -1065,11 +1146,22 @@ function startDashboard(client) {
       }
 
       const redirectUri = verifiedState.redirectUri;
+      const authorizationCode = String(req.query.code || '').trim();
+
+      // Discord authorization codes are single-use. Browsers, proxies, or an
+      // accidental refresh can otherwise hit this callback twice and cause
+      // Discord to reject the second token request as an invalid code.
+      if (!beginOAuthCodeExchange(authorizationCode)) {
+        console.warn('[Dashboard OAuth] Duplicate callback blocked before token exchange.');
+        if (req.session?.user) return res.redirect('/dashboard');
+        return res.redirect('/login');
+      }
+
       const body = new URLSearchParams({
         client_id: String(process.env.DISCORD_CLIENT_ID || '').trim(),
         client_secret: String(process.env.DISCORD_CLIENT_SECRET || '').trim(),
         grant_type: 'authorization_code',
-        code: String(req.query.code),
+        code: authorizationCode,
         redirect_uri: redirectUri,
       });
 
@@ -1099,6 +1191,7 @@ function startDashboard(client) {
       }
 
       const token = await tokenRes.json();
+      finishOAuthCodeExchange(authorizationCode);
       if (!token.access_token) throw new Error('Discord OAuth returned no access token.');
 
       const user = await discordFetch('/users/@me', token.access_token);
@@ -1126,6 +1219,7 @@ function startDashboard(client) {
       console.log(`[Dashboard OAuth] Logged in Discord user ${req.session.user.username} (${user.id}).`);
       return res.redirect('/dashboard');
     } catch (error) {
+      if (req.query?.code) finishOAuthCodeExchange(String(req.query.code).trim());
       console.error('[Dashboard OAuth] Discord login failed:', error);
       return res.status(500).send(page(
         'Discord login failed',
@@ -1136,6 +1230,43 @@ function startDashboard(client) {
   });
 
   app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
+
+  app.get('/dashboard/user-settings', requireAuth, async (req, res) => {
+    req.session.user.isBotOwner = await isBotOwner(client, req.session.user.id);
+    const user = req.session.user;
+    const avatarUrl = user.avatar
+      ? `https://cdn.discordapp.com/avatars/${encodeURIComponent(user.id)}/${encodeURIComponent(user.avatar)}.png?size=128`
+      : '';
+    return res.send(page(
+      'User Settings',
+      `<section class="user-settings-page">
+        <div class="section-title"><span class="eyebrow">ACCOUNT</span><h1>User Settings</h1><p>Manage your Kryndexa web panel preferences and review the Discord account connected to this session.</p></div>
+        <div class="user-settings-grid">
+          <section class="panel user-settings-card">
+            <h2>Discord Account</h2>
+            <div class="user-profile-row">${avatarUrl ? `<img class="user-settings-avatar" src="${escapeHtml(avatarUrl)}" alt="">` : '<div class="user-settings-avatar fallback">K</div>'}<div><strong>${escapeHtml(user.username || 'Discord User')}</strong><span>Discord ID: ${escapeHtml(user.id || '')}</span></div></div>
+            <p>Your Discord account is used to determine which servers you can manage in the Kryndexa dashboard.</p>
+          </section>
+          <section class="panel user-settings-card">
+            <h2>Appearance</h2>
+            <p>Choose how the web panel should look on this browser.</p>
+            <div class="user-settings-theme-options" role="group" aria-label="Appearance">
+              <button class="btn secondary theme-choice" type="button" data-theme-choice="system">System</button>
+              <button class="btn secondary theme-choice" type="button" data-theme-choice="light">Light</button>
+              <button class="btn secondary theme-choice" type="button" data-theme-choice="dark">Dark</button>
+            </div>
+          </section>
+          <section class="panel user-settings-card">
+            <h2>Session</h2>
+            <p>Sign out of the current Kryndexa dashboard session on this browser.</p>
+            <a class="btn secondary account-logout" href="/logout">Log out</a>
+          </section>
+        </div>
+      </section>`,
+      user,
+      { description: 'Manage your Kryndexa Bot dashboard user settings.' },
+    ));
+  });
 
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
@@ -1403,6 +1534,22 @@ function startDashboard(client) {
       .map((guild) => `<option value="${guild.id}">${escapeHtml(guild.name)} • ${guild.id}</option>`)
       .join('');
 
+    const ownerGuilds = [...client.guilds.cache.values()]
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const ownerGuildRows = ownerGuilds.length
+      ? ownerGuilds.map((guild) => {
+          const owner = guild.members.cache.get(guild.ownerId);
+          const iconUrl = guild.iconURL({ extension: 'png', size: 64 });
+          const joinedAt = guild.joinedAt instanceof Date ? guild.joinedAt.toLocaleDateString('en-US') : 'Unknown';
+          return `<tr data-owner-guild-row data-search="${escapeHtml([guild.name, guild.id, owner?.user?.username || '', guild.ownerId || ''].join(' ').toLowerCase())}">
+            <td><div class="owner-server-name">${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : '<span class="owner-server-icon-fallback">K</span>'}<div><strong>${escapeHtml(guild.name)}</strong><small>${escapeHtml(guild.id)}</small></div></div></td>
+            <td data-sort-value="${Number(guild.memberCount || 0)}">${Number(guild.memberCount || 0).toLocaleString()}</td>
+            <td><strong>${escapeHtml(owner?.user?.username || 'Unknown')}</strong><small class="owner-server-owner-id">${escapeHtml(guild.ownerId || '')}</small></td>
+            <td data-sort-value="${guild.joinedTimestamp || 0}">${escapeHtml(joinedAt)}</td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="4">Kryndexa is not currently connected to any servers.</td></tr>';
+
     const paidAccessCards = paidStreamAccess.length
       ? paidStreamAccess.map((access) => {
           const guild = client.guilds.cache.get(access.guildId);
@@ -1424,6 +1571,28 @@ function startDashboard(client) {
         <div class="owner-dashboard-meta">
           <span><strong>${client.guilds.cache.size.toLocaleString()}</strong> connected servers</span>
           <span><strong>${paidStreamAccess.length.toLocaleString()}</strong> paid Stream Alert servers</span>
+        </div>
+      </section>
+
+      <section class="owner-section owner-server-directory">
+        <div class="owner-section-heading owner-server-directory-heading">
+          <div>
+            <span class="eyebrow">SERVER DIRECTORY</span>
+            <h2>All Bot Servers</h2>
+            <p>Search every Discord server Kryndexa is currently connected to.</p>
+          </div>
+          <span class="pill subtle" data-owner-server-count>${ownerGuilds.length.toLocaleString()} servers</span>
+        </div>
+        <div class="owner-server-toolbar">
+          <label class="owner-server-search"><span>Search servers</span><input type="search" data-owner-server-search data-filter-selector="[data-owner-guild-row]" data-filter-attribute="data-search" data-filter-empty="[data-owner-server-empty]" data-filter-count="[data-owner-server-count]" data-filter-noun="server" data-filter-clear="[data-owner-server-clear]" placeholder="Search name, server ID, owner, or owner ID…" autocomplete="off"></label>
+          <button class="btn secondary" type="button" data-owner-server-clear>Clear</button>
+        </div>
+        <div class="table-wrap owner-server-table-wrap">
+          <table class="owner-server-table">
+            <thead><tr><th>Server</th><th>Members</th><th>Owner</th><th>Bot Joined</th></tr></thead>
+            <tbody data-owner-server-body>${ownerGuildRows}</tbody>
+          </table>
+          <div class="empty owner-server-empty" data-owner-server-empty hidden>No servers match that search.</div>
         </div>
       </section>
 
