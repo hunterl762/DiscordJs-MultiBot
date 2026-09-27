@@ -41,12 +41,16 @@ function formatDuration(ms) {
 }
 
 function toTrack(video, requester) {
-  const durationSeconds = Number(video?.durationInSec || 0);
+  const durationSeconds = Number(video?.durationInSec || video?.duration || 0);
+  // Playlist entries may expose only an id depending on the play-dl parser/page.
+  // Always construct a canonical watch URL so every queued entry is streamable.
+  const videoId = String(video?.id || video?.videoId || '').trim();
+  const videoUrl = String(video?.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '')).trim();
   return {
     title: String(video?.title || 'Unknown track'),
     author: String(video?.channel?.name || video?.channel?.title || 'Unknown'),
-    uri: String(video?.url || ''),
-    realUri: String(video?.url || ''),
+    uri: videoUrl,
+    realUri: videoUrl,
     length: durationSeconds * 1000,
     isStream: Boolean(video?.live),
     requester,
@@ -75,11 +79,21 @@ async function resolveTracks(query, requester) {
         ? `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`
         : value;
       const playlist = await play.playlist_info(playlistUrl, { incomplete: true });
-      const videos = await playlist.all_videos();
+      let videos = [];
+      try {
+        videos = await playlist.all_videos();
+      } catch (error) {
+        // all_videos() follows continuation pages. If YouTube changes/breaks a
+        // continuation response, keep the entries already returned on page one.
+        videos = Array.isArray(playlist.videos) ? playlist.videos : [];
+        console.warn(`[Music] Playlist continuation failed; using ${videos.length} initially resolved entries:`, error?.message || error);
+      }
       const tracks = videos
-        .filter((video) => video?.url || video?.id)
         .map((video) => toTrack(video, requester))
-        .filter((track) => track?.uri);
+        .filter((track) => /^https:\/\/(?:www\.)?youtube\.com\/watch\?v=/i.test(track.uri));
+      if (!tracks.length) {
+        throw new Error(`YouTube playlist ${playlistId || playlist?.id || 'unknown'} resolved, but it contained no playable video entries.`);
+      }
       console.log(`[Music] Resolved YouTube playlist ${playlistId || playlist?.id || 'unknown'}: ${tracks.length} playable track(s).`);
       return { tracks, type: 'PLAYLIST', playlist: { id: playlistId || playlist?.id, title: playlist?.title } };
     }
