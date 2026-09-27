@@ -52,6 +52,28 @@ const DISCORD_API = 'https://discord.com/api/v10';
 const GUILD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_OAUTH_STATE_VERSION = 2;
 const guildListRequests = new Map();
+const oauthCodeExchanges = new Map();
+const OAUTH_CODE_EXCHANGE_TTL_MS = 2 * 60 * 1000;
+
+function oauthCodeKey(code) {
+  return crypto.createHash('sha256').update(String(code || '')).digest('hex');
+}
+
+function beginOAuthCodeExchange(code) {
+  const now = Date.now();
+  for (const [key, startedAt] of oauthCodeExchanges) {
+    if (now - startedAt > OAUTH_CODE_EXCHANGE_TTL_MS) oauthCodeExchanges.delete(key);
+  }
+
+  const key = oauthCodeKey(code);
+  if (oauthCodeExchanges.has(key)) return false;
+  oauthCodeExchanges.set(key, now);
+  return true;
+}
+
+function finishOAuthCodeExchange(code) {
+  oauthCodeExchanges.delete(oauthCodeKey(code));
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1095,11 +1117,22 @@ function startDashboard(client) {
       }
 
       const redirectUri = verifiedState.redirectUri;
+      const authorizationCode = String(req.query.code || '').trim();
+
+      // Discord authorization codes are single-use. Browsers, proxies, or an
+      // accidental refresh can otherwise hit this callback twice and cause
+      // Discord to reject the second token request as an invalid code.
+      if (!beginOAuthCodeExchange(authorizationCode)) {
+        console.warn('[Dashboard OAuth] Duplicate callback blocked before token exchange.');
+        if (req.session?.user) return res.redirect('/dashboard');
+        return res.redirect('/login');
+      }
+
       const body = new URLSearchParams({
         client_id: String(process.env.DISCORD_CLIENT_ID || '').trim(),
         client_secret: String(process.env.DISCORD_CLIENT_SECRET || '').trim(),
         grant_type: 'authorization_code',
-        code: String(req.query.code),
+        code: authorizationCode,
         redirect_uri: redirectUri,
       });
 
@@ -1129,6 +1162,7 @@ function startDashboard(client) {
       }
 
       const token = await tokenRes.json();
+      finishOAuthCodeExchange(authorizationCode);
       if (!token.access_token) throw new Error('Discord OAuth returned no access token.');
 
       const user = await discordFetch('/users/@me', token.access_token);
@@ -1156,6 +1190,7 @@ function startDashboard(client) {
       console.log(`[Dashboard OAuth] Logged in Discord user ${req.session.user.username} (${user.id}).`);
       return res.redirect('/dashboard');
     } catch (error) {
+      if (req.query?.code) finishOAuthCodeExchange(String(req.query.code).trim());
       console.error('[Dashboard OAuth] Discord login failed:', error);
       return res.status(500).send(page(
         'Discord login failed',
