@@ -852,6 +852,26 @@ function startDashboard(client) {
   const app = express();
   app.disable('x-powered-by');
 
+  const recordHealthSample = async () => {
+    try {
+      const started = Date.now();
+      let dbUp = false;
+      try { dbUp = await pingDatabase(); } catch {}
+      const latency = Math.max(0, Date.now() - started);
+      await getPool().query(
+        'INSERT INTO service_health_samples (service, is_up, latency_ms, checked_at) VALUES (?, ?, ?, NOW()), (?, ?, ?, NOW())',
+        ['bot', client.isReady() ? 1 : 0, Number.isFinite(client.ws.ping) ? Math.max(0, Math.round(client.ws.ping)) : null,
+         'panel', dbUp ? 1 : 0, latency]
+      );
+      await getPool().query('DELETE FROM service_health_samples WHERE checked_at < DATE_SUB(NOW(), INTERVAL 8 DAY)');
+    } catch (error) {
+      console.warn('[Dashboard] Unable to record service health sample:', error?.message || error);
+    }
+  };
+  const healthSampleTimer = setInterval(recordHealthSample, 5 * 60 * 1000);
+  healthSampleTimer.unref?.();
+  setTimeout(recordHealthSample, 5000).unref?.();
+
   if (process.env.NODE_ENV === 'production') {
     app.set('trust proxy', 1);
   }
@@ -935,6 +955,46 @@ function startDashboard(client) {
 
   app.get('/status', async (req, res) => {
     const checkedAt = new Date();
+    let healthRows = [];
+    try {
+      const [rows] = await getPool().query(
+        `SELECT service, DATE(checked_at) AS day,
+          COUNT(*) AS checks,
+          SUM(is_up = 1) AS up_checks
+         FROM service_health_samples
+         WHERE checked_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+         GROUP BY service, DATE(checked_at)
+         ORDER BY day ASC`
+      );
+      healthRows = rows || [];
+    } catch (error) {
+      console.warn('[Dashboard] Unable to load 7-day uptime history:', error?.message || error);
+    }
+    const historyByService = new Map();
+    for (const row of healthRows) {
+      const key = String(row.service);
+      if (!historyByService.has(key)) historyByService.set(key, new Map());
+      const day = new Date(row.day);
+      const dateKey = [day.getFullYear(), String(day.getMonth()+1).padStart(2,'0'), String(day.getDate()).padStart(2,'0')].join('-');
+      historyByService.get(key).set(dateKey, { checks: Number(row.checks || 0), up: Number(row.up_checks || 0) });
+    }
+    const historyDays = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date();
+      day.setHours(12,0,0,0);
+      day.setDate(day.getDate() - (6 - index));
+      const key = [day.getFullYear(), String(day.getMonth()+1).padStart(2,'0'), String(day.getDate()).padStart(2,'0')].join('-');
+      return { key, label: day.toLocaleDateString([], { weekday: 'short' }), date: day.toLocaleDateString([], { month: 'short', day: 'numeric' }) };
+    });
+    const serviceUptime = (service) => {
+      const map = historyByService.get(service) || new Map();
+      let checks = 0, up = 0;
+      for (const day of historyDays) { const sample = map.get(day.key); if (sample) { checks += sample.checks; up += sample.up; } }
+      return checks ? (up / checks) * 100 : null;
+    };
+    const historyRow = (service, label) => {
+      const map = historyByService.get(service) || new Map();
+      return `<div class="uptime-history-row"><div class="uptime-history-label"><strong>${escapeHtml(label)}</strong><span>${serviceUptime(service) === null ? 'Collecting data' : `${serviceUptime(service).toFixed(2)}% uptime`}</span></div><div class="uptime-day-grid">${historyDays.map((day) => { const sample = map.get(day.key); const pct = sample?.checks ? (sample.up / sample.checks) * 100 : null; const state = pct === null ? 'unknown' : pct >= 99 ? 'good' : pct >= 95 ? 'warning' : 'bad'; return `<div class="uptime-day ${state}" title="${day.date}: ${pct === null ? 'No data yet' : `${pct.toFixed(2)}% uptime from ${sample.checks} checks`}"><i></i><strong>${day.label}</strong><span>${pct === null ? '—' : `${pct.toFixed(1)}%`}</span></div>`; }).join('')}</div></div>`;
+    };
     const databaseStarted = Date.now();
     let database = false;
     try { database = await pingDatabase(); } catch { database = false; }
@@ -976,6 +1036,10 @@ function startDashboard(client) {
           ${service('🖥️','Web Panel','operational','Dashboard routes and static assets are being served normally.',`<span>HTTP status</span><strong>Online</strong>`)}
           ${service('🗄️','Database',database ? 'operational' : 'degraded',database ? 'MySQL is responding to dashboard health checks.' : 'MySQL did not respond successfully to the health check.',`<span>Health-check response</span><strong>${database ? `${databaseLatency} ms` : 'Failed'}</strong>`)}
         </div>
+      </section>
+      <section class="status-uptime-panel">
+        <div class="status-section-heading"><div><span class="eyebrow">7-DAY UPTIME</span><h2>Availability history</h2><p>Health snapshots are recorded every 5 minutes and retained across restarts.</p></div><span class="status-history-window">Last 7 days</span></div>
+        <div class="uptime-history">${historyRow('bot','Discord Bot')}${historyRow('panel','Web Panel')}</div>
       </section>
       <section class="status-runtime-panel">
         <div><span>Runtime</span><strong>Node.js ${escapeHtml(process.version.replace(/^v/, ''))}</strong></div>
@@ -2823,6 +2887,8 @@ function startDashboard(client) {
 
     console.error('[Dashboard] HTTP server error:', error);
   });
+
+  server.on('close', () => clearInterval(healthSampleTimer));
 
   return server;
 }
