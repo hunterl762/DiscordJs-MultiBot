@@ -2866,3 +2866,107 @@ html[data-theme="dark"] input[type="search"]{
 html[data-theme="dark"] input[type="search"]::placeholder{color:#9aa3b2!important}
 .server-search,
 .owner-server-search{background:transparent!important}
+
+
+/* === Dashboard usability sizing pass === */
+:root{--dashboard-content-max:1440px}
+.dashboard-control-shell,.owner-dashboard,.features-page,.user-settings-page{width:min(100%,var(--dashboard-content-max));margin-inline:auto}
+.section-title{margin-bottom:16px}
+.section-title h1{margin-bottom:6px}
+.dashboard-jump{
+  display:flex;flex-wrap:wrap;gap:8px;
+  position:sticky;top:68px;z-index:20;
+  padding:10px!important;margin-bottom:18px!important;
+  border:1px solid var(--line);border-radius:14px;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)
+}
+.dashboard-jump a{min-height:38px;display:inline-flex;align-items:center;padding:8px 12px!important;border-radius:9px!important}
+.panel{padding:20px!important;margin-bottom:18px}
+.panel-heading-row,.owner-section-heading,.category-heading{gap:16px;align-items:flex-start}
+.panel-heading-row>div:first-child,.owner-section-heading>div:first-child{min-width:0;flex:1}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px!important}
+.form-grid label,.embed-editor-controls>label{min-width:0;display:flex;flex-direction:column;gap:7px}
+input:not([type="checkbox"]):not([type="radio"]),select,textarea{
+  width:100%;min-width:0;min-height:44px;padding:10px 12px;border-radius:10px
+}
+textarea{min-height:104px;resize:vertical}
+.btn{min-height:40px;padding:9px 14px;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.checks{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px!important}
+.checks label{min-height:44px;display:flex;align-items:center;gap:9px;padding:10px 12px!important;border-radius:10px}
+.feature-grid,.command-grid,.public-feature-grid,.paid-access-list{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px!important;align-items:start
+}
+.feature-card,.command-card,.public-feature-card,.automation-rule-card,.ticket-module-card,.stream-alert-card{
+  min-width:0;height:auto!important;padding:17px!important;border-radius:14px!important
+}
+.feature-card-head{display:flex;align-items:flex-start;gap:12px}
+.feature-title-wrap{min-width:0;flex:1}
+.feature-description{line-height:1.55;margin:10px 0}
+.feature-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px!important}
+.feature-card-footer,.feature-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:9px}
+.ticket-config-grid,.embed-editor-layout{grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr)!important;gap:18px!important}
+.embed-preview-card{position:sticky;top:136px;align-self:start;max-width:100%}
+.stream-alert-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.table-wrap,.owner-server-table-wrap{overflow:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+table{width:100%}
+.dashboard-toolbar,.owner-server-toolbar{gap:10px;flex-wrap:wrap}
+.dashboard-toolbar>*{min-width:0}
+.guild-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px!important}
+.guild-card{min-width:0;padding:18px!important}
+.guild-card-actions{display:flex;flex-wrap:wrap;gap:9px}
+.dashboard-home-stats,.server-stats-summary{gap:12px!important}
+.dashboard-home-stats>div,.server-stats-summary>div{min-width:0}
+
+/* Keep light mode consistently light, including legacy components with hard-coded dark backgrounds. */
+html[data-theme="light"] .feature-card,
+html[data-theme="light"] .command-card,
+html[data-theme="light"] .ticket-config-panel,
+html[data-theme="light"] .ticket-module-card,
+html[data-theme="light"] .automation-builder,
+html[data-theme="light"] .automation-form,
+html[data-theme="light"] .automation-rule-card,
+html[data-theme="light"] .stream-alert-card,
+html[data-theme="light"] .embed-editor,
+html[data-theme="light"] .embed-preview-card,
+html[data-theme="light"] .suggestions-panel,
+html[data-theme="light"] .paid-access-card,
+html[data-theme="light"] .owner-section,
+html[data-theme="light"] .dashboard-toolbar,
+html[data-theme="light"] .feature-fields,
+html[data-theme="light"] .feature-requirement{
+  background:#fff!important;background-image:none!important;color:#1b2559!important;border-color:#dfe5ef!important
+}
+html[data-theme="light"] .feature-fields,
+html[data-theme="light"] .feature-requirement,
+html[data-theme="light"] .checks label,
+html[data-theme="light"] .dashboard-home-stats>div,
+html[data-theme="light"] .server-stats-summary>div{
+  background:#f7f9fc!important;background-image:none!important;color:#1b2559!important;border-color:#dfe5ef!important
+}
+html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="light"] select,
+html[data-theme="light"] textarea{
+  background:#fff!important;background-image:none!important;color:#1b2559!important;border-color:#ccd5e2!important
+}
+html[data-theme="light"] option{background:#fff!important;color:#1b2559!important}
+html[data-theme="light"] .feature-card p,
+html[data-theme="light"] .command-card p,
+html[data-theme="light"] .ticket-module-card p,
+html[data-theme="light"] .automation-rule-card span,
+html[data-theme="light"] .feature-requirement{color:#68758b!important}
+
+@media(max-width:1050px){
+  .feature-grid,.command-grid,.public-feature-grid,.paid-access-list,.guild-grid,.stream-alert-grid{grid-template-columns:1fr!important}
+  .ticket-config-grid,.embed-editor-layout{grid-template-columns:1fr!important}
+  .embed-preview-card{position:static}
+}
+@media(max-width:720px){
+  .panel{padding:15px!important}
+  .form-grid,.checks,.feature-fields{grid-template-columns:1fr!important}
+  .dashboard-jump{position:static;overflow-x:auto;flex-wrap:nowrap}
+  .dashboard-jump a{white-space:nowrap}
+  .panel-heading-row,.category-heading{flex-direction:column}
+  .feature-card-head{flex-wrap:wrap}
+  .feature-card-footer,.feature-actions,.guild-card-actions{justify-content:stretch}
+  .feature-card-footer .btn,.feature-actions .btn,.guild-card-actions .btn{width:100%}
+}
