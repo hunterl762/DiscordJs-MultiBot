@@ -2799,3 +2799,28 @@ html[data-theme="light"] .account-submenu-menu .theme-choice.is-active{backgroun
   .user-settings-grid{grid-template-columns:1fr}
   .user-settings-card:first-child{grid-column:auto}
 }
+
+
+/* === Bot Owner server directory === */
+.owner-server-directory{overflow:hidden}
+.owner-server-directory-heading{align-items:center}
+.owner-server-toolbar{display:flex;align-items:flex-end;gap:10px;margin:16px 0}
+.owner-server-search{flex:1;display:flex;flex-direction:column;gap:7px;font-weight:800}
+.owner-server-search span{font-size:12px;color:var(--muted)}
+.owner-server-search input{width:100%;min-height:42px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#11151d;color:var(--text)}
+.owner-server-table-wrap{border:1px solid var(--line);border-radius:12px}
+.owner-server-table{min-width:720px}
+.owner-server-table th{font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.owner-server-name{display:flex;align-items:center;gap:11px;min-width:250px}
+.owner-server-name img,.owner-server-icon-fallback{width:38px;height:38px;border-radius:10px;flex:0 0 auto}
+.owner-server-icon-fallback{display:grid;place-items:center;background:var(--panel2);font-weight:900}
+.owner-server-name>div{display:flex;flex-direction:column}
+.owner-server-name small,.owner-server-owner-id{display:block;color:var(--muted);font-size:11px;font-weight:500}
+.owner-server-empty{margin:12px;border:0}
+html[data-theme="light"] .owner-server-search input{background:#fff!important;color:#1b2559!important;border-color:#ccd5e2!important}
+html[data-theme="light"] .owner-server-table-wrap{background:#fff;border-color:#dfe5ef}
+@media(max-width:720px){
+  .owner-server-directory-heading,.owner-server-toolbar{align-items:stretch}
+  .owner-server-toolbar{flex-direction:column}
+  .owner-server-toolbar .btn{width:100%}
+}
