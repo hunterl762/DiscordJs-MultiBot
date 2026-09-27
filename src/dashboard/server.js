@@ -212,6 +212,12 @@ function page(title, body, user, meta = {}) {
     ? `<details class="account-dropdown">
         <summary class="account-dropdown-trigger"><span class="account-name">${escapeHtml(user.username)}</span><span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
         <div class="account-dropdown-menu">
+          <div class="account-theme-picker" role="group" aria-label="Appearance">
+            <span class="account-theme-title">Appearance</span>
+            <button class="account-menu-item theme-choice" type="button" data-theme-choice="system">System</button>
+            <button class="account-menu-item theme-choice" type="button" data-theme-choice="light">Light</button>
+            <button class="account-menu-item theme-choice" type="button" data-theme-choice="dark">Dark</button>
+          </div>
           <a class="account-menu-item account-logout" href="/logout">Log out</a>
         </div>
       </details>`
@@ -252,8 +258,9 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:title" content="${escapeHtml(seo.title)}">
 <meta name="twitter:description" content="${escapeHtml(seo.description)}">
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
-<meta name="color-scheme" content="dark">
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-dark-only">
+<meta name="color-scheme" content="dark light">
+<script>(()=>{try{const choice=localStorage.getItem('kryndexa-theme-mode')||'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.dataset.theme=theme;document.documentElement.dataset.themeMode=choice;}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-system-theme">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -283,6 +290,32 @@ function page(title, body, user, meta = {}) {
 <footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
 ${cookieNotice}
 <script>(() => {
+  const root=document.documentElement;
+  const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+  const applyTheme=(choice)=>{
+    const mode=['system','light','dark'].includes(choice)?choice:'system';
+    const theme=mode==='system'?(systemTheme.matches?'dark':'light'):mode;
+    root.dataset.theme=theme;
+    root.dataset.themeMode=mode;
+    root.style.colorScheme=theme;
+    try{localStorage.setItem('kryndexa-theme-mode',mode);}catch{}
+    document.querySelectorAll('[data-theme-choice]').forEach(button=>{
+      const active=button.dataset.themeChoice===mode;
+      button.classList.toggle('is-active',active);
+      button.setAttribute('aria-pressed',active?'true':'false');
+    });
+  };
+  document.addEventListener('click',event=>{
+    const button=event.target.closest('[data-theme-choice]');
+    if(!button)return;
+    event.preventDefault();
+    applyTheme(button.dataset.themeChoice);
+  });
+  const followSystem=()=>{if((root.dataset.themeMode||'system')==='system')applyTheme('system');};
+  if(systemTheme.addEventListener)systemTheme.addEventListener('change',followSystem);
+  else if(systemTheme.addListener)systemTheme.addListener(followSystem);
+  applyTheme(root.dataset.themeMode||'system');
+
   const nav=document.querySelector('[data-site-nav]');
   document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));
 
