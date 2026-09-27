@@ -2764,3 +2764,38 @@ html[data-theme="light"] h1,
 html[data-theme="light"] h2,
 html[data-theme="light"] h3,
 html[data-theme="light"] strong{color:#1b2559}
+
+
+/* === Account nested Appearance menu + User Settings === */
+.account-submenu{width:100%}
+.account-submenu>summary{list-style:none}
+.account-submenu>summary::-webkit-details-marker{display:none}
+.account-submenu>summary.account-menu-item{justify-content:space-between}
+.account-submenu[open]>summary{background:var(--panel2)!important}
+.account-submenu[open]>summary .nav-dropdown-chevron{transform:rotate(180deg)}
+.account-submenu-menu{
+  margin:3px 5px 6px;
+  padding:5px;
+  border-left:2px solid var(--line);
+}
+.account-submenu-menu .account-menu-item{padding-left:14px!important}
+.account-submenu-menu .theme-choice.is-active{background:var(--panel2)!important}
+.user-settings-page{max-width:980px;margin:0 auto}
+.user-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.user-settings-card{margin:0!important}
+.user-settings-card:first-child{grid-column:1/-1}
+.user-settings-card h2{margin-top:0}
+.user-profile-row{display:flex;align-items:center;gap:14px;margin:16px 0}
+.user-profile-row>div{display:flex;flex-direction:column;gap:3px}
+.user-profile-row span{color:var(--muted);font-size:12px}
+.user-settings-avatar{width:58px;height:58px;border-radius:16px;object-fit:cover;border:1px solid var(--line)}
+.user-settings-avatar.fallback{display:grid;place-items:center;background:var(--panel2);font-size:22px;font-weight:900}
+.user-settings-theme-options{display:flex;flex-wrap:wrap;gap:9px;margin-top:15px}
+.user-settings-theme-options .theme-choice.is-active{outline:2px solid #5865f2;outline-offset:2px}
+html[data-theme="light"] .account-submenu-menu{border-color:#dfe5ef}
+html[data-theme="light"] .account-submenu[open]>summary,
+html[data-theme="light"] .account-submenu-menu .theme-choice.is-active{background:#f0f3f8!important}
+@media(max-width:720px){
+  .user-settings-grid{grid-template-columns:1fr}
+  .user-settings-card:first-child{grid-column:auto}
+}
