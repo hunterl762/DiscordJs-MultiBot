@@ -1,6 +1,7 @@
 const { getPool } = require('../database');
 const { FEATURE_CATALOG, getFeatureDefinition, defaultFeatureConfig, isFeatureEnvironmentEnabled } = require('./catalog');
 const { listSecureRecords, putSecureRecord } = require('../dashboardSecureStore');
+const { getGuildSubscription, getPlan } = require('../subscriptionStore');
 
 const cache = new Map();
 const CACHE_TTL_MS = 30_000;
@@ -27,12 +28,16 @@ async function getGuildFeatures(guildId) {
   const cached = cache.get(guildId);
   if (cached?.expiresAt > Date.now()) return cached.states;
   const rows = await migrateLegacy(guildId);
+  const subscription = await getGuildSubscription(guildId);
+  const plan = await getPlan(subscription.tier);
+  const entitled = new Set(plan.features || []);
   const byKey = new Map(rows.map((row) => [row.recordKey, row.payload || {}]));
   const states = FEATURE_CATALOG.map((definition) => {
     const payload = byKey.get(definition.key);
     const enabled = definition.locked
       ? true
       : isFeatureEnvironmentEnabled(definition)
+        && (entitled.has('*') || entitled.has(definition.key))
         && (payload ? Boolean(payload.enabled) : Boolean(definition.defaultEnabled));
     return {
       definition,
