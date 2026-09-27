@@ -3543,3 +3543,65 @@ html[data-theme="light"] #features .feature-card .btn.secondary:hover{
   .site-header .header-actions .public-header-actions>.btn,
   .site-header .header-actions .add-bot-btn{width:auto!important;min-width:0!important;max-width:none!important}
 }
+
+
+/* === Navigation alignment + friendly status history v5 === */
+.site-header .header-actions{
+  display:grid!important;grid-template-columns:190px auto 190px!important;
+  align-items:center!important;gap:9px!important;flex:0 0 auto!important
+}
+.site-header .header-actions>.add-bot-btn{grid-column:1!important}
+.site-header .header-auth{grid-column:2/4!important;display:grid!important;grid-template-columns:auto 190px!important;align-items:center!important;gap:9px!important}
+.site-header .public-header-actions{display:contents!important}
+.site-header .public-theme-toggle{grid-column:1!important;height:40px!important;margin:0!important}
+.site-header .header-auth .btn{grid-column:2!important;width:190px!important;min-width:190px!important;max-width:190px!important}
+.site-header .header-actions>.add-bot-btn{width:190px!important;min-width:190px!important;max-width:190px!important}
+
+/* Keep authenticated dropdowns open while pointer travels from trigger to menu. */
+@media(hover:hover) and (pointer:fine){
+  .site-nav details.nav-dropdown{padding-bottom:8px!important;margin-bottom:-8px!important}
+  .site-nav details.nav-dropdown>.nav-dropdown-menu{top:calc(100% - 1px)!important}
+  .site-nav details.nav-dropdown:hover>.nav-dropdown-menu,
+  .site-nav details.nav-dropdown:focus-within>.nav-dropdown-menu,
+  .site-nav details.nav-dropdown[open]>.nav-dropdown-menu{opacity:1!important;visibility:visible!important;pointer-events:auto!important}
+}
+
+/* Make seven-day history easier to scan instead of presenting two oversized blocks. */
+.status-page-v2 .status-uptime-panel{padding:18px!important}
+.status-page-v2 .status-uptime-panel .status-section-heading{
+  display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:14px!important
+}
+.status-page-v2 .status-uptime-panel .status-section-heading p{max-width:650px!important}
+.status-page-v2 .uptime-history{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}
+.status-page-v2 .uptime-history-row{
+  display:flex!important;flex-direction:column!important;gap:12px!important;
+  min-width:0!important;padding:15px!important;border-radius:13px!important
+}
+.status-page-v2 .uptime-history-label{
+  display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:space-between!important;gap:10px!important
+}
+.status-page-v2 .uptime-history-label strong{font-size:13px!important}
+.status-page-v2 .uptime-day-grid{display:grid!important;grid-template-columns:repeat(7,minmax(48px,1fr))!important;gap:5px!important}
+.status-page-v2 .uptime-day{min-height:66px!important;padding:8px 3px!important;justify-content:center!important}
+.status-page-v2 .uptime-day i{height:4px!important}
+.status-page-v2 .status-runtime-panel{margin-top:0!important}
+@media(max-width:1180px){
+  .site-header .header-actions{grid-template-columns:160px auto 160px!important}
+  .site-header .header-auth{grid-template-columns:auto 160px!important}
+  .site-header .header-actions>.add-bot-btn,.site-header .header-auth .btn{width:160px!important;min-width:160px!important;max-width:160px!important}
+}
+@media(max-width:900px){
+  .site-header .header-actions{display:flex!important;gap:7px!important}
+  .site-header .header-auth{display:flex!important;gap:7px!important}
+  .site-header .public-header-actions{display:contents!important}
+  .site-header .header-actions>.add-bot-btn{display:none!important}
+  .site-header .header-auth .btn{width:auto!important;min-width:0!important;max-width:none!important}
+  .status-page-v2 .uptime-history{grid-template-columns:1fr!important}
+}
+@media(max-width:680px){
+  .site-header .header-actions{margin-left:auto!important}
+  .site-header .public-theme-toggle{height:36px!important}
+  .site-header .header-auth .btn{height:36px!important;min-height:36px!important}
+  .status-page-v2 .status-uptime-panel .status-section-heading{grid-template-columns:1fr!important}
+  .status-page-v2 .uptime-day-grid{overflow-x:auto!important;grid-template-columns:repeat(7,minmax(62px,1fr))!important}
+}
