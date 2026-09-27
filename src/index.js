@@ -1,4 +1,5 @@
 require('dotenv').config();
+const readline = require('node:readline');
 const {
   Client,
   Events,
@@ -12,7 +13,8 @@ const {
 } = require('./bot/slashCommandSync');
 const { registerEvents } = require('./bot/events');
 const { registerInteractions } = require('./bot/interactions');
-const { startDashboard } = require('./dashboard/server');
+const dashboardModulePath = require.resolve('./dashboard/server');
+let { startDashboard } = require(dashboardModulePath);
 const { initDatabase } = require('./database');
 const { startTwitchMonitor, stopTwitchMonitor } = require('./services/twitchMonitor');
 const { registerFeatureRuntime, stopFeatureRuntime } = require('./features/runtime');
@@ -68,12 +70,54 @@ async function waitForReady() {
   await new Promise((resolve) => client.once(Events.ClientReady, resolve));
 }
 
+async function reloadDashboard() {
+  console.log('[Dashboard] Reload requested...');
+  try {
+    if (dashboardServer?.listening) {
+      await new Promise((resolve, reject) => {
+        dashboardServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+
+    // Reload the dashboard server module without disconnecting the Discord client.
+    // Static files (CSS/images) are read by Express on request; server-side dashboard
+    // template/route changes become active after this module refresh.
+    delete require.cache[dashboardModulePath];
+    ({ startDashboard } = require(dashboardModulePath));
+    dashboardServer = startDashboard(client);
+    console.log('[Dashboard] Reload complete. The Discord bot stayed connected.');
+    return true;
+  } catch (error) {
+    dashboardServer = null;
+    console.error('[Dashboard] Reload failed:', error);
+    return false;
+  }
+}
+
+function registerConsoleCommands() {
+  if (!process.stdin.isTTY) return null;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  rl.on('line', async (line) => {
+    const command = String(line || '').trim().toLowerCase();
+    if (['dashboard reload', 'reload dashboard', 'dashboard:reload'].includes(command)) {
+      await reloadDashboard();
+    } else if (command === 'dashboard help' || command === 'help') {
+      console.log('[Dashboard] Console commands: dashboard reload | dashboard help');
+    }
+  });
+  console.log('[Dashboard] Console hot reload enabled. Type "dashboard reload" after editing dashboard server files.');
+  return rl;
+}
+
+let consoleInterface = null;
+
 async function shutdown(signal) {
   console.log(`Received ${signal}; shutting down MultiBot.`);
   try {
     stopTwitchMonitor();
     stopFeatureRuntime();
     stopMusic();
+    consoleInterface?.close();
 
     if (dashboardServer?.listening) {
       await new Promise((resolve) => dashboardServer.close(() => resolve()));
@@ -91,6 +135,7 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
 
 (async () => {
   await initDatabase();
+  consoleInterface = registerConsoleCommands();
 
   try {
     dashboardServer = startDashboard(client);
