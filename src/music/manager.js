@@ -3,6 +3,7 @@ const {
   AudioPlayerStatus,
   NoSubscriberBehavior,
   VoiceConnectionStatus,
+  StreamType,
   createAudioPlayer,
   createAudioResource,
   entersState,
@@ -10,6 +11,7 @@ const {
 } = require('@discordjs/voice');
 const play = require('@iamtraction/play-dl');
 const ffmpegPath = require('ffmpeg-static');
+const prism = require('prism-media');
 
 // prism-media looks for FFMPEG_PATH before falling back to a system PATH lookup.
 // Bundling ffmpeg-static keeps local Windows installs self-contained.
@@ -159,12 +161,24 @@ class LocalMusicPlayer {
     this.paused = false;
 
     try {
-      // Compatibility mode avoids handing raw optimized Opus packets to a pipeline
-      // that also needs inline volume transformation. Let @discordjs/voice probe/
-      // transcode the compatible stream so volume + Opus encoding remain reliable.
-      const stream = await play.stream(track.uri, { discordPlayerCompatibility: true });
-      this.resource = createAudioResource(stream.stream, {
-        inputType: stream.type,
+      // Normalize every source into a known PCM format. This avoids silent playback
+      // caused by an incorrectly inferred WebM/Ogg/Opus stream type.
+      const stream = await play.stream(track.uri, { discordPlayerCompatibility: false });
+      const ffmpeg = new prism.FFmpeg({
+        args: [
+          '-analyzeduration', '0',
+          '-loglevel', '0',
+          '-f', 's16le',
+          '-ar', '48000',
+          '-ac', '2',
+        ],
+      });
+
+      stream.stream.on('error', (error) => ffmpeg.destroy(error));
+      stream.stream.pipe(ffmpeg);
+
+      this.resource = createAudioResource(ffmpeg, {
+        inputType: StreamType.Raw,
         inlineVolume: true,
         metadata: { title: track.title, uri: track.uri },
       });
