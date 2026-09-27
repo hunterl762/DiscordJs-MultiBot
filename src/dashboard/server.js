@@ -413,6 +413,22 @@ ${cookieNotice}
     apply();
   };
   document.querySelectorAll('input[type="search"][data-filter-selector]').forEach(setupSearch);
+  document.querySelector('[data-feature-search-clear]')?.addEventListener('click',()=>{
+    const input=document.getElementById('featureSearch');if(!input)return;input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();
+  });
+  const featureSearch=document.getElementById('featureSearch');
+  if(featureSearch){
+    const syncFeatureSections=()=>{
+      document.querySelectorAll('[data-feature-section]').forEach(section=>{
+        const hasVisible=Array.from(section.querySelectorAll('[data-feature-card]')).some(card=>!card.hidden);
+        section.hidden=!hasVisible;
+      });
+    };
+    featureSearch.addEventListener('input',syncFeatureSections);
+    featureSearch.addEventListener('search',syncFeatureSections);
+    featureSearch.addEventListener('keyup',syncFeatureSections);
+    syncFeatureSections();
+  }
 
 
   document.querySelectorAll('[data-stream-platform]').forEach(select=>{
@@ -934,10 +950,10 @@ function startDashboard(client) {
     const categoryOrder = [...new Set(FEATURE_CATALOG.map((feature) => feature.category))];
     const cards = categoryOrder.map((category) => {
       const features = FEATURE_CATALOG.filter((feature) => feature.category === category);
-      return `<section class="public-feature-section"><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${features.length} module${features.length === 1 ? '' : 's'}</span></div><div class="public-feature-grid">${features.map((feature) => `<article class="public-feature-card"><div class="public-feature-top"><div class="feature-icon">${escapeHtml(feature.icon)}</div><div><span class="mini-label">${escapeHtml(feature.priority)} priority</span><h3>${escapeHtml(feature.title)}</h3></div></div><p>${escapeHtml(feature.description)}</p><div class="public-feature-meta"><span>${feature.locked ? 'Always enabled' : feature.defaultEnabled ? 'Enabled by default' : 'Server configurable'}</span><small>${escapeHtml(feature.requirement || 'Configured directly from the server dashboard.')}</small></div></article>`).join('')}</div></section>`;
+      return `<section class="public-feature-section" data-feature-section><div class="category-heading"><h2>${escapeHtml(category)}</h2><span>${features.length} module${features.length === 1 ? '' : 's'}</span></div><div class="public-feature-grid">${features.map((feature) => { const searchText = [category, feature.title, feature.description, feature.priority, feature.requirement || ''].join(' '); return `<article class="public-feature-card" data-feature-card data-feature-search="${escapeHtml(searchText)}"><div class="public-feature-top"><div class="feature-icon">${escapeHtml(feature.icon)}</div><div><span class="mini-label">${escapeHtml(feature.priority)} priority</span><h3>${escapeHtml(feature.title)}</h3></div></div><p>${escapeHtml(feature.description)}</p><div class="public-feature-meta"><span>${feature.locked ? 'Always enabled' : feature.defaultEnabled ? 'Enabled by default' : 'Server configurable'}</span><small>${escapeHtml(feature.requirement || 'Configured directly from the server dashboard.')}</small></div></article>`; }).join('')}</div></section>`;
     }).join('');
 
-    const body = `<div class="features-page"><section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section><div class="public-feature-categories">${cards}</div></div>`;
+    const body = `<div class="features-page"><section class="features-hero"><span class="eyebrow">FEATURES</span><h1>One dashboard for every server tool.</h1><p>Explore Kryndexa Bot's moderation, community, support, analytics, voice, automation and integration modules.</p><div class="actions">${req.session.user ? '<a class="btn" href="/dashboard">Configure Your Servers</a>' : renderDiscordLoginButton('Log in with Discord')} ${addBotButton}</div><div class="feature-search-shell"><span class="feature-search-icon" aria-hidden="true">⌕</span><input id="featureSearch" type="search" placeholder="Search features, categories, or capabilities…" autocomplete="off" data-filter-selector="[data-feature-card]" data-filter-attribute="data-feature-search" data-filter-empty="#featureSearchEmpty" data-filter-count="#featureSearchCount" data-filter-noun="feature"><button type="button" class="feature-search-clear" data-feature-search-clear aria-label="Clear feature search">×</button></div><div class="feature-search-status"><span id="featureSearchCount">${FEATURE_CATALOG.length} features</span><span>Press Esc to clear</span></div></section><section class="public-feature-summary"><div><strong>${FEATURE_CATALOG.length}</strong><span>Feature Modules</span></div><div><strong>44+</strong><span>Commands</span></div><div><strong>3</strong><span>Streaming Providers</span></div><div><strong>24/7</strong><span>Control Center</span></div></section><div id="featureSearchEmpty" class="feature-search-empty panel" hidden><strong>No matching features</strong><span>Try another feature name, category, or capability.</span></div><div class="public-feature-categories">${cards}</div></div>`;
     return res.send(page('Features • Kryndexa Bot', body, req.session.user, {
       path: '/features',
       description: 'Explore Kryndexa Bot modules for moderation, tickets, logging, verification, music, automations, streaming alerts, analytics and Discord community management.',
