@@ -206,9 +206,9 @@ async function validateLavalinkConnection(node) {
     throw new Error(`Unable to reach Lavalink at ${endpoint}: ${error?.message || error}`);
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 || response.status === 403) {
     throw new Error(
-      'Lavalink rejected LAVALINK_PASSWORD (HTTP 401). Set LAVALINK_PASSWORD to exactly the same value as lavalink.server.password in application.yml, then restart both Lavalink and Kryndexa.',
+      `Lavalink rejected LAVALINK_PASSWORD (HTTP ${response.status}). The bot reached the correct Lavalink server, but its Authorization password does not match the password Lavalink is actually running with. Make LAVALINK_PASSWORD match lavalink.server.password in application.yml (or LAVALINK_SERVER_PASSWORD if Lavalink is being overridden by an environment variable), then restart Lavalink and Kryndexa.`,
     );
   }
 
