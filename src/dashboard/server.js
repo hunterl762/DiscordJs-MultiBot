@@ -212,12 +212,15 @@ function page(title, body, user, meta = {}) {
     ? `<details class="account-dropdown">
         <summary class="account-dropdown-trigger"><span class="account-name">${escapeHtml(user.username)}</span><span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
         <div class="account-dropdown-menu">
-          <div class="account-theme-picker" role="group" aria-label="Appearance">
-            <span class="account-theme-title">Appearance</span>
-            <button class="account-menu-item theme-choice" type="button" data-theme-choice="system">System</button>
-            <button class="account-menu-item theme-choice" type="button" data-theme-choice="light">Light</button>
-            <button class="account-menu-item theme-choice" type="button" data-theme-choice="dark">Dark</button>
-          </div>
+          <details class="account-submenu">
+            <summary class="account-menu-item">Appearance <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
+            <div class="account-submenu-menu" role="group" aria-label="Appearance">
+              <button class="account-menu-item theme-choice" type="button" data-theme-choice="system">System</button>
+              <button class="account-menu-item theme-choice" type="button" data-theme-choice="light">Light</button>
+              <button class="account-menu-item theme-choice" type="button" data-theme-choice="dark">Dark</button>
+            </div>
+          </details>
+          <a class="account-menu-item" href="/dashboard/user-settings">User Settings</a>
           <a class="account-menu-item account-logout" href="/logout">Log out</a>
         </div>
       </details>`
@@ -260,7 +263,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('kryndexa-theme-mode');const choice=['system','light','dark'].includes(saved)?saved:'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.setAttribute('data-theme',theme);document.documentElement.setAttribute('data-theme-mode',choice);}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-theme-parser-fix">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-user-settings">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -1197,6 +1200,43 @@ function startDashboard(client) {
   });
 
   app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
+
+  app.get('/dashboard/user-settings', requireAuth, async (req, res) => {
+    req.session.user.isBotOwner = await isBotOwner(client, req.session.user.id);
+    const user = req.session.user;
+    const avatarUrl = user.avatar
+      ? `https://cdn.discordapp.com/avatars/${encodeURIComponent(user.id)}/${encodeURIComponent(user.avatar)}.png?size=128`
+      : '';
+    return res.send(page(
+      'User Settings',
+      `<section class="user-settings-page">
+        <div class="section-title"><span class="eyebrow">ACCOUNT</span><h1>User Settings</h1><p>Manage your Kryndexa web panel preferences and review the Discord account connected to this session.</p></div>
+        <div class="user-settings-grid">
+          <section class="panel user-settings-card">
+            <h2>Discord Account</h2>
+            <div class="user-profile-row">${avatarUrl ? `<img class="user-settings-avatar" src="${escapeHtml(avatarUrl)}" alt="">` : '<div class="user-settings-avatar fallback">K</div>'}<div><strong>${escapeHtml(user.username || 'Discord User')}</strong><span>Discord ID: ${escapeHtml(user.id || '')}</span></div></div>
+            <p>Your Discord account is used to determine which servers you can manage in the Kryndexa dashboard.</p>
+          </section>
+          <section class="panel user-settings-card">
+            <h2>Appearance</h2>
+            <p>Choose how the web panel should look on this browser.</p>
+            <div class="user-settings-theme-options" role="group" aria-label="Appearance">
+              <button class="btn secondary theme-choice" type="button" data-theme-choice="system">System</button>
+              <button class="btn secondary theme-choice" type="button" data-theme-choice="light">Light</button>
+              <button class="btn secondary theme-choice" type="button" data-theme-choice="dark">Dark</button>
+            </div>
+          </section>
+          <section class="panel user-settings-card">
+            <h2>Session</h2>
+            <p>Sign out of the current Kryndexa dashboard session on this browser.</p>
+            <a class="btn secondary account-logout" href="/logout">Log out</a>
+          </section>
+        </div>
+      </section>`,
+      user,
+      { description: 'Manage your Kryndexa Bot dashboard user settings.' },
+    ));
+  });
 
   app.get('/dashboard', requireAuth, async (req, res) => {
     try {
