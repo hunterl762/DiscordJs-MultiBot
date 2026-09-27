@@ -2866,3 +2866,125 @@ html[data-theme="dark"] input[type="search"]{
 html[data-theme="dark"] input[type="search"]::placeholder{color:#9aa3b2!important}
 .server-search,
 .owner-server-search{background:transparent!important}
+
+
+/* === Sleek themed dashboard refresh === */
+:root{
+  --surface-raised:color-mix(in srgb,var(--panel) 94%,#5865f2 6%);
+  --surface-soft:color-mix(in srgb,var(--panel2) 96%,#5865f2 4%);
+  --shadow-panel:0 18px 48px rgba(0,0,0,.16);
+}
+.site-header{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.panel,.dashboard-server-section,.settings-panel,.public-feature-section,.guild-card{
+  border-radius:18px;
+  background:var(--panel);
+  border-color:var(--line);
+  box-shadow:var(--shadow-panel);
+}
+.nav-dropdown>summary,.account-dropdown>summary{
+  border-radius:10px;
+  transition:background .15s ease,color .15s ease;
+}
+.nav-dropdown>summary:hover,.account-dropdown>summary:hover{background:var(--panel2)}
+.nav-dropdown-menu,.account-dropdown-menu{
+  margin-top:9px;
+  padding:7px;
+  min-width:190px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--panel);
+  box-shadow:0 18px 50px rgba(0,0,0,.24);
+  overflow:hidden;
+}
+.nav-dropdown-menu a,.account-menu-item{
+  min-height:38px;
+  padding:9px 11px!important;
+  border-radius:9px!important;
+  color:var(--text)!important;
+}
+.nav-dropdown-menu a:hover,.account-menu-item:hover{background:var(--panel2)!important}
+.nav-dropdown[open]>summary .nav-dropdown-chevron,
+.account-dropdown[open]>summary .nav-dropdown-chevron{transform:rotate(180deg)}
+.nav-dropdown-chevron{transition:transform .16s ease}
+
+/* Feature search */
+.feature-search-shell{
+  position:relative;
+  display:flex;
+  align-items:center;
+  width:min(720px,100%);
+  margin-top:24px;
+}
+.feature-search-shell input[type="search"]{
+  min-height:50px;
+  padding:12px 46px 12px 44px;
+  border-radius:14px;
+  background:var(--panel)!important;
+  border:1px solid var(--line)!important;
+  box-shadow:0 10px 30px rgba(0,0,0,.10)!important;
+}
+.feature-search-icon{
+  position:absolute;left:15px;z-index:2;
+  color:var(--muted);font-size:22px;line-height:1;pointer-events:none;
+}
+.feature-search-clear{
+  position:absolute;right:10px;z-index:2;
+  width:32px;height:32px;border:0;border-radius:9px;
+  background:transparent;color:var(--muted);font-size:22px;cursor:pointer;
+}
+.feature-search-clear:hover{background:var(--panel2);color:var(--text)}
+.feature-search-status{
+  width:min(720px,100%);display:flex;justify-content:space-between;gap:12px;
+  margin-top:8px;color:var(--muted);font-size:11px;font-weight:700;
+}
+.feature-search-empty{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:34px;margin-bottom:18px;text-align:center;
+}
+.feature-search-empty[hidden]{display:none!important}
+.feature-search-empty span{color:var(--muted);font-size:12px}
+.public-feature-card[hidden],.public-feature-section[hidden]{display:none!important}
+.public-feature-card{
+  background:var(--panel2);
+  border-radius:14px;
+  box-shadow:none;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease;
+}
+.public-feature-card:hover{
+  background:var(--surface-raised);
+  box-shadow:0 10px 26px rgba(0,0,0,.10);
+}
+
+/* Theme surfaces: every primary dashboard layer follows the selected mode */
+html[data-theme="dark"]{
+  --surface-raised:#181d28;
+  --surface-soft:#111620;
+  --shadow-panel:0 18px 48px rgba(0,0,0,.22);
+}
+html[data-theme="dark"] body{background:radial-gradient(circle at top,#171b26 0,var(--bg) 44%)!important}
+html[data-theme="dark"] .site-header,
+html[data-theme="dark"] .nav-dropdown-menu,
+html[data-theme="dark"] .account-dropdown-menu,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .dashboard-server-section,
+html[data-theme="dark"] .settings-panel,
+html[data-theme="dark"] .public-feature-section{background:var(--panel)!important;color:var(--text)!important}
+html[data-theme="dark"] .public-feature-card,
+html[data-theme="dark"] .dashboard-home-stats>div,
+html[data-theme="dark"] .dashboard-server-summary>div{background:var(--panel2)!important;color:var(--text)!important}
+
+html[data-theme="light"]{
+  --surface-raised:#fff;
+  --surface-soft:#f7f9fc;
+  --shadow-panel:0 14px 38px rgba(31,51,89,.075);
+}
+html[data-theme="light"] .nav-dropdown-menu,
+html[data-theme="light"] .account-dropdown-menu{box-shadow:0 18px 45px rgba(31,51,89,.13)}
+html[data-theme="light"] .feature-search-shell input[type="search"]{
+  background:#fff!important;border-color:#d9e0eb!important;box-shadow:0 10px 28px rgba(31,51,89,.07)!important
+}
+html[data-theme="light"] .feature-search-clear:hover{background:#f0f3f8}
+@media(max-width:620px){
+  .nav-dropdown-menu{position:static;width:100%;margin-top:5px;box-shadow:none}
+  .feature-search-status span:last-child{display:none}
+}
