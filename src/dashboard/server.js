@@ -173,7 +173,7 @@ function configuredWebIconUrl() {
 
 function renderDiscordLoginButton(label = 'Log in with Discord', extraClass = '') {
   const classes = ['btn', 'discord-login-button', extraClass].filter(Boolean).join(' ');
-  return `<a class="${classes}" href="/login" data-discord-login><span class="discord-login-mark" aria-hidden="true">◈</span><span>${escapeHtml(label)}</span></a>`;
+  return `<a class="${classes}" href="/login" data-discord-login><span class="discord-login-mark" aria-hidden="true"><svg class="discord-login-icon" viewBox="0 0 127.14 96.36" focusable="false" aria-hidden="true"><path fill="currentColor" d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.15c2.64-27.38-4.51-51.11-18.9-72.14ZM42.45 65.69C36.18 65.69 31 59.93 31 52.86s5-12.85 11.43-12.85 11.58 5.8 11.47 12.85-5.05 12.83-11.45 12.83Zm42.24 0c-6.27 0-11.45-5.76-11.45-12.83s5-12.85 11.45-12.85 11.58 5.8 11.47 12.85-5.04 12.83-11.47 12.83Z"/></svg></span><span>${escapeHtml(label)}</span></a>`;
 }
 
 function renderAddBotButton() {
@@ -233,7 +233,7 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const legacy=localStorage.getItem('multibot-theme');const saved=localStorage.getItem('kryndexa-theme')||legacy;const valid=saved==='light'||saved==='dark'?saved:null;const preferred=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';const theme=valid||preferred;document.documentElement.dataset.theme=theme;if(legacy&&!localStorage.getItem('kryndexa-theme'))localStorage.setItem('kryndexa-theme',theme);}catch{document.documentElement.dataset.theme='dark';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-features-columns">
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link rel="stylesheet" href="/style.css?v=20260926-discord-login-icon">
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
