@@ -2957,3 +2957,117 @@ html[data-theme="dark"] .theme-toggle{
   }
   .site-nav.open .nav-dropdown-menu a{padding-left:18px}
 }
+
+
+/* === Compact bot invite + account dropdown theme controls === */
+.add-bot-button.compact{
+  min-height:34px;
+  padding:6px 9px;
+  border-radius:9px;
+  font-size:11px;
+  line-height:1;
+  white-space:nowrap;
+}
+.account-dropdown{
+  position:relative;
+}
+.account-dropdown>summary{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:38px;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel2);
+  color:var(--text);
+  cursor:pointer;
+  list-style:none;
+  font-size:12px;
+  font-weight:800;
+  user-select:none;
+}
+.account-dropdown>summary::-webkit-details-marker{display:none}
+.account-dropdown[open]>summary,
+.account-dropdown>summary:hover{
+  border-color:#5865f2;
+}
+.account-dropdown[open] .nav-dropdown-chevron{transform:rotate(180deg)}
+.account-dropdown-menu{
+  position:absolute;
+  z-index:120;
+  top:calc(100% + 8px);
+  right:0;
+  min-width:190px;
+  padding:7px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel);
+  box-shadow:0 16px 40px rgba(0,0,0,.24);
+}
+.account-menu-item{
+  width:100%;
+  min-height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:8px;
+  padding:9px 10px !important;
+  border:0;
+  border-radius:8px;
+  background:transparent !important;
+  color:var(--text) !important;
+  box-shadow:none !important;
+  font:inherit;
+  font-size:12px;
+  font-weight:750;
+  text-decoration:none;
+  cursor:pointer;
+}
+.account-menu-item:hover{
+  background:var(--panel2) !important;
+  transform:none;
+}
+.account-menu-item.theme-toggle{
+  min-width:0;
+  height:auto;
+}
+.account-menu-item .theme-toggle-label{
+  display:inline !important;
+}
+.account-logout{
+  color:#f87171 !important;
+}
+html[data-theme="light"] .account-dropdown>summary,
+html[data-theme="light"] .account-dropdown-menu{
+  background:#fff;
+  border-color:#dfe5ef;
+  color:#1b2559;
+}
+html[data-theme="light"] .account-menu-item{
+  color:#1b2559 !important;
+}
+html[data-theme="light"] .account-menu-item:hover{
+  background:#f3f5fb !important;
+}
+html[data-theme="light"] .account-logout{
+  color:#dc2626 !important;
+}
+@media(max-width:900px){
+  .add-bot-button.compact{
+    padding:6px 8px;
+    font-size:10px;
+  }
+}
+@media(max-width:620px){
+  .account-name{
+    max-width:110px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .account-dropdown-menu{
+    right:0;
+    min-width:175px;
+  }
+}
