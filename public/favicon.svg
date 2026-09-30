@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Kryndexa Bot">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c86ff"/>
+      <stop offset="1" stop-color="#5865f2"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#111318"/>
+  <path d="M128 104h72v116l103-116h88L277 231l124 177h-87l-86-123-28 31v92h-72V104z" fill="url(#g)"/>
+</svg>
