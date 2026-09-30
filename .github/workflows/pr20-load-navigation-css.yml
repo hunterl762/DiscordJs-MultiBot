@@ -1,0 +1,54 @@
+name: PR20 Load Navigation CSS
+
+on:
+  push:
+    branches:
+      - feature/subscription-management
+
+permissions:
+  contents: write
+
+jobs:
+  load-navigation-css:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/subscription-management
+          fetch-depth: 0
+
+      - name: Load navigation stylesheet after main stylesheet
+        shell: python
+        run: |
+          from pathlib import Path
+
+          server = Path('src/dashboard/server.js')
+          text = server.read_text(encoding='utf-8')
+
+          old_links = '<link id="mainStylesheet" rel="stylesheet" href="/style.css?v=20260927-theme-split"><link id="lightThemeStylesheet" rel="stylesheet" href="/light.css?v=20260927-theme-split" disabled>'
+          new_links = '<link id="mainStylesheet" rel="stylesheet" href="/style.css?v=20260927-theme-split"><link id="navigationStylesheet" rel="stylesheet" href="/navigation.css?v=20260929-navigation"><link id="lightThemeStylesheet" rel="stylesheet" href="/light.css?v=20260927-theme-split" disabled>'
+
+          if old_links in text:
+              text = text.replace(old_links, new_links, 1)
+          elif 'id="navigationStylesheet"' not in text:
+              raise SystemExit('Stylesheet anchor not found')
+
+          old_refresh = "for(const id of ['mainStylesheet','lightThemeStylesheet'])"
+          new_refresh = "for(const id of ['mainStylesheet','navigationStylesheet','lightThemeStylesheet'])"
+          if old_refresh in text:
+              text = text.replace(old_refresh, new_refresh, 1)
+          elif 'navigationStylesheet' not in text:
+              raise SystemExit('Stylesheet refresh anchor not found')
+
+          server.write_text(text, encoding='utf-8')
+          Path('.github/workflows/pr20-load-navigation-css.yml').unlink(missing_ok=True)
+
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dashboard/server.js .github/workflows/pr20-load-navigation-css.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Load navigation stylesheet after main styles"
+          git push origin HEAD:feature/subscription-management
