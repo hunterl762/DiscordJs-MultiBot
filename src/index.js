@@ -16,6 +16,7 @@ const { registerInteractions } = require('./bot/interactions');
 const dashboardModulePath = require.resolve('./dashboard/server');
 let { startDashboard } = require(dashboardModulePath);
 const { initDatabase } = require('./database');
+const { startUptimeMonitor, stopUptimeMonitor } = require('./serviceUptimeStore');
 const { startTwitchMonitor, stopTwitchMonitor } = require('./services/twitchMonitor');
 const { registerFeatureRuntime, stopFeatureRuntime } = require('./features/runtime');
 const {
@@ -44,6 +45,7 @@ if (missing.length) {
 }
 
 let dashboardServer = null;
+let botRestarting = false;
 
 const client = new Client({
   intents: [
@@ -79,9 +81,6 @@ async function reloadDashboard() {
       });
     }
 
-    // Reload the dashboard server module without disconnecting the Discord client.
-    // Static files (CSS/images) are read by Express on request; server-side dashboard
-    // template/route changes become active after this module refresh.
     delete require.cache[dashboardModulePath];
     ({ startDashboard } = require(dashboardModulePath));
     dashboardServer = startDashboard(client);
@@ -94,6 +93,52 @@ async function reloadDashboard() {
   }
 }
 
+async function restartBotConnection(request = {}) {
+  if (botRestarting) {
+    console.log('[Bot Restart] A restart is already in progress.');
+    return false;
+  }
+
+  botRestarting = true;
+  const requestedBy = request.requestedBy ? ` requested by ${request.requestedBy}` : '';
+  console.log(`[Bot Restart] Restarting Discord services${requestedBy}; web panel will remain online.`);
+
+  try {
+    stopTwitchMonitor();
+    stopMusic();
+
+    // destroy() disconnects the Discord gateway only. The Express dashboard server,
+    // SQL pool, sessions, and uptime monitor remain alive in this Node process.
+    client.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    await client.login(process.env.DISCORD_TOKEN);
+    await waitForReady();
+
+    try {
+      await initMusic(client);
+      if (!(await waitForMusicConnection())) {
+        console.warn('[Music] Local voice runtime is disabled or unavailable after bot restart.');
+      }
+    } catch (error) {
+      console.error('[Music] Failed to reinitialize after bot restart:', error);
+    }
+
+    startTwitchMonitor(client);
+    console.log(`[Bot Restart] Discord bot is online again as ${client.user?.tag || client.user?.username || 'Kryndexa Bot'}. Web panel was not restarted.`);
+    return true;
+  } catch (error) {
+    console.error('[Bot Restart] Discord bot restart failed; web panel is still running:', error);
+    return false;
+  } finally {
+    botRestarting = false;
+  }
+}
+
+process.on('kryndexa:restart-bot', (request) => {
+  restartBotConnection(request).catch((error) => console.error('[Bot Restart] Unhandled restart error:', error));
+});
+
 function registerConsoleCommands() {
   if (!process.stdin.isTTY) return null;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -101,11 +146,14 @@ function registerConsoleCommands() {
     const command = String(line || '').trim().toLowerCase();
     if (['dashboard reload', 'reload dashboard', 'dashboard:reload'].includes(command)) {
       await reloadDashboard();
+    } else if (['bot restart', 'restart bot', 'bot:restart'].includes(command)) {
+      await restartBotConnection({ source: 'console' });
     } else if (command === 'dashboard help' || command === 'help') {
-      console.log('[Dashboard] Console commands: dashboard reload | dashboard help');
+      console.log('[Console] Commands: dashboard reload | bot restart | dashboard help');
     }
   });
   console.log('[Dashboard] Console hot reload enabled. Type "dashboard reload" after editing dashboard server files.');
+  console.log('[Bot Restart] Type "bot restart" to reconnect the Discord bot without stopping the web panel.');
   return rl;
 }
 
@@ -118,6 +166,7 @@ async function shutdown(signal) {
     stopFeatureRuntime();
     stopMusic();
     consoleInterface?.close();
+    await stopUptimeMonitor(`Graceful shutdown: ${signal}`);
 
     if (dashboardServer?.listening) {
       await new Promise((resolve) => dashboardServer.close(() => resolve()));
@@ -146,6 +195,12 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   await client.login(process.env.DISCORD_TOKEN);
   await waitForReady();
 
+  await startUptimeMonitor(() => ({
+    bot: client.isReady(),
+    panel: Boolean(dashboardServer?.listening),
+  }));
+  console.log('[Uptime] Persistent bot and web-panel timesheet monitor started.');
+
   try {
     await initMusic(client);
     if (!(await waitForMusicConnection())) {
@@ -165,9 +220,10 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   } catch (error) {
     console.error('[Slash Commands] Registration failed; the bot and dashboard will continue running:', error);
   }
-})().catch((error) => {
+})().catch(async (error) => {
   console.error('MultiBot startup failed:', error);
   try {
+    await stopUptimeMonitor('Startup failure');
     stopTwitchMonitor();
     stopFeatureRuntime();
     stopMusic();

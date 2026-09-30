@@ -3605,3 +3605,18 @@ html[data-theme="light"] #features .feature-card .btn.secondary:hover{
   .status-page-v2 .status-uptime-panel .status-section-heading{grid-template-columns:1fr!important}
   .status-page-v2 .uptime-day-grid{overflow-x:auto!important;grid-template-columns:repeat(7,minmax(62px,1fr))!important}
 }
+
+
+/* === Subscription Management (owner only) === */
+.subscription-management-page{display:grid;gap:20px}
+.subscription-plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.subscription-plan-card{margin:0}
+.subscription-plan-card h3{margin:18px 0 10px}
+.subscription-feature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 18px}
+.subscription-feature-option{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025);cursor:pointer}
+.subscription-feature-option input{width:auto;margin:0}
+.subscription-user-form{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.owner-helper-text{margin:10px 0 0;color:var(--muted)}
+.site-nav a[href="/dashboard/owner/subscriptions"]{color:#8bd5ff}
+.site-nav a[href="/dashboard/owner/subscriptions"]:hover{background:rgba(88,101,242,.1)}
+@media(max-width:1000px){.subscription-plan-grid{grid-template-columns:1fr}.subscription-feature-grid{grid-template-columns:1fr}}

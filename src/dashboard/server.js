@@ -28,7 +28,7 @@ const { postTicketPanel } = require('../tickets/ticketService');
 const { escapeHtml } = require('../utils/html');
 const { commandCatalog } = require('../bot/commandRegistry');
 const { getCommandStateObject, setCommandEnabled } = require('../commandSettingsStore');
-const { getGuildFeatures, saveFeature } = require('../features/store');
+const { getGuildFeatures, saveFeature, clearFeatureCache } = require('../features/store');
 const { FEATURE_CATALOG, getFeatureDefinition, isFeatureEnvironmentEnabled } = require('../features/catalog');
 const { listAutomationRules, createAutomationRule, deleteAutomationRule } = require('../features/automationStore');
 const { EncryptedSessionStore, migrateLegacySessionRows } = require('../encryptedSessionStore');
@@ -42,6 +42,10 @@ const {
   setStreamAlertPaidAccess,
 } = require('../streamAccessStore');
 const { getAnalytics } = require('../features/dataStore');
+const {
+  listPlans, savePlan, getGuildSubscription, setGuildSubscription,
+  listSubscriptions, getUserSubscription, setUserSubscription, listUserSubscriptions, canUseFeature, listInvoices, listUsage,
+} = require('../subscriptionStore');
 const {
   isBotOwner,
   broadcastToGuilds,
@@ -285,8 +289,8 @@ function page(title, body, user, meta = {}) {
 <meta name="twitter:image" content="${escapeHtml(seo.image)}">
 <meta name="color-scheme" content="dark light">
 <script>(()=>{try{const saved=localStorage.getItem('kryndexa-theme-mode');const choice=['system','light','dark'].includes(saved)?saved:'system';const systemDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const theme=choice==='system'?(systemDark?'dark':'light'):choice;document.documentElement.setAttribute('data-theme',theme);document.documentElement.setAttribute('data-theme-mode',choice);}catch{document.documentElement.dataset.theme='dark';document.documentElement.dataset.themeMode='system';}})();</script>
-<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link id="mainStylesheet" rel="stylesheet" href="/style.css?v=20260927-theme-split"><link id="lightThemeStylesheet" rel="stylesheet" href="/light.css?v=20260927-theme-split" disabled>
-<script>(()=>{const refreshStyles=()=>{const stamp=Math.floor(Date.now()/300000);for(const id of ['mainStylesheet','lightThemeStylesheet']){const link=document.getElementById(id);if(!link)continue;const url=new URL(link.href,location.href);url.searchParams.set('refresh',stamp);link.href=url.toString();}};setInterval(refreshStyles,300000);})();</script>
+<link rel="icon" href="${escapeHtml(webIcon)}"><link rel="shortcut icon" href="${escapeHtml(webIcon)}"><link rel="apple-touch-icon" href="${escapeHtml(webIcon)}"><link id="mainStylesheet" rel="stylesheet" href="/style.css?v=20260927-theme-split"><link id="navigationStylesheet" rel="stylesheet" href="/navigation.css?v=20260929-navigation"><link id="lightThemeStylesheet" rel="stylesheet" href="/light.css?v=20260927-theme-split" disabled>
+<script>(()=>{const refreshStyles=()=>{const stamp=Math.floor(Date.now()/300000);for(const id of ['mainStylesheet','navigationStylesheet','lightThemeStylesheet']){const link=document.getElementById(id);if(!link)continue;const url=new URL(link.href,location.href);url.searchParams.set('refresh',stamp);link.href=url.toString();}};setInterval(refreshStyles,300000);})();</script>
 </head><body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img class="brand-avatar" src="${escapeHtml(webIcon)}" alt="" aria-hidden="true"><span>Kryndexa Bot</span></a>
@@ -303,7 +307,7 @@ function page(title, body, user, meta = {}) {
         <a href="/dashboard/statistics">Server Statistics</a>
       </div>
     </details>
-    ${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a>' : ''}
+    ${user.isBotOwner ? '<a href="/dashboard/owner">Bot Owners</a><a href="/dashboard/owner/subscriptions">Subscription Management</a>' : ''}
     <details class="nav-dropdown">
       <summary>Legal <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
       <div class="nav-dropdown-menu"><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
@@ -1659,6 +1663,115 @@ function startDashboard(client) {
     }
   };
 
+  app.get('/dashboard/owner/subscriptions', requireAuth, requireBotOwner, async (req, res) => {
+    try {
+      const [plans, subscriptions, userSubscriptions, invoices, usage] = await Promise.all([
+        listPlans(), listSubscriptions(), listUserSubscriptions(), listInvoices(), listUsage(),
+      ]);
+      const featureOptions = FEATURE_CATALOG.filter(f => f.key !== 'dashboard');
+      const planCards = plans.map(plan => `<form class="owner-section subscription-plan-card" method="post" action="/dashboard/owner/subscriptions/plan/${encodeURIComponent(plan.tier)}">
+        <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+        <div class="owner-section-heading"><div><span class="eyebrow">${escapeHtml(plan.tier.toUpperCase())} TIER</span><h2>${escapeHtml(plan.name)}</h2><p>Configure pricing, limits, and the bot modules included in this tier.</p></div></div>
+        <div class="form-grid">
+          <label>Display Name<input name="name" maxlength="40" value="${escapeHtml(plan.name)}" required></label>
+          <label>Monthly Price (USD)<input name="monthlyPrice" type="number" min="0" step="0.01" value="${plan.monthlyPrice}" ${plan.tier === 'free' ? 'readonly' : ''}></label>
+          <label>Yearly Price (USD)<input name="yearlyPrice" type="number" min="0" step="0.01" value="${plan.yearlyPrice}" ${plan.tier === 'free' ? 'readonly' : ''}></label>
+          <label>Streamer Limit<input name="streamerLimit" type="number" min="0" max="10000" value="${plan.streamerLimit}"></label>
+        </div>
+        <h3>Included Bot Features</h3>
+        <div class="subscription-feature-grid">
+          ${featureOptions.map(feature => `<label class="subscription-feature-option"><input type="checkbox" name="features" value="${escapeHtml(feature.key)}" ${plan.features.includes('*') || plan.features.includes(feature.key) ? 'checked' : ''}><span>${escapeHtml(feature.icon)} ${escapeHtml(feature.title)}</span></label>`).join('')}
+        </div>
+        <button class="btn" type="submit">Save ${escapeHtml(plan.name)} Tier</button>
+      </form>`).join('');
+
+      const subscriptionRows = subscriptions.length ? subscriptions.map(sub => {
+        const guild = client.guilds.cache.get(sub.guildId);
+        return `<tr><td><strong>${escapeHtml(guild?.name || 'Unknown / disconnected')}</strong><small>${escapeHtml(sub.guildId)}</small></td><td><span class="pill subtle">${escapeHtml(sub.tier.toUpperCase())}</span></td><td>${escapeHtml(sub.status)}</td><td>${escapeHtml(sub.provider)}</td><td>${escapeHtml(sub.currentPeriodEnd || '—')}</td></tr>`;
+      }).join('') : '<tr><td colspan="5">No paid subscriptions have been assigned yet.</td></tr>';
+
+      const guildOptions = [...client.guilds.cache.values()].sort((a,b)=>a.name.localeCompare(b.name))
+        .map(g => `<option value="${g.id}">${escapeHtml(g.name)} • ${g.id}</option>`).join('');
+
+      const body = `<section class="owner-dashboard-shell subscription-management-page">
+        <section class="owner-dashboard-hero"><div><span class="owner-access-badge"><i></i> OWNER ONLY</span><span class="eyebrow">BILLING & ENTITLEMENTS</span><h1>Subscription Management</h1><p>Configure Free, Premium, and Pro features, assign server subscriptions, and review billing/usage records.</p></div>
+        <div class="owner-dashboard-meta"><span><strong>${subscriptions.length}</strong> server subscriptions</span><span><strong>${userSubscriptions.length}</strong> user subscriptions</span><span><strong>${invoices.length}</strong> invoice records</span><span><strong>${usage.length}</strong> usage records</span></div></section>
+        <section class="owner-section"><div class="owner-section-heading"><div><span class="eyebrow">SERVER ACCESS</span><h2>Assign Subscription</h2><p>Manual entitlement controls. Payment-provider webhooks can call the same subscription store later.</p></div></div>
+          <form class="paid-access-form" method="post" action="/dashboard/owner/subscriptions/assign">
+            <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+            <label>Server<select name="guildId" required><option value="">Choose a connected server</option>${guildOptions}</select></label>
+            <label>Tier<select name="tier"><option value="free">Free</option><option value="premium">Premium</option><option value="pro">Pro</option></select></label>
+            <label>Internal Note<input name="note" maxlength="500" placeholder="Invoice, order, or support note"></label>
+            <button class="btn" type="submit">Update Subscription</button>
+          </form>
+          <form class="paid-access-form subscription-user-form" method="post" action="/dashboard/owner/subscriptions/assign-user">
+            <input type="hidden" name="_csrf" value="${escapeHtml(req.session.csrf)}">
+            <label>Discord User ID<input name="userId" pattern="[0-9]{10,32}" required placeholder="Discord user ID"></label>
+            <label>User Tier<select name="tier"><option value="free">Free</option><option value="premium">Premium</option><option value="pro">Pro</option></select></label>
+            <label>Internal Note<input name="note" maxlength="500" placeholder="Invoice, order, or support note"></label>
+            <button class="btn" type="submit">Update User Subscription</button>
+          </form>
+          <p class="owner-helper-text">${userSubscriptions.length} active user subscription${userSubscriptions.length === 1 ? '' : 's'} currently tracked.</p>
+        </section>
+        <div class="subscription-plan-grid">${planCards}</div>
+        <section class="owner-section"><div class="owner-section-heading"><div><span class="eyebrow">ACTIVE ENTITLEMENTS</span><h2>Subscriptions</h2></div></div>
+          <div class="table-wrap"><table class="owner-server-table"><thead><tr><th>Server</th><th>Tier</th><th>Status</th><th>Provider</th><th>Period End</th></tr></thead><tbody>${subscriptionRows}</tbody></table></div>
+        </section>
+        <section class="owner-section"><div class="owner-section-heading"><div><span class="eyebrow">AUTOMATION DATA</span><h2>Invoices & Usage</h2><p>Owner-only records are available for payment webhook automation, invoice tracking, and metered feature usage. Card data is never stored here.</p></div></div>
+          <div class="owner-dashboard-meta"><span><strong>${invoices.length}</strong> invoices logged</span><span><strong>${usage.length}</strong> usage counters</span></div>
+        </section>
+      </section>`;
+      return res.send(page('Subscription Management • Kryndexa Bot', body, req.session.user, { path: '/dashboard/owner/subscriptions', private: true }));
+    } catch (error) {
+      console.error('[Subscriptions] Unable to load owner subscription management:', error);
+      return res.status(500).send(page('Subscription Management error • Kryndexa Bot', `<div class="empty"><strong>Unable to load subscriptions.</strong><p>${escapeHtml(error.message || String(error))}</p></div>`, req.session.user, { private: true }));
+    }
+  });
+
+  app.post('/dashboard/owner/subscriptions/plan/:tier', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      const tier = String(req.params.tier || '').toLowerCase();
+      if (!['free','premium','pro'].includes(tier)) return res.status(400).send('Unknown subscription tier.');
+      const features = Array.isArray(req.body.features) ? req.body.features : (req.body.features ? [req.body.features] : []);
+      const allowed = new Set(FEATURE_CATALOG.map(f => f.key));
+      await savePlan(tier, {
+        name: req.body.name,
+        monthlyPrice: tier === 'free' ? 0 : req.body.monthlyPrice,
+        yearlyPrice: tier === 'free' ? 0 : req.body.yearlyPrice,
+        streamerLimit: req.body.streamerLimit,
+        features: features.filter(key => allowed.has(key)),
+      });
+      clearFeatureCache();
+      return res.redirect('/dashboard/owner/subscriptions');
+    } catch (error) {
+      console.error('[Subscriptions] Unable to save plan:', error);
+      return res.status(500).send(error.message || 'Unable to save subscription plan.');
+    }
+  });
+
+  app.post('/dashboard/owner/subscriptions/assign', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      const guildId = String(req.body.guildId || '').trim();
+      if (!client.guilds.cache.has(guildId)) return res.status(400).send('Choose a connected Discord server.');
+      await setGuildSubscription(guildId, { tier: req.body.tier, note: req.body.note, grantedBy: req.session.user.id, provider: 'manual', status: 'active' });
+      clearFeatureCache(guildId);
+      return res.redirect('/dashboard/owner/subscriptions');
+    } catch (error) {
+      console.error('[Subscriptions] Unable to assign subscription:', error);
+      return res.status(500).send(error.message || 'Unable to update subscription.');
+    }
+  });
+
+  app.post('/dashboard/owner/subscriptions/assign-user', requireAuth, requireBotOwner, verifyCsrf, async (req, res) => {
+    try {
+      await setUserSubscription(req.body.userId, { tier: req.body.tier, note: req.body.note, grantedBy: req.session.user.id, provider: 'manual', status: 'active' });
+      return res.redirect('/dashboard/owner/subscriptions');
+    } catch (error) {
+      console.error('[Subscriptions] Unable to assign user subscription:', error);
+      return res.status(500).send(error.message || 'Unable to update user subscription.');
+    }
+  });
+
   app.get('/dashboard/owner', requireAuth, requireBotOwner, async (req, res) => {
     const ownerIds = String(process.env.BOT_OWNER_IDS || '')
       .split(',')
@@ -2515,6 +2628,9 @@ function startDashboard(client) {
       if (!definition) return res.status(400).send('Unknown feature.');
       const current = (await getGuildFeatures(req.params.guildId)).find((state) => state.key === definition.key);
       const enabled = definition.locked ? true : req.body.enabled === '1';
+      if (enabled && !definition.locked && !(await canUseFeature(req.params.guildId, definition.key))) {
+        return res.status(403).send('This feature is not included in this server\'s current Kryndexa subscription tier.');
+      }
       await saveFeature(req.params.guildId, definition.key, {
         enabled,
         config: current?.config || {},
@@ -2617,8 +2733,12 @@ function startDashboard(client) {
         config[field.key] = value.slice(0, 2000);
       }
 
+      const requestedEnabled = definition.locked ? true : req.body.enabled === 'on';
+      if (requestedEnabled && !definition.locked && !(await canUseFeature(guild.id, definition.key))) {
+        return res.status(403).send(page('Subscription required • Kryndexa Bot', '<div class="empty"><strong>This feature is not included in this server\'s current subscription tier.</strong><p>Ask a bot owner to upgrade the server or change the tier feature configuration.</p></div>', req.session.user, { private: true }));
+      }
       await saveFeature(guild.id, definition.key, {
-        enabled: definition.locked ? true : req.body.enabled === 'on',
+        enabled: requestedEnabled,
         config,
       });
 
