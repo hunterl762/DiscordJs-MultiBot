@@ -45,6 +45,7 @@ if (missing.length) {
 }
 
 let dashboardServer = null;
+let botRestarting = false;
 
 const client = new Client({
   intents: [
@@ -92,6 +93,52 @@ async function reloadDashboard() {
   }
 }
 
+async function restartBotConnection(request = {}) {
+  if (botRestarting) {
+    console.log('[Bot Restart] A restart is already in progress.');
+    return false;
+  }
+
+  botRestarting = true;
+  const requestedBy = request.requestedBy ? ` requested by ${request.requestedBy}` : '';
+  console.log(`[Bot Restart] Restarting Discord services${requestedBy}; web panel will remain online.`);
+
+  try {
+    stopTwitchMonitor();
+    stopMusic();
+
+    // destroy() disconnects the Discord gateway only. The Express dashboard server,
+    // SQL pool, sessions, and uptime monitor remain alive in this Node process.
+    client.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    await client.login(process.env.DISCORD_TOKEN);
+    await waitForReady();
+
+    try {
+      await initMusic(client);
+      if (!(await waitForMusicConnection())) {
+        console.warn('[Music] Local voice runtime is disabled or unavailable after bot restart.');
+      }
+    } catch (error) {
+      console.error('[Music] Failed to reinitialize after bot restart:', error);
+    }
+
+    startTwitchMonitor(client);
+    console.log(`[Bot Restart] Discord bot is online again as ${client.user?.tag || client.user?.username || 'Kryndexa Bot'}. Web panel was not restarted.`);
+    return true;
+  } catch (error) {
+    console.error('[Bot Restart] Discord bot restart failed; web panel is still running:', error);
+    return false;
+  } finally {
+    botRestarting = false;
+  }
+}
+
+process.on('kryndexa:restart-bot', (request) => {
+  restartBotConnection(request).catch((error) => console.error('[Bot Restart] Unhandled restart error:', error));
+});
+
 function registerConsoleCommands() {
   if (!process.stdin.isTTY) return null;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -99,11 +146,14 @@ function registerConsoleCommands() {
     const command = String(line || '').trim().toLowerCase();
     if (['dashboard reload', 'reload dashboard', 'dashboard:reload'].includes(command)) {
       await reloadDashboard();
+    } else if (['bot restart', 'restart bot', 'bot:restart'].includes(command)) {
+      await restartBotConnection({ source: 'console' });
     } else if (command === 'dashboard help' || command === 'help') {
-      console.log('[Dashboard] Console commands: dashboard reload | dashboard help');
+      console.log('[Console] Commands: dashboard reload | bot restart | dashboard help');
     }
   });
   console.log('[Dashboard] Console hot reload enabled. Type "dashboard reload" after editing dashboard server files.');
+  console.log('[Bot Restart] Type "bot restart" to reconnect the Discord bot without stopping the web panel.');
   return rl;
 }
 
