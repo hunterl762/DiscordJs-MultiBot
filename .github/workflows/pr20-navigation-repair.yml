@@ -1,0 +1,153 @@
+name: PR20 Navigation Repair
+
+on:
+  push:
+    branches:
+      - feature/subscription-management
+
+permissions:
+  contents: write
+
+jobs:
+  repair-navigation:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/subscription-management
+          fetch-depth: 0
+
+      - name: Repair navigation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          server = Path('src/dashboard/server.js')
+          text = server.read_text(encoding='utf-8')
+
+          text = text.replace(
+              '<button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Toggle navigation">☰</button>',
+              '<button class="nav-toggle" type="button" data-site-nav-toggle aria-label="Open navigation" aria-controls="primaryNavigation" aria-expanded="false"><span aria-hidden="true">☰</span></button>'
+          )
+          text = text.replace(
+              '<nav class="site-nav" data-site-nav aria-label="Primary navigation">',
+              '<nav id="primaryNavigation" class="site-nav" data-site-nav aria-label="Primary navigation">'
+          )
+          text = text.replace(
+              "${user.isBotOwner ? '<a href=\"/dashboard/owner\">Bot Owners</a><a href=\"/dashboard/owner/subscriptions\">Subscription Management</a>' : ''}",
+              "${user.isBotOwner ? '<details class=\"nav-dropdown owner-nav-dropdown\"><summary>Owner <span class=\"nav-dropdown-chevron\" aria-hidden=\"true\">▾</span></summary><div class=\"nav-dropdown-menu\"><a href=\"/dashboard/owner\">Bot Owners</a><a href=\"/dashboard/owner/subscriptions\">Subscription Management</a></div></details>' : ''}"
+          )
+          old = """  const nav=document.querySelector('[data-site-nav]');
+          document.querySelector('[data-site-nav-toggle]')?.addEventListener('click',()=>nav?.classList.toggle('open'));"""
+          new = """  const nav=document.querySelector('[data-site-nav]');
+          const navToggle=document.querySelector('[data-site-nav-toggle]');
+          const closeNav=()=>{
+            nav?.classList.remove('open');
+            navToggle?.setAttribute('aria-expanded','false');
+            navToggle?.setAttribute('aria-label','Open navigation');
+          };
+          const closeDropdowns=(except=null)=>{
+            document.querySelectorAll('.site-header details[open]').forEach(details=>{
+              if(details!==except)details.removeAttribute('open');
+            });
+          };
+          navToggle?.addEventListener('click',()=>{
+            const open=!nav?.classList.contains('open');
+            nav?.classList.toggle('open',open);
+            navToggle.setAttribute('aria-expanded',open?'true':'false');
+            navToggle.setAttribute('aria-label',open?'Close navigation':'Open navigation');
+            if(!open)closeDropdowns();
+          });
+          document.querySelectorAll('.site-header details').forEach(details=>{
+            details.addEventListener('toggle',()=>{if(details.open)closeDropdowns(details);});
+          });
+          nav?.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>{
+            if(window.matchMedia('(max-width: 900px)').matches)closeNav();
+          }));
+          document.addEventListener('click',event=>{
+            const header=event.target.closest('.site-header');
+            if(!header){closeDropdowns();closeNav();}
+          });
+          document.addEventListener('keydown',event=>{
+            if(event.key==='Escape'){closeDropdowns();closeNav();navToggle?.focus();}
+          });
+          window.addEventListener('resize',()=>{
+            if(window.innerWidth>900)closeNav();
+          });"""
+          if old not in text:
+              raise SystemExit('Navigation script anchor not found')
+          text = text.replace(old, new)
+          server.write_text(text, encoding='utf-8')
+
+          css = Path('public/style.css')
+          styles = css.read_text(encoding='utf-8')
+          marker = '/* === PR20 responsive navigation repair === */'
+          if marker not in styles:
+              styles += r'''
+
+          /* === PR20 responsive navigation repair === */
+          .site-header{overflow:visible}
+          .header-inner{position:relative;overflow:visible}
+          .site-nav{min-width:0}
+          .site-nav>a,.nav-dropdown>summary{min-height:42px;display:inline-flex;align-items:center}
+          .nav-dropdown-menu{max-width:min(320px,calc(100vw - 24px));overflow:hidden}
+          .nav-toggle{display:none;align-items:center;justify-content:center;width:42px;height:42px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);font-size:20px;cursor:pointer}
+          .nav-toggle:hover{border-color:#5865f2}
+
+          @media (max-width:1100px){
+            .header-inner{gap:8px}
+            .site-nav{gap:2px}
+            .site-nav>a,.nav-dropdown>summary{padding:8px 7px;font-size:12px}
+            .add-bot-button.compact{max-width:130px;white-space:normal;text-align:center;line-height:1.15}
+          }
+
+          @media (max-width:900px){
+            .header-inner{min-height:64px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px}
+            .brand{min-width:0}
+            .brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .nav-toggle{display:inline-flex;grid-column:2}
+            .header-actions{grid-column:3;min-width:0;gap:6px}
+            .header-actions>.add-bot-button{display:none}
+            .site-nav{display:none!important;position:absolute;z-index:300;top:calc(100% + 8px);left:12px;right:12px;width:auto;max-height:calc(100vh - 88px);overflow-y:auto;overscroll-behavior:contain;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);box-shadow:0 18px 50px rgba(0,0,0,.3)}
+            .site-nav.open{display:flex!important;flex-direction:column;align-items:stretch;gap:3px}
+            .site-nav>a,.site-nav .nav-dropdown>summary{width:100%;min-height:46px;justify-content:space-between;padding:11px 12px;border-radius:9px;font-size:14px;color:var(--text)}
+            .site-nav>a:hover,.site-nav .nav-dropdown>summary:hover,.site-nav .nav-dropdown[open]>summary{background:var(--panel2)}
+            .site-nav .nav-dropdown{width:100%}
+            .site-nav .nav-dropdown-menu{position:static;width:100%;max-width:none;min-width:0;margin:4px 0 7px;padding:5px;border:0;border-left:2px solid var(--line);border-radius:0 9px 9px 0;background:var(--panel2);box-shadow:none}
+            .site-nav .nav-dropdown-menu a{min-height:44px;padding:10px 14px;font-size:13px}
+            .account-dropdown-menu{max-width:calc(100vw - 24px)}
+          }
+
+          @media (max-width:620px){
+            .header-inner{grid-template-columns:minmax(0,1fr) 42px auto;padding-left:12px;padding-right:12px}
+            .brand-avatar{width:32px;height:32px}
+            .brand span{font-size:14px}
+            .site-nav{left:8px;right:8px;top:calc(100% + 5px);max-height:calc(100dvh - 78px);border-radius:12px}
+            .header-auth .account-dropdown>summary{max-width:132px;padding:7px 8px}
+            .public-header-actions{gap:5px}
+            .public-header-actions .discord-login-button.compact{padding:7px 8px;font-size:10px}
+            .public-theme-toggle{display:none}
+          }
+
+          @media (max-width:420px){
+            .header-inner{grid-template-columns:minmax(0,1fr) 42px auto}
+            .brand span{max-width:118px}
+            .account-name{max-width:72px}
+            .public-header-actions .discord-login-button.compact span:last-child{display:none}
+            .public-header-actions .discord-login-button.compact{width:40px;min-width:40px;padding:0;justify-content:center}
+          }
+          '''
+          css.write_text(styles, encoding='utf-8')
+
+          workflow = Path('.github/workflows/pr20-navigation-repair.yml')
+          workflow.unlink(missing_ok=True)
+
+      - name: Commit repaired navigation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dashboard/server.js public/style.css .github/workflows/pr20-navigation-repair.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Repair responsive desktop and mobile navigation"
+          git push origin HEAD:feature/subscription-management
