@@ -15,59 +15,22 @@
 .site-header .nav-toggle:hover{border-color:#5865f2!important}
 html[data-theme="light"] .site-header .nav-toggle{background:#fff!important;color:#1b2559!important;border-color:#dfe5ef!important}
 html[data-theme="light"] .site-header .site-nav{background:#fff!important;border-color:#dfe5ef!important}
+@media(max-width:1500px) and (min-width:1101px){.site-header .header-inner{gap:10px!important;padding-left:16px!important;padding-right:16px!important}.site-header .site-nav{gap:0!important}.site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 7px!important;font-size:12px!important}.site-header .header-actions{gap:7px!important}.site-header .header-actions .add-bot-button{min-width:165px!important;max-width:185px!important;padding-left:12px!important;padding-right:12px!important;font-size:12px!important}.site-header .account-dropdown>summary{max-width:175px!important;padding-left:10px!important;padding-right:10px!important}.site-header .account-name{max-width:115px!important}}
+@media(max-width:1250px) and (min-width:1101px){.site-header .header-inner{gap:6px!important;padding-left:10px!important;padding-right:10px!important}.site-header .brand span{font-size:18px!important}.site-header .brand-avatar{width:38px!important;height:38px!important}.site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 5px!important;font-size:11px!important}.site-header .header-actions .add-bot-button{min-width:145px!important;max-width:155px!important;font-size:11px!important;padding-left:8px!important;padding-right:8px!important}.site-header .account-dropdown>summary{max-width:145px!important}.site-header .account-name{max-width:88px!important}}
+@media(max-width:1100px){.site-header .header-inner{min-height:64px!important;display:grid!important;grid-template-columns:minmax(0,1fr) 42px auto!important;align-items:center!important;gap:8px!important;padding-left:16px!important;padding-right:16px!important}.site-header .brand{min-width:0!important}.site-header .brand span{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}.site-header .nav-toggle{display:inline-flex!important;grid-column:2!important;margin:0!important}.site-header .header-actions{grid-column:3!important;display:flex!important;min-width:0!important;gap:6px!important;margin-left:0!important}.site-header .header-actions>.add-bot-button{display:none!important}.site-header .site-nav{display:none!important;position:absolute!important;z-index:300!important;top:calc(100% + 8px)!important;left:12px!important;right:12px!important;width:auto!important;max-height:calc(100vh - 88px)!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;padding:10px!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--panel)!important;box-shadow:0 18px 50px rgba(0,0,0,.3)!important}.site-header .site-nav.open{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:3px!important}.site-header .site-nav>a,.site-header .site-nav .nav-dropdown>summary{width:100%!important;min-height:46px!important;justify-content:space-between!important;padding:11px 12px!important;border-radius:9px!important;font-size:14px!important;color:var(--text)!important}.site-header .site-nav>a:hover,.site-header .site-nav .nav-dropdown>summary:hover,.site-header .site-nav .nav-dropdown[open]>summary{background:var(--panel2)!important}.site-header .site-nav .nav-dropdown{width:100%!important;padding:0!important;margin:0!important}.site-header .site-nav .nav-dropdown-menu{position:static!important;display:block!important;width:100%!important;max-width:none!important;min-width:0!important;margin:4px 0 7px!important;padding:5px!important;border:0!important;border-left:2px solid var(--line)!important;border-radius:0 9px 9px 0!important;background:var(--panel2)!important;box-shadow:none!important;transform:none!important}.site-header .site-nav .nav-dropdown:not([open])>.nav-dropdown-menu{display:none!important}.site-header .site-nav .nav-dropdown-menu a{min-height:44px!important;padding:10px 14px!important;font-size:13px!important}.site-header .account-dropdown-menu{max-width:calc(100vw - 24px)!important}}
+@media(max-width:620px){.site-header{min-height:60px!important;padding:0!important}.site-header .header-inner{grid-template-columns:minmax(0,1fr) 42px auto!important;padding:0 12px!important}.site-header .brand-avatar{width:32px!important;height:32px!important}.site-header .brand span{display:block!important;font-size:14px!important}.site-header .site-nav{left:8px!important;right:8px!important;top:calc(100% + 5px)!important;max-height:calc(100dvh - 78px)!important;border-radius:12px!important}.site-header .header-auth .account-dropdown>summary{max-width:132px!important;padding:7px 8px!important}.site-header .public-header-actions{gap:5px!important}.site-header .public-header-actions .discord-login-button.compact{padding:7px 8px!important;font-size:10px!important}.site-header .public-theme-toggle{display:none!important}}
+@media(max-width:420px){.site-header .brand span{max-width:118px!important}.site-header .account-name{max-width:72px!important}.site-header .public-header-actions .discord-login-button.compact span:last-child{display:none!important}.site-header .public-header-actions .discord-login-button.compact{width:40px!important;min-width:40px!important;padding:0!important;justify-content:center!important}}
 
-/* Keep the full desktop nav on one row while progressively tightening it. */
-@media(max-width:1500px) and (min-width:1101px){
- .site-header .header-inner{gap:10px!important;padding-left:16px!important;padding-right:16px!important}
- .site-header .site-nav{gap:0!important}
- .site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 7px!important;font-size:12px!important}
- .site-header .header-actions{gap:7px!important}
- .site-header .header-actions .add-bot-button{min-width:165px!important;max-width:185px!important;padding-left:12px!important;padding-right:12px!important;font-size:12px!important}
- .site-header .account-dropdown>summary{max-width:175px!important;padding-left:10px!important;padding-right:10px!important}
- .site-header .account-name{max-width:115px!important}
-}
-@media(max-width:1250px) and (min-width:1101px){
- .site-header .header-inner{gap:6px!important;padding-left:10px!important;padding-right:10px!important}
- .site-header .brand span{font-size:18px!important}
- .site-header .brand-avatar{width:38px!important;height:38px!important}
- .site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 5px!important;font-size:11px!important}
- .site-header .header-actions .add-bot-button{min-width:145px!important;max-width:155px!important;font-size:11px!important;padding-left:8px!important;padding-right:8px!important}
- .site-header .account-dropdown>summary{max-width:145px!important}
- .site-header .account-name{max-width:88px!important}
-}
-
-/* Switch to the compact menu before desktop controls can collide. */
-@media(max-width:1100px){
- .site-header .header-inner{min-height:64px!important;display:grid!important;grid-template-columns:minmax(0,1fr) 42px auto!important;align-items:center!important;gap:8px!important;padding-left:16px!important;padding-right:16px!important}
- .site-header .brand{min-width:0!important}
- .site-header .brand span{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
- .site-header .nav-toggle{display:inline-flex!important;grid-column:2!important;margin:0!important}
- .site-header .header-actions{grid-column:3!important;display:flex!important;min-width:0!important;gap:6px!important;margin-left:0!important}
- .site-header .header-actions>.add-bot-button{display:none!important}
- .site-header .site-nav{display:none!important;position:absolute!important;z-index:300!important;top:calc(100% + 8px)!important;left:12px!important;right:12px!important;width:auto!important;max-height:calc(100vh - 88px)!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;padding:10px!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--panel)!important;box-shadow:0 18px 50px rgba(0,0,0,.3)!important}
- .site-header .site-nav.open{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:3px!important}
- .site-header .site-nav>a,.site-header .site-nav .nav-dropdown>summary{width:100%!important;min-height:46px!important;justify-content:space-between!important;padding:11px 12px!important;border-radius:9px!important;font-size:14px!important;color:var(--text)!important}
- .site-header .site-nav>a:hover,.site-header .site-nav .nav-dropdown>summary:hover,.site-header .site-nav .nav-dropdown[open]>summary{background:var(--panel2)!important}
- .site-header .site-nav .nav-dropdown{width:100%!important;padding:0!important;margin:0!important}
- .site-header .site-nav .nav-dropdown-menu{position:static!important;display:block!important;width:100%!important;max-width:none!important;min-width:0!important;margin:4px 0 7px!important;padding:5px!important;border:0!important;border-left:2px solid var(--line)!important;border-radius:0 9px 9px 0!important;background:var(--panel2)!important;box-shadow:none!important;transform:none!important}
- .site-header .site-nav .nav-dropdown:not([open])>.nav-dropdown-menu{display:none!important}
- .site-header .site-nav .nav-dropdown-menu a{min-height:44px!important;padding:10px 14px!important;font-size:13px!important}
- .site-header .account-dropdown-menu{max-width:calc(100vw - 24px)!important}
-}
-@media(max-width:620px){
- .site-header{min-height:60px!important;padding:0!important}
- .site-header .header-inner{grid-template-columns:minmax(0,1fr) 42px auto!important;padding:0 12px!important}
- .site-header .brand-avatar{width:32px!important;height:32px!important}
- .site-header .brand span{display:block!important;font-size:14px!important}
- .site-header .site-nav{left:8px!important;right:8px!important;top:calc(100% + 5px)!important;max-height:calc(100dvh - 78px)!important;border-radius:12px!important}
- .site-header .header-auth .account-dropdown>summary{max-width:132px!important;padding:7px 8px!important}
- .site-header .public-header-actions{gap:5px!important}
- .site-header .public-header-actions .discord-login-button.compact{padding:7px 8px!important;font-size:10px!important}
- .site-header .public-theme-toggle{display:none!important}
-}
-@media(max-width:420px){
- .site-header .brand span{max-width:118px!important}
- .site-header .account-name{max-width:72px!important}
- .site-header .public-header-actions .discord-login-button.compact span:last-child{display:none!important}
- .site-header .public-header-actions .discord-login-button.compact{width:40px!important;min-width:40px!important;padding:0!important;justify-content:center!important}
-}
+/* Server management responsive overrides */
+.dashboard-server-section,.friendly-guild-card,.guild-card-main,.guild-card-copy{min-width:0}
+.dashboard-server-section{width:100%;overflow:hidden}
+.friendly-guild-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important}
+.guild-title-row>strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guild-mini-stats{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
+.guild-card-actions{display:flex!important;gap:8px!important;flex-wrap:wrap}
+.guild-card-actions .btn{flex:1 1 150px!important;min-width:0!important;text-align:center}
+.dashboard-toolbar{display:flex!important;gap:12px!important;align-items:center!important}
+.dashboard-toolbar .server-search{min-width:0!important;flex:1 1 360px!important}
+@media(max-width:900px){.friendly-guild-grid{grid-template-columns:1fr!important}.dashboard-server-section-head{align-items:flex-start!important;flex-direction:column!important}.dashboard-toolbar{align-items:stretch!important;flex-direction:column!important}.dashboard-toolbar .server-search{width:100%!important;max-width:none!important;flex-basis:auto!important}.dashboard-toolbar-hint{white-space:normal!important}}
+@media(max-width:620px){main{padding-left:12px!important;padding-right:12px!important}.dashboard-home-hero,.dashboard-server-section{padding:15px!important;border-radius:15px!important}.dashboard-server-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}.friendly-guild-card{padding:14px!important}.guild-card-top{align-items:flex-start!important}.friendly-guild-card .guild-icon{width:46px!important;height:46px!important;flex-basis:46px!important}.guild-mini-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}.guild-card-actions{flex-direction:column!important;align-items:stretch!important}.guild-card-actions .btn{width:100%!important;flex-basis:auto!important}.guild-title-row{align-items:flex-start!important;flex-direction:column!important;gap:5px!important}.guild-title-row>strong{width:100%!important}.managed-server-count{white-space:normal!important}}
+@media(max-width:390px){.dashboard-server-summary{grid-template-columns:1fr!important}.guild-mini-stats{grid-template-columns:1fr 1fr!important}.dashboard-server-section,.friendly-guild-card{border-radius:13px!important}}
