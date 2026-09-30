@@ -1,21 +1,44 @@
 /* Kryndexa responsive navigation overrides — loaded after style.css */
 .site-header{overflow:visible!important}
-.site-header .header-inner{position:relative!important;overflow:visible!important}
-.site-header .site-nav{min-width:0!important}
-.site-header .site-nav>a,.site-header .nav-dropdown>summary{min-height:42px!important;display:inline-flex!important;align-items:center!important}
+.site-header .header-inner{position:relative!important;overflow:visible!important;width:100%!important;max-width:1640px!important;margin:0 auto!important;display:flex!important;align-items:center!important;gap:18px!important;padding-left:24px!important;padding-right:24px!important}
+.site-header .brand{flex:0 0 auto!important;white-space:nowrap!important}
+.site-header .site-nav{min-width:0!important;flex:1 1 auto!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:4px!important;overflow:visible!important}
+.site-header .site-nav>a,.site-header .nav-dropdown>summary{min-height:42px!important;display:inline-flex!important;align-items:center!important;white-space:nowrap!important;padding:8px 10px!important;font-size:13px!important}
+.site-header .nav-dropdown{flex:0 0 auto!important}
 .site-header .nav-dropdown-menu{max-width:min(320px,calc(100vw - 24px))!important}
+.site-header .header-actions{flex:0 0 auto!important;display:flex!important;align-items:center!important;gap:10px!important;margin-left:auto!important;white-space:nowrap!important}
+.site-header .header-actions .add-bot-button{flex:0 0 auto!important;min-width:190px!important;max-width:230px!important;white-space:nowrap!important;padding-left:18px!important;padding-right:18px!important}
+.site-header .header-auth{flex:0 0 auto!important;min-width:0!important}
+.site-header .account-dropdown>summary{white-space:nowrap!important;max-width:210px!important}
+.site-header .account-name{display:block!important;max-width:150px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
 .site-header .nav-toggle{display:none!important;align-items:center!important;justify-content:center!important;width:42px!important;height:42px!important;padding:0!important;border:1px solid var(--line)!important;border-radius:10px!important;background:var(--panel2)!important;color:var(--text)!important;font-size:20px!important;cursor:pointer!important}
 .site-header .nav-toggle:hover{border-color:#5865f2!important}
 html[data-theme="light"] .site-header .nav-toggle{background:#fff!important;color:#1b2559!important;border-color:#dfe5ef!important}
 html[data-theme="light"] .site-header .site-nav{background:#fff!important;border-color:#dfe5ef!important}
-@media(max-width:1100px){
- .site-header .header-inner{gap:8px!important}
- .site-header .site-nav{gap:2px!important}
+
+/* Keep the full desktop nav on one row while progressively tightening it. */
+@media(max-width:1500px) and (min-width:1101px){
+ .site-header .header-inner{gap:10px!important;padding-left:16px!important;padding-right:16px!important}
+ .site-header .site-nav{gap:0!important}
  .site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 7px!important;font-size:12px!important}
- .site-header .add-bot-button.compact{max-width:130px!important;white-space:normal!important;text-align:center!important;line-height:1.15!important}
+ .site-header .header-actions{gap:7px!important}
+ .site-header .header-actions .add-bot-button{min-width:165px!important;max-width:185px!important;padding-left:12px!important;padding-right:12px!important;font-size:12px!important}
+ .site-header .account-dropdown>summary{max-width:175px!important;padding-left:10px!important;padding-right:10px!important}
+ .site-header .account-name{max-width:115px!important}
 }
-@media(max-width:900px){
- .site-header .header-inner{min-height:64px!important;display:grid!important;grid-template-columns:minmax(0,1fr) 42px auto!important;align-items:center!important;gap:8px!important}
+@media(max-width:1250px) and (min-width:1101px){
+ .site-header .header-inner{gap:6px!important;padding-left:10px!important;padding-right:10px!important}
+ .site-header .brand span{font-size:18px!important}
+ .site-header .brand-avatar{width:38px!important;height:38px!important}
+ .site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 5px!important;font-size:11px!important}
+ .site-header .header-actions .add-bot-button{min-width:145px!important;max-width:155px!important;font-size:11px!important;padding-left:8px!important;padding-right:8px!important}
+ .site-header .account-dropdown>summary{max-width:145px!important}
+ .site-header .account-name{max-width:88px!important}
+}
+
+/* Switch to the compact menu before desktop controls can collide. */
+@media(max-width:1100px){
+ .site-header .header-inner{min-height:64px!important;display:grid!important;grid-template-columns:minmax(0,1fr) 42px auto!important;align-items:center!important;gap:8px!important;padding-left:16px!important;padding-right:16px!important}
  .site-header .brand{min-width:0!important}
  .site-header .brand span{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
  .site-header .nav-toggle{display:inline-flex!important;grid-column:2!important;margin:0!important}
