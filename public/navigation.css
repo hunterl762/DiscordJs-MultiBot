@@ -1,41 +1,42 @@
 /* Kryndexa logged-in responsive navigation — loaded after style.css */
 .site-header{height:auto!important;min-height:72px!important;overflow:visible!important;z-index:200!important}
-.site-header .header-inner{position:relative!important;width:min(1600px,100%)!important;min-height:72px!important;margin:0 auto!important;padding:0 22px!important;display:flex!important;align-items:center!important;gap:14px!important;overflow:visible!important}
-.site-header .brand{display:flex!important;align-items:center!important;gap:10px!important;flex:0 0 auto!important;min-width:0!important;white-space:nowrap!important}
-.site-header .site-nav{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:2px!important;flex:1 1 auto!important;min-width:0!important;overflow:visible!important}
-.site-header .site-nav>a,.site-header .nav-dropdown>summary{display:inline-flex!important;align-items:center!important;min-height:42px!important;padding:8px 8px!important;border-radius:9px!important;font-size:13px!important;white-space:nowrap!important}
-.site-header .nav-dropdown{position:relative!important;flex:0 0 auto!important}
+.site-header .header-inner{position:relative!important;width:100%!important;max-width:none!important;min-height:72px!important;margin:0 auto!important;padding:0 28px!important;display:grid!important;grid-template-columns:max-content minmax(0,1fr) max-content!important;align-items:center!important;column-gap:24px!important;overflow:visible!important}
+.site-header .brand{grid-column:1!important;display:flex!important;align-items:center!important;gap:10px!important;min-width:0!important;white-space:nowrap!important}
+.site-header .site-nav{grid-column:2!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:6px!important;min-width:0!important;overflow:visible!important}
+.site-header .site-nav>a,.site-header .nav-dropdown>summary{display:inline-flex!important;align-items:center!important;min-height:42px!important;padding:8px 9px!important;border-radius:9px!important;font-size:13px!important;white-space:nowrap!important}
+.site-header .site-nav>a,.site-header .site-nav>.nav-dropdown{flex:0 0 auto!important}
+.site-header .nav-dropdown{position:relative!important}
 .site-header .nav-dropdown-menu{max-width:min(320px,calc(100vw - 24px))!important}
-.site-header .header-actions{display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;flex:0 0 auto!important;min-width:0!important;margin-left:auto!important;white-space:nowrap!important}
+.site-header .header-actions{grid-column:3!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:10px!important;min-width:0!important;margin:0!important;white-space:nowrap!important;position:relative!important;z-index:3!important;background:var(--panel)!important}
 .site-header .header-auth{flex:0 0 auto!important;min-width:0!important}
-.site-header .header-actions .add-bot-button{flex:0 0 auto!important;min-width:0!important;max-width:180px!important;min-height:38px!important;padding:8px 12px!important;font-size:11px!important;white-space:nowrap!important}
+.site-header .header-actions .add-bot-button{flex:0 0 auto!important;min-width:190px!important;max-width:210px!important;min-height:40px!important;padding:8px 14px!important;font-size:12px!important;white-space:nowrap!important}
 .site-header .account-dropdown{position:relative!important;min-width:0!important}
-.site-header .account-dropdown>summary{max-width:185px!important;min-height:40px!important;white-space:nowrap!important}
-.site-header .account-name{display:block!important;max-width:130px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.site-header .account-dropdown>summary{max-width:190px!important;min-height:40px!important;white-space:nowrap!important}
+.site-header .account-name{display:block!important;max-width:135px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
 .site-header .account-dropdown-menu{max-width:min(300px,calc(100vw - 24px))!important}
 .site-header .nav-toggle{display:none!important;flex:0 0 42px!important;width:42px!important;height:42px!important;padding:0!important;align-items:center!important;justify-content:center!important;border:1px solid var(--line)!important;border-radius:10px!important;background:var(--panel2)!important;color:var(--text)!important;font-size:20px!important;cursor:pointer!important}
 .site-header .nav-toggle:hover{border-color:#5865f2!important}
 
-/* Medium desktop: tighten the controls instead of allowing collisions. */
-@media(max-width:1420px) and (min-width:1051px){
- .site-header .header-inner{gap:8px!important;padding:0 14px!important}
+/* Medium desktop: preserve distinct navigation/action regions and reduce spacing. */
+@media(max-width:1550px) and (min-width:1201px){
+ .site-header .header-inner{padding:0 18px!important;column-gap:14px!important}
  .site-header .brand span{font-size:18px!important}
  .site-header .brand-avatar{width:38px!important;height:38px!important}
- .site-header .site-nav{gap:0!important}
- .site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 5px!important;font-size:11px!important}
- .site-header .header-actions{gap:6px!important}
- .site-header .header-actions .add-bot-button{max-width:150px!important;padding:8px 8px!important;font-size:10px!important}
- .site-header .account-dropdown>summary{max-width:145px!important;padding-left:8px!important;padding-right:8px!important}
- .site-header .account-name{max-width:92px!important}
+ .site-header .site-nav{gap:1px!important}
+ .site-header .site-nav>a,.site-header .nav-dropdown>summary{padding:8px 6px!important;font-size:12px!important}
+ .site-header .header-actions{gap:7px!important}
+ .site-header .header-actions .add-bot-button{min-width:165px!important;max-width:175px!important;padding:8px 10px!important;font-size:11px!important}
+ .site-header .account-dropdown>summary{max-width:160px!important;padding-left:9px!important;padding-right:9px!important}
+ .site-header .account-name{max-width:105px!important}
 }
 
-/* Compact logged-in navigation starts before links can overlap. */
-@media(max-width:1050px){
+/* Switch to compact navigation before any logged-in controls can collide. */
+@media(max-width:1200px){
  .site-header .header-inner{display:grid!important;grid-template-columns:minmax(0,1fr) 42px auto!important;align-items:center!important;gap:8px!important;min-height:66px!important;padding:0 14px!important}
  .site-header .brand{grid-column:1!important;overflow:hidden!important}
  .site-header .brand span{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
  .site-header .nav-toggle{display:inline-flex!important;grid-column:2!important;margin:0!important}
- .site-header .header-actions{grid-column:3!important;display:flex!important;min-width:0!important;gap:6px!important;margin:0!important}
+ .site-header .header-actions{grid-column:3!important;display:flex!important;min-width:0!important;gap:6px!important;margin:0!important;background:transparent!important}
  .site-header .header-actions>.add-bot-button{display:none!important}
  .site-header .site-nav{display:none!important;position:absolute!important;z-index:500!important;top:calc(100% + 7px)!important;left:12px!important;right:12px!important;width:auto!important;max-height:calc(100dvh - 86px)!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;padding:10px!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--panel)!important;box-shadow:0 20px 55px rgba(0,0,0,.35)!important}
  .site-header .site-nav.open{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:3px!important}
@@ -48,7 +49,7 @@
  .site-header .account-dropdown-menu{right:0!important;left:auto!important;max-width:calc(100vw - 24px)!important}
 }
 
-/* Phone layout: keep brand, menu, and signed-in account usable without overlap. */
+/* Phone layout: brand + menu + account remain separate and touch friendly. */
 @media(max-width:620px){
  .site-header{min-height:62px!important;padding:0!important}
  .site-header .header-inner{grid-template-columns:minmax(0,1fr) 42px auto!important;min-height:62px!important;padding:0 10px!important}
@@ -71,3 +72,5 @@
 
 html[data-theme="light"] .site-header .nav-toggle{background:#fff!important;color:#1b2559!important;border-color:#dfe5ef!important}
 html[data-theme="light"] .site-header .site-nav{background:#fff!important;border-color:#dfe5ef!important}
+html[data-theme="light"] .site-header .header-actions{background:#fff!important}
+@media(max-width:1200px){html[data-theme="light"] .site-header .header-actions{background:transparent!important}}
