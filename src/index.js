@@ -16,6 +16,7 @@ const { registerInteractions } = require('./bot/interactions');
 const dashboardModulePath = require.resolve('./dashboard/server');
 let { startDashboard } = require(dashboardModulePath);
 const { initDatabase } = require('./database');
+const { startUptimeMonitor, stopUptimeMonitor } = require('./serviceUptimeStore');
 const { startTwitchMonitor, stopTwitchMonitor } = require('./services/twitchMonitor');
 const { registerFeatureRuntime, stopFeatureRuntime } = require('./features/runtime');
 const {
@@ -79,9 +80,6 @@ async function reloadDashboard() {
       });
     }
 
-    // Reload the dashboard server module without disconnecting the Discord client.
-    // Static files (CSS/images) are read by Express on request; server-side dashboard
-    // template/route changes become active after this module refresh.
     delete require.cache[dashboardModulePath];
     ({ startDashboard } = require(dashboardModulePath));
     dashboardServer = startDashboard(client);
@@ -118,6 +116,7 @@ async function shutdown(signal) {
     stopFeatureRuntime();
     stopMusic();
     consoleInterface?.close();
+    await stopUptimeMonitor(`Graceful shutdown: ${signal}`);
 
     if (dashboardServer?.listening) {
       await new Promise((resolve) => dashboardServer.close(() => resolve()));
@@ -146,6 +145,12 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   await client.login(process.env.DISCORD_TOKEN);
   await waitForReady();
 
+  await startUptimeMonitor(() => ({
+    bot: client.isReady(),
+    panel: Boolean(dashboardServer?.listening),
+  }));
+  console.log('[Uptime] Persistent bot and web-panel timesheet monitor started.');
+
   try {
     await initMusic(client);
     if (!(await waitForMusicConnection())) {
@@ -165,9 +170,10 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
   } catch (error) {
     console.error('[Slash Commands] Registration failed; the bot and dashboard will continue running:', error);
   }
-})().catch((error) => {
+})().catch(async (error) => {
   console.error('MultiBot startup failed:', error);
   try {
+    await stopUptimeMonitor('Startup failure');
     stopTwitchMonitor();
     stopFeatureRuntime();
     stopMusic();
