@@ -1,0 +1,81 @@
+name: Apply products page
+on:
+  push:
+    branches: [fix/account-dropdown-add-bot-v2]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/account-dropdown-add-bot-v2
+      - name: Patch dashboard server
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/dashboard/server.js')
+          s = p.read_text()
+          req = "const { listDiscordProducts } = require('../dashboardCommerce');\n"
+          if req not in s:
+              marker = "const { getAnalytics } = require('../features/dataStore');\n"
+              s = s.replace(marker, marker + req, 1)
+
+          # Products navigation for both authenticated and public visitors.
+          signed = '    <a href="/features">Features</a>\n    <a href="/dashboard">Dashboard</a>'
+          if '    <a href="/products">Products</a>\n    <a href="/dashboard">Dashboard</a>' not in s:
+              s = s.replace(signed, '    <a href="/features">Features</a>\n    <a href="/products">Products</a>\n    <a href="/dashboard">Dashboard</a>', 1)
+          public = '      <a href="/features">Features</a>\n      <a href="/status">Bot &amp; Panel Status</a>'
+          if '      <a href="/products">Products</a>\n      <a href="/status">Bot &amp; Panel Status</a>' not in s:
+              s = s.replace(public, '      <a href="/features">Features</a>\n      <a href="/products">Products</a>\n      <a href="/status">Bot &amp; Panel Status</a>', 1)
+          footer = '<nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a>'
+          if '<a href="/products">Products</a>' not in s[s.find('<footer>'):s.find('${cookieNotice}')]:
+              s = s.replace(footer, '<nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/products">Products</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a>', 1)
+
+          if "app.get('/products'" not in s:
+              marker = "  app.get('/status', async (req, res) => {"
+              route = r'''  app.get('/products', (req, res) => {
+            const products = listDiscordProducts();
+            const cards = products.map((product) => {
+              const scopeLabel = product.scope === 'guild' ? 'Server subscription' : 'User subscription';
+              const priceLabel = product.price ? `$${escapeHtml(product.price)} / month` : 'Price shown by Discord';
+              const checkout = product.checkoutUrl
+                ? `<a class="btn" href="${escapeHtml(product.checkoutUrl)}" target="_blank" rel="noopener noreferrer">Purchase with Discord</a>`
+                : '<span class="btn secondary" aria-disabled="true">SKU not configured</span>';
+              return `<article class="product-card ${product.configured ? '' : 'product-unavailable'}">
+                <div class="product-card-head"><div><span class="eyebrow">${escapeHtml(scopeLabel.toUpperCase())}</span><h2>${escapeHtml(product.name)}</h2></div><div class="product-price">${priceLabel}</div></div>
+                <p class="product-description">${escapeHtml(product.description)}</p>
+                <div class="product-details">
+                  <div class="product-detail"><span>Discord SKU ID</span><strong>${product.skuId ? escapeHtml(product.skuId) : 'Not configured'}</strong></div>
+                  <div class="product-detail"><span>Entitlement Scope</span><strong>${escapeHtml(product.scope === 'guild' ? 'Discord Server' : 'Discord User')}</strong></div>
+                  <div class="product-detail"><span>Kryndexa Tier</span><strong>${escapeHtml(product.tier.toUpperCase())}</strong></div>
+                  <div class="product-detail"><span>Checkout Provider</span><strong>Discord</strong></div>
+                </div>
+                <div class="product-actions">${checkout}</div>
+              </article>`;
+            }).join('');
+            const appId = String(process.env.DISCORD_APPLICATION_ID || process.env.DISCORD_CLIENT_ID || '').trim();
+            const storeUrl = appId ? `https://discord.com/application-directory/${encodeURIComponent(appId)}/store` : '';
+            const body = `<div class="products-page">
+              <section class="products-hero"><div class="products-hero-copy"><span class="eyebrow">KRYNDEXA PREMIUM</span><h1>Products &amp; Discord Checkout</h1><p>Compare Kryndexa user and server subscriptions, review the configured SKU details, and complete purchases securely through Discord.</p></div>${storeUrl ? `<a class="btn secondary" href="${escapeHtml(storeUrl)}" target="_blank" rel="noopener noreferrer">Open Discord Store</a>` : ''}</section>
+              <section class="product-grid">${cards}</section>
+              <aside class="products-note"><strong>Discord-managed checkout</strong><p>Purchases open Discord's Application Directory store. Final localized price, taxes, payment methods, renewals, receipts, refunds, and subscription management are handled by Discord.</p></aside>
+            </div>`;
+            return res.send(page('Products • Kryndexa Bot', body, req.session.user, { path: '/products', description: 'View Kryndexa Bot Premium and Pro Discord SKU products, pricing, subscription scope and Discord checkout links.' }));
+          });
+
+'''
+              s = s.replace(marker, route + marker, 1)
+          p.write_text(s)
+      - name: Remove one-time workflow and commit
+        run: |
+          rm -f .github/workflows/apply-products-page.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dashboard/server.js .github/workflows/apply-products-page.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Add Discord SKU products checkout page"
+          git push origin HEAD:fix/account-dropdown-add-bot-v2
