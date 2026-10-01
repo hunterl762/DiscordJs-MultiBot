@@ -1,5 +1,6 @@
 const { getPool } = require('./database');
 const { listSecureRecords, getSecureRecord, putSecureRecord } = require('./dashboardSecureStore');
+const { getGuildSubscription } = require('./subscriptionStore');
 
 const NS = 'ticket_type';
 const DEFAULT_TICKET_TYPES = [
@@ -11,6 +12,43 @@ const DEFAULT_TICKET_TYPES = [
   { key: 'applications', label: 'Applications', description: 'Open an application ticket.', emoji: '📝', sortOrder: 60 },
   { key: 'management', label: 'Management', description: 'Contact server management privately.', emoji: '👔', sortOrder: 70 },
 ];
+
+const TICKET_TYPES_BY_TIER = Object.freeze({
+  free: new Set(['support']),
+  pro: new Set(['support', 'player_reports', 'staff_reports', 'bug_reports']),
+  premium: new Set(['support', 'player_reports', 'staff_reports', 'billing', 'applications', 'management']),
+});
+
+function ownerGuildIds() {
+  return new Set(
+    String(process.env.BOT_OWNER_GUILD_IDS || process.env.BOT_OWNER_GUILD_ID || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function normalizeTier(tier) {
+  const value = String(tier || 'free').trim().toLowerCase();
+  return TICKET_TYPES_BY_TIER[value] ? value : 'free';
+}
+
+function ticketTypeAllowedForTier(typeKey, tier, guildId) {
+  const key = String(typeKey || '').trim().toLowerCase();
+  if (!TICKET_TYPES_BY_TIER[normalizeTier(tier)].has(key)) return false;
+  // Billing tickets are reserved for the bot owner's Discord server(s).
+  if (key === 'billing') return ownerGuildIds().has(String(guildId));
+  return true;
+}
+
+async function getTicketTypeAccess(guildId) {
+  const subscription = await getGuildSubscription(guildId);
+  const tier = normalizeTier(subscription?.tier);
+  return {
+    tier,
+    allowed: new Set([...TICKET_TYPES_BY_TIER[tier]].filter((key) => ticketTypeAllowedForTier(key, tier, guildId))),
+  };
+}
 
 function defaults(guildId, type) {
   return { guildId, ...type, enabled: true, categoryId: '', staffRoleId: '' };
@@ -45,23 +83,38 @@ async function ensureTicketTypes(guildId) {
   }
 }
 
-async function listTicketTypes(guildId, { enabledOnly = false } = {}) {
+async function listTicketTypes(guildId, { enabledOnly = false, includeLocked = false } = {}) {
   await ensureTicketTypes(guildId);
+  const access = await getTicketTypeAccess(guildId);
   return (await listSecureRecords(guildId, NS))
     .map((row) => row.payload)
+    .map((item) => ({ ...item, subscriptionLocked: !access.allowed.has(item.key), requiredTier: item.key === 'support' ? 'Free' : ['player_reports', 'staff_reports', 'bug_reports'].includes(item.key) ? 'Pro' : 'Premium' }))
+    .filter((item) => includeLocked || !item.subscriptionLocked)
     .filter((item) => !enabledOnly || item.enabled)
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || a.label.localeCompare(b.label));
 }
 
-async function getTicketType(guildId, typeKey) {
+async function getTicketType(guildId, typeKey, { includeLocked = false } = {}) {
   await ensureTicketTypes(guildId);
-  return (await getSecureRecord(guildId, NS, typeKey))?.payload || null;
+  const item = (await getSecureRecord(guildId, NS, typeKey))?.payload || null;
+  if (!item) return null;
+  const access = await getTicketTypeAccess(guildId);
+  const subscriptionLocked = !access.allowed.has(item.key);
+  if (subscriptionLocked && !includeLocked) return null;
+  return { ...item, subscriptionLocked };
 }
 
 async function saveTicketType(guildId, typeKey, patch) {
   const definition = DEFAULT_TICKET_TYPES.find((type) => type.key === typeKey);
   if (!definition) throw new Error('Unknown ticket type.');
-  const current = await getTicketType(guildId, typeKey) || defaults(guildId, definition);
+
+  const access = await getTicketTypeAccess(guildId);
+  if (!access.allowed.has(typeKey)) {
+    if (typeKey === 'billing') throw new Error('Billing tickets are only available in the bot owner Discord server.');
+    throw new Error(`The ${definition.label} ticket department is not available on this server's ${access.tier} plan.`);
+  }
+
+  const current = await getTicketType(guildId, typeKey, { includeLocked: true }) || defaults(guildId, definition);
   const next = {
     ...current,
     label: String(patch.label ?? current.label).trim().slice(0, 80) || current.label,
@@ -71,8 +124,19 @@ async function saveTicketType(guildId, typeKey, patch) {
     categoryId: String(patch.categoryId ?? current.categoryId).trim().slice(0, 32),
     staffRoleId: String(patch.staffRoleId ?? current.staffRoleId).trim().slice(0, 32),
   };
+  delete next.subscriptionLocked;
+  delete next.requiredTier;
   await putSecureRecord(guildId, NS, typeKey, next);
   return next;
 }
 
-module.exports = { DEFAULT_TICKET_TYPES, ensureTicketTypes, listTicketTypes, getTicketType, saveTicketType };
+module.exports = {
+  DEFAULT_TICKET_TYPES,
+  TICKET_TYPES_BY_TIER,
+  ensureTicketTypes,
+  getTicketTypeAccess,
+  ticketTypeAllowedForTier,
+  listTicketTypes,
+  getTicketType,
+  saveTicketType,
+};
