@@ -237,6 +237,7 @@ function page(title, body, user, meta = {}) {
               <button class="account-menu-item theme-choice" type="button" data-theme-choice="dark">Dark</button>
             </div>
           </details>
+          ${renderAddBotButton().replace('class="btn add-bot-button compact"', 'class="account-menu-item account-add-bot"')}
           <a class="account-menu-item" href="/dashboard/user-settings">User Settings</a>
           <a class="account-menu-item account-logout" href="/logout">Log out</a>
         </div>
@@ -319,7 +320,7 @@ function page(title, body, user, meta = {}) {
       <a href="/privacy">Privacy</a>
     `}
   </nav>
-  <div class="header-actions">${addBotButton}<div class="header-auth">${auth}</div></div>
+  <div class="header-actions">${user ? '' : addBotButton}<div class="header-auth">${auth}</div></div>
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
