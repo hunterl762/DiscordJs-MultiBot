@@ -1,0 +1,33 @@
+name: Rebrand visible MultiBot references
+on:
+  push:
+    branches: [fix/account-dropdown-add-bot-v2]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  rebrand:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/account-dropdown-add-bot-v2
+      - name: Replace visible legacy branding
+        run: |
+          git grep -Il -e 'MultiBot' -- ':!package-lock.json' | while IFS= read -r file; do
+            sed -i 's/MultiBot/Kryndexa Bot/g' "$file"
+          done
+      - name: Preserve compatibility-sensitive internal identifiers
+        run: |
+          # Lowercase multibot identifiers (DB names/users, cookies, package identifiers, etc.) are intentionally unchanged.
+          true
+      - name: Remove migration workflow and commit
+        run: |
+          rm -f .github/workflows/rebrand-kryndexa.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Rebrand visible MultiBot references to Kryndexa Bot"
+          git push origin HEAD:fix/account-dropdown-add-bot-v2
