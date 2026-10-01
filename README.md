@@ -1,10 +1,10 @@
-# DiscordJs-MultiBot v3
+# DiscordJs-Kryndexa Bot v3
 
-MultiBot is a **discord.js v14** multi-purpose Discord bot with slash commands, prefix-command backups, a Discord OAuth2 dashboard, MySQL storage, member verification, private support tickets, HTML transcripts, and owner-only broadcasts.
+Kryndexa Bot is a **discord.js v14** multi-purpose Discord bot with slash commands, prefix-command backups, a Discord OAuth2 dashboard, MySQL storage, member verification, private support tickets, HTML transcripts, and owner-only broadcasts.
 
 ## Storage
 
-MultiBot now uses **MySQL** instead of JSON files for persistent data:
+Kryndexa Bot now uses **MySQL** instead of JSON files for persistent data:
 
 - `guild_settings` — per-server dashboard and bot configuration.
 - `tickets` — ticket metadata, ticket type, and HTML transcript content.
@@ -32,7 +32,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX
 FLUSH PRIVILEGES;
 ```
 
-Run `database/schema.sql`, or set `MYSQL_AUTO_MIGRATE=true` and MultiBot will create missing tables when it starts. The database itself must already exist.
+Run `database/schema.sql`, or set `MYSQL_AUTO_MIGRATE=true` and Kryndexa Bot will create missing tables when it starts. The database itself must already exist.
 
 After you manage migrations manually, set `MYSQL_AUTO_MIGRATE=false` and the runtime account can normally be reduced to `SELECT, INSERT, UPDATE, DELETE`.
 
@@ -95,7 +95,7 @@ The `/health` endpoint reports both Discord readiness and database connectivity.
 
 ## Advanced logging
 
-MultiBot now supports richer audit-style logging for member joins/leaves, kicks, bans/unbans, message edits/deletes, channel changes, nickname changes, role creation/update/deletion, and member role additions/removals.
+Kryndexa Bot now supports richer audit-style logging for member joins/leaves, kicks, bans/unbans, message edits/deletes, channel changes, nickname changes, role creation/update/deletion, and member role additions/removals.
 
 The dashboard exposes three logging destinations:
 
@@ -103,11 +103,11 @@ The dashboard exposes three logging destinations:
 - **Verification Log Channel** — successful/already-complete verification checks and verification role changes.
 - **Role Change Log Channel** — member role additions/removals plus role create/update/delete events.
 
-If a dedicated verification or role channel is left blank, MultiBot falls back to the General Logs Channel. Audit-log executor information is included when Discord permits the bot to read audit logs.
+If a dedicated verification or role channel is left blank, Kryndexa Bot falls back to the General Logs Channel. Audit-log executor information is included when Discord permits the bot to read audit logs.
 
 ## Advanced ticket system
 
-MultiBot includes seven configurable ticket departments:
+Kryndexa Bot includes seven configurable ticket departments:
 
 - Support
 - Player Reports
@@ -134,7 +134,7 @@ When online transcripts are enabled, new closed tickets receive an unguessable p
 
 ## Tickets
 
-Tickets use private Discord channels. When a ticket is closed, MultiBot:
+Tickets use private Discord channels. When a ticket is closed, Kryndexa Bot:
 
 1. Collects up to 5,000 messages.
 2. Generates a sanitized HTML transcript.
@@ -231,7 +231,7 @@ The command registry walks these folders recursively, detects duplicate command 
 
 Feature/module toggles, ticket-department toggles, core server feature toggles, and individual command toggles now autosave immediately in the dashboard.
 
-Disabled commands remain registered with Discord when using global commands, so they can still appear in Discord's slash-command picker; MultiBot blocks their execution for that server and returns a disabled message. This avoids maintaining a separate Discord application-command registration set for every server.
+Disabled commands remain registered with Discord when using global commands, so they can still appear in Discord's slash-command picker; Kryndexa Bot blocks their execution for that server and returns a disabled message. This avoids maintaining a separate Discord application-command registration set for every server.
 
 ## Advanced Feature Center
 
@@ -291,7 +291,7 @@ Prefix backups are available when enabled.
 Bot owners can use:
 
 - `/resetcommands scope:global` — recommended production cleanup. Deletes the previous global set, clears stale guild-specific command registrations across connected servers, and registers exactly the current command modules globally.
-- `/resetcommands scope:guild` — clears stale commands from the current guild. If a global set already exists, MultiBot refreshes the global set instead of creating a duplicate guild copy.
+- `/resetcommands scope:guild` — clears stale commands from the current guild. If a global set already exists, Kryndexa Bot refreshes the global set instead of creating a duplicate guild copy.
 - `!resetcommands global`
 - `!resetcommands guild`
 
@@ -301,7 +301,7 @@ This prevents Discord from showing duplicate slash commands caused by old global
 
 If Discord returns `DiscordAPIError[50001]: Missing Access` for a URL containing `/guilds/<id>/commands`, the configured `DEV_GUILD_ID` is not accessible to the logged-in bot application, or the Discord application credentials do not match.
 
-MultiBot now logs in before registering commands, verifies whether it is actually connected to `DEV_GUILD_ID`, and automatically falls back to global registration when guild registration is unavailable.
+Kryndexa Bot now logs in before registering commands, verifies whether it is actually connected to `DEV_GUILD_ID`, and automatically falls back to global registration when guild registration is unavailable.
 
 For development-server registration:
 
@@ -343,7 +343,7 @@ Prefix usage:
 
 `!backup restore <backup-id> confirm`
 
-Before restore starts, MultiBot automatically creates a fresh safety backup. Restore mode is merge-based: matching roles/channels are updated, missing roles/channels are recreated, stored role IDs are remapped into channel permission overwrites, and unrelated current roles/channels are left intact. Managed roles and unsupported channel types are skipped with warnings.
+Before restore starts, Kryndexa Bot automatically creates a fresh safety backup. Restore mode is merge-based: matching roles/channels are updated, missing roles/channels are recreated, stored role IDs are remapped into channel permission overwrites, and unrelated current roles/channels are left intact. Managed roles and unsupported channel types are skipped with warnings.
 
 The bot needs **Manage Roles** and **Manage Channels** permissions, and its highest role must be above any role it needs to edit.
 
@@ -361,7 +361,7 @@ The dashboard header also includes an **Add Bot to Server** button. Its Discord 
 
 ## Shard-aware presence
 
-MultiBot's Discord activity is:
+Kryndexa Bot's Discord activity is:
 
 `/help • kryndexabot.xyz • (shard count / 100)`
 

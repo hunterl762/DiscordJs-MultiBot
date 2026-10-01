@@ -87,7 +87,7 @@ async function runAutomationRules(guild, triggerType, context) {
         await context.user.send(automationText(rule.action_message || 'Automation triggered in {server}.', context)).catch(() => null);
       } else if (rule.action_type === 'add_role' && context.member) {
         const role = guild.roles.cache.get(rule.action_role_id);
-        if (role?.editable) await context.member.roles.add(role, `MultiBot automation: ${rule.name}`);
+        if (role?.editable) await context.member.roles.add(role, `Kryndexa Bot automation: ${rule.name}`);
       }
     } catch (error) {
       console.error(`[Automation] Rule ${rule.id} failed:`, error);
@@ -141,7 +141,7 @@ async function handleWelcomeFeature(member){
   const roleId=feature.config.autoroleId;
   if(roleId){
     const role=member.guild.roles.cache.get(roleId);
-    if(role?.editable)await member.roles.add(role,'MultiBot welcome autorole').catch(()=>null);
+    if(role?.editable)await member.roles.add(role,'Kryndexa Bot welcome autorole').catch(()=>null);
   }
   if(feature.config.dmWelcome){
     const msg=String(feature.config.dmMessage||'Welcome to {server}, {user}!')
@@ -157,7 +157,7 @@ async function triggerRaidLockdown(guild,feature,reason){
   let locked=0;
   for(const channel of guild.channels.cache.values()){
     if(channel.type!==ChannelType.GuildText)continue;
-    try{await channel.permissionOverwrites.edit(guild.roles.everyone,{SendMessages:false},{reason:`MultiBot anti-raid: ${reason}`});locked++;}catch{}
+    try{await channel.permissionOverwrites.edit(guild.roles.everyone,{SendMessages:false},{reason:`Kryndexa Bot anti-raid: ${reason}`});locked++;}catch{}
   }
   await logFeature(guild,feature,'🚨 Anti-Raid Lockdown',`${reason}\nLocked **${locked}** text channel(s). Use **/lockdown action:Unlock** after reviewing the raid.`,0xed4245);
 }
@@ -232,7 +232,7 @@ async function handleVoiceState(oldState,newState){
           {id:guild.roles.everyone.id,allow:[PermissionFlagsBits.Connect]},
           {id:userId,allow:[PermissionFlagsBits.Connect,PermissionFlagsBits.MoveMembers,PermissionFlagsBits.ManageChannels]},
         ],
-        reason:'MultiBot temporary voice room',
+        reason:'Kryndexa Bot temporary voice room',
       });
       tempOwners.set(channel.id,userId);
       await newState.setChannel(channel,'Created temporary voice room');

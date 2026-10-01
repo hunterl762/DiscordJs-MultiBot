@@ -78,8 +78,8 @@ async function findBroadcastChannel(guild) {
 }
 
 function ownerDisplayName(owner) {
-  if (!owner) return 'MultiBot Owner';
-  return owner.displayName || owner.globalName || owner.username || owner.tag || 'MultiBot Owner';
+  if (!owner) return 'Kryndexa Bot Owner';
+  return owner.displayName || owner.globalName || owner.username || owner.tag || 'Kryndexa Bot Owner';
 }
 
 function parseBroadcastColor(value) {
