@@ -52,3 +52,16 @@ html[data-theme="light"] .site-header .site-nav{background:#fff!important;border
 .feature-toggle input:not(:checked)+span::after{content:'Disabled';font-size:12px;font-weight:800;color:var(--muted)}
 .feature-toggle input:checked+span{font-weight:800}
 .feature-card:not(.feature-enabled) .feature-toggle{opacity:.78}
+
+/* Dashboard configuration form polish */
+.dashboard-control-shell>form.grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:18px 22px!important;align-items:start!important}
+.dashboard-control-shell>form.grid>label{display:flex!important;flex-direction:column!important;gap:8px!important;margin:0!important;min-width:0!important;font-weight:800!important;color:var(--text)!important}
+.dashboard-control-shell>form.grid>label>input:not([type="checkbox"]),.dashboard-control-shell>form.grid>label>select{width:100%!important;min-height:44px!important;margin:0!important;border-radius:10px!important;padding:0 13px!important;background:var(--panel2)!important;border:1px solid var(--line)!important;color:var(--text)!important}
+.dashboard-control-shell>form.grid>label>input:not([type="checkbox"]):focus,.dashboard-control-shell>form.grid>label>select:focus{outline:none!important;border-color:#5865f2!important;box-shadow:0 0 0 3px rgba(88,101,242,.14)!important}
+.dashboard-control-shell>form.grid>.checks{grid-column:1/-1!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px 12px!important;margin-top:2px!important}
+.dashboard-control-shell>form.grid>.checks label{min-height:44px!important;display:flex!important;align-items:center!important;gap:10px!important;padding:11px 13px!important;margin:0!important;border:1px solid var(--line)!important;border-radius:10px!important;background:var(--panel2)!important;font-weight:600!important;cursor:pointer!important}
+.dashboard-control-shell>form.grid>.checks label:hover{border-color:rgba(88,101,242,.65)!important;background:rgba(88,101,242,.06)!important}
+.dashboard-control-shell>form.grid>.checks input[type="checkbox"]{width:16px!important;height:16px!important;margin:0!important;accent-color:#5865f2!important;flex:0 0 auto!important}
+.dashboard-control-shell>form.grid>.btn{grid-column:1/-1!important;justify-self:start!important;min-width:140px!important;min-height:42px!important;margin-top:2px!important}
+@media(max-width:760px){.dashboard-control-shell>form.grid{grid-template-columns:1fr!important;gap:14px!important}.dashboard-control-shell>form.grid>.checks{grid-template-columns:1fr!important}.dashboard-control-shell>form.grid>.btn{width:100%!important;justify-self:stretch!important}}
+@media(max-width:420px){.dashboard-control-shell>form.grid{gap:12px!important}.dashboard-control-shell>form.grid>label>input:not([type="checkbox"]),.dashboard-control-shell>form.grid>label>select{min-height:46px!important}.dashboard-control-shell>form.grid>.checks label{min-height:46px!important;padding:12px!important}}
