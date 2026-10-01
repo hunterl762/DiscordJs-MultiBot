@@ -1,0 +1,89 @@
+name: Apply Sleek Products Page
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-sleek-products.yml'
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/account-dropdown-add-bot-v2
+      - name: Redesign products page
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/dashboard/server.js')
+          s=p.read_text()
+          start=s.index("  app.get('/products', (req, res) => {")
+          end=s.index("\n\n  app.get('/status'", start)
+          route=r'''  app.get('/products', (req, res) => {
+            const products = listDiscordProducts().filter((product) => product.scope === 'guild');
+            const featureSets = {
+              premium: ['Higher feature limits', 'Premium server modules', 'Expanded Stream Alerts', 'Server-wide entitlement'],
+              pro: ['Highest Kryndexa limits', 'Diamond feature access', 'Up to 15 Stream Alerts', 'Priority server configuration'],
+            };
+            const cards = products.map((product, index) => {
+              const priceLabel = product.price ? escapeHtml(product.price) : 'Discord pricing';
+              const checkout = product.checkoutUrl
+                ? `<a class="btn product-checkout" href="${escapeHtml(product.checkoutUrl)}" target="_blank" rel="noopener noreferrer">Upgrade this server <span>→</span></a>`
+                : '<span class="btn secondary product-checkout disabled" aria-disabled="true">SKU not configured</span>';
+              const features = (featureSets[product.tier] || []).map((feature) => `<li><span>✓</span>${escapeHtml(feature)}</li>`).join('');
+              return `<article class="product-card product-tier-${escapeHtml(product.tier)} ${index === 1 ? 'featured' : ''} ${product.configured ? '' : 'product-unavailable'}">
+                ${index === 1 ? '<div class="product-popular-badge">MOST POWERFUL</div>' : ''}
+                <div class="product-card-topline"><span class="product-tier-icon">${index === 1 ? '◆' : '✦'}</span><span>SERVER SUBSCRIPTION</span></div>
+                <div class="product-card-head"><div><h2>${escapeHtml(product.name)}</h2><p>${escapeHtml(product.description)}</p></div></div>
+                <div class="product-price-block"><strong>${priceLabel}</strong>${product.price ? '<span>/ month</span>' : '<span>shown securely by Discord</span>'}</div>
+                <ul class="product-feature-list">${features}</ul>
+                <div class="product-server-scope"><span>◈</span><div><strong>One Discord Server</strong><small>Benefits apply to the server that owns the entitlement.</small></div></div>
+                <div class="product-actions">${checkout}</div>
+              </article>`;
+            }).join('');
+            const appId = String(process.env.DISCORD_APPLICATION_ID || process.env.DISCORD_CLIENT_ID || '').trim();
+            const storeUrl = appId ? `https://discord.com/application-directory/${encodeURIComponent(appId)}/store` : '';
+            const body = `<div class="products-page products-page-v2">
+              <section class="products-hero products-hero-v2">
+                <div class="products-hero-glow"></div>
+                <div class="products-hero-copy"><span class="products-kicker"><i></i> KRYNDEXA SERVER UPGRADES</span><h1>Power up your <span>Discord server.</span></h1><p>Choose the Kryndexa plan that fits your community. Every paid plan is attached directly to one Discord server and checkout is handled securely by Discord.</p><div class="products-trust-row"><span>✓ Discord-native checkout</span><span>✓ Server-wide benefits</span><span>✓ Easy subscription management</span></div></div>
+                ${storeUrl ? `<a class="btn secondary products-store-button" href="${escapeHtml(storeUrl)}" target="_blank" rel="noopener noreferrer">View in Discord Store ↗</a>` : ''}
+              </section>
+              <section class="products-section-head"><div><span class="eyebrow">CHOOSE YOUR TIER</span><h2>Simple server-based plans</h2><p>No user SKUs. One subscription upgrades one Discord server.</p></div><span class="products-secure-pill">🔒 Checkout by Discord</span></section>
+              <section class="product-grid product-grid-v2">${cards}</section>
+              <section class="products-bottom-grid"><article><span>⚡</span><div><strong>Instant entitlement</strong><p>Discord manages the subscription and Kryndexa can recognize the server entitlement.</p></div></article><article><span>🛡️</span><div><strong>Server scoped</strong><p>Premium access stays tied to the Discord server instead of an individual user account.</p></div></article><article><span>💳</span><div><strong>Discord checkout</strong><p>Pricing, taxes, receipts, renewals and payment methods are handled by Discord.</p></div></article></section>
+            </div>`;
+            s=s[:start]+route+s[end:]
+            p.write_text(s)
+
+            css=Path('public/style.css')
+            c=css.read_text()
+            marker='/* === Sleek Guild-Only Products Page === */'
+            if marker not in c:
+              c += r'''
+
+/* === Sleek Guild-Only Products Page === */
+.products-page-v2{width:min(1180px,calc(100% - 32px));margin:34px auto 72px}
+.products-hero-v2{position:relative;overflow:hidden;display:flex;align-items:flex-end;justify-content:space-between;gap:30px;padding:44px;border:1px solid var(--line);border-radius:26px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 16%,var(--panel)) 0%,var(--panel) 48%,color-mix(in srgb,#8b5cf6 12%,var(--panel)) 100%);box-shadow:0 24px 70px rgba(0,0,0,.22)}
+.products-hero-glow{position:absolute;width:380px;height:380px;right:-120px;top:-180px;border-radius:50%;background:color-mix(in srgb,var(--accent) 24%,transparent);filter:blur(12px);pointer-events:none}
+.products-hero-copy{position:relative;max-width:760px}.products-kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:900;letter-spacing:.12em;color:var(--accent)}.products-kicker i{width:8px;height:8px;border-radius:50%;background:#57f287;box-shadow:0 0 0 5px rgba(87,242,135,.1)}
+.products-hero-v2 h1{font-size:clamp(38px,6vw,66px);line-height:1.02;letter-spacing:-.045em;margin:14px 0}.products-hero-v2 h1 span{background:linear-gradient(90deg,var(--accent),#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}.products-hero-v2 p{max-width:700px;font-size:17px;line-height:1.7;color:var(--muted);margin:0}.products-trust-row{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:22px;color:var(--text);font-size:13px;font-weight:750}.products-trust-row span{display:inline-flex;gap:7px;align-items:center}.products-store-button{position:relative;white-space:nowrap}
+.products-section-head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin:44px 4px 20px}.products-section-head h2{font-size:30px;margin:5px 0}.products-section-head p{margin:0;color:var(--muted)}.products-secure-pill{padding:9px 13px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12px;font-weight:800;white-space:nowrap}
+.product-grid-v2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.product-grid-v2 .product-card{position:relative;display:flex;flex-direction:column;min-height:520px;padding:30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--panel2) 72%,var(--panel)));box-shadow:0 18px 50px rgba(0,0,0,.14);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}.product-grid-v2 .product-card:hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--accent) 55%,var(--line));box-shadow:0 24px 64px rgba(0,0,0,.2)}.product-grid-v2 .product-card.featured{border-color:color-mix(in srgb,#a78bfa 65%,var(--line));background:linear-gradient(180deg,color-mix(in srgb,#8b5cf6 10%,var(--panel)),var(--panel))}.product-popular-badge{position:absolute;right:22px;top:-13px;padding:7px 11px;border-radius:999px;background:linear-gradient(90deg,var(--accent),#8b5cf6);color:white;font-size:10px;font-weight:950;letter-spacing:.1em;box-shadow:0 8px 22px rgba(88,101,242,.28)}
+.product-card-topline{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.12em}.product-tier-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--accent) 16%,var(--panel2));color:var(--accent);font-size:16px}.product-tier-pro .product-tier-icon{color:#a78bfa;background:rgba(139,92,246,.13)}.product-grid-v2 .product-card h2{font-size:34px;margin:22px 0 8px;letter-spacing:-.03em}.product-grid-v2 .product-card-head p{color:var(--muted);line-height:1.65;margin:0;min-height:80px}.product-price-block{display:flex;align-items:baseline;gap:8px;padding:22px 0;border-bottom:1px solid var(--line)}.product-price-block strong{font-size:30px;letter-spacing:-.03em}.product-price-block span{font-size:12px;color:var(--muted)}
+.product-feature-list{list-style:none;padding:22px 0;margin:0;display:grid;gap:13px}.product-feature-list li{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700}.product-feature-list li span{display:grid;place-items:center;width:21px;height:21px;border-radius:50%;background:rgba(87,242,135,.12);color:#57f287;font-size:11px}.product-server-scope{display:flex;gap:12px;align-items:center;margin-top:auto;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel2)}.product-server-scope>span{font-size:22px;color:var(--accent)}.product-server-scope div{display:flex;flex-direction:column;gap:3px}.product-server-scope small{color:var(--muted);line-height:1.4}.product-grid-v2 .product-actions{margin-top:16px}.product-grid-v2 .product-checkout{width:100%;min-height:48px;font-weight:850}.product-checkout span{margin-left:auto}.product-unavailable{opacity:.72}.product-checkout.disabled{pointer-events:none}
+.products-bottom-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:22px}.products-bottom-grid article{display:flex;gap:13px;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}.products-bottom-grid article>span{font-size:22px}.products-bottom-grid strong{display:block;margin-bottom:5px}.products-bottom-grid p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+html[data-theme="light"] .products-hero-v2,html[data-theme="light"] .product-grid-v2 .product-card,html[data-theme="light"] .products-bottom-grid article{box-shadow:0 16px 40px rgba(31,51,89,.08)}
+@media(max-width:850px){.products-hero-v2{padding:30px;align-items:flex-start;flex-direction:column}.product-grid-v2{grid-template-columns:1fr}.products-bottom-grid{grid-template-columns:1fr}.product-grid-v2 .product-card{min-height:0}.product-grid-v2 .product-card-head p{min-height:0}.products-section-head{align-items:flex-start;flex-direction:column}}
+@media(max-width:560px){.products-page-v2{width:min(100% - 20px,1180px);margin-top:18px}.products-hero-v2{padding:24px;border-radius:20px}.products-hero-v2 h1{font-size:40px}.products-trust-row{flex-direction:column}.products-store-button{width:100%}.product-grid-v2 .product-card{padding:22px}.products-section-head{margin-top:32px}.products-secure-pill{white-space:normal}}
+'''
+              css.write_text(c)
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dashboard/server.js public/style.css
+          git diff --cached --quiet && exit 0
+          git commit -m "Redesign products page for guild subscriptions"
+          git push
