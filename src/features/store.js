@@ -24,6 +24,18 @@ async function migrateLegacy(guildId) {
   return listSecureRecords(guildId, NS);
 }
 
+function lockedDashboardDefinition(definition, plan) {
+  return {
+    ...definition,
+    title: `🔒 ${definition.title}`,
+    description: `${definition.description} This module is locked on the ${plan.name || plan.tier || 'Free'} tier. Upgrade this server to Premium or Diamond to unlock it.`,
+    requirement: 'Subscription required — select View Plans / Upgrade Server below to unlock this module for this Discord server.',
+    fields: [],
+    link: '/products',
+    locked: true,
+  };
+}
+
 async function getGuildFeatures(guildId) {
   const cached = cache.get(guildId);
   if (cached?.expiresAt > Date.now()) return cached.states;
@@ -34,15 +46,21 @@ async function getGuildFeatures(guildId) {
   const byKey = new Map(rows.map((row) => [row.recordKey, row.payload || {}]));
   const states = FEATURE_CATALOG.map((definition) => {
     const payload = byKey.get(definition.key);
+    const hasAccess = definition.locked || entitled.has('*') || entitled.has(definition.key);
     const enabled = definition.locked
       ? true
       : isFeatureEnvironmentEnabled(definition)
-        && (entitled.has('*') || entitled.has(definition.key))
+        && hasAccess
         && (payload ? Boolean(payload.enabled) : Boolean(definition.defaultEnabled));
     return {
-      definition,
+      definition: hasAccess ? definition : lockedDashboardDefinition(definition, plan),
+      originalDefinition: definition,
       key: definition.key,
       enabled,
+      entitled: hasAccess,
+      subscriptionLocked: !hasAccess,
+      subscriptionTier: subscription.tier,
+      subscriptionPlanName: plan.name || subscription.tier,
       config: { ...defaultFeatureConfig(definition), ...(payload?.config || {}) },
       updatedAt: null,
     };
@@ -59,6 +77,14 @@ async function getFeature(guildId, key) {
 async function saveFeature(guildId, key, { enabled, config }) {
   const definition = getFeatureDefinition(key);
   if (!definition) throw new Error('Unknown feature.');
+
+  const subscription = await getGuildSubscription(guildId);
+  const plan = await getPlan(subscription.tier);
+  const entitled = new Set(plan.features || []);
+  if (!definition.locked && !entitled.has('*') && !entitled.has(definition.key)) {
+    throw new Error(`This module is locked on the ${plan.name || subscription.tier} tier. Upgrade this server at https://kryndexabot.xyz/products to unlock it.`);
+  }
+
   const nextEnabled = definition.locked
     ? true
     : isFeatureEnvironmentEnabled(definition) && Boolean(enabled);
