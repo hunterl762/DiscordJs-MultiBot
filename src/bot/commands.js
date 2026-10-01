@@ -1,4 +1,4 @@
-const { MessageFlags } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { getGuildSettings } = require('../store');
 const { commands, prefixCommands, slashCommands } = require('./commandRegistry');
 const { trackCommandUsage } = require('../features/dataStore');
@@ -14,6 +14,7 @@ const COMMAND_FEATURE_MAP = {
   analytics: 'analytics',
   music: 'music',
   automations: 'automations',
+  integrations: 'stream_alerts',
 };
 
 function commandFeatureKey(command) {
@@ -36,20 +37,34 @@ async function subscriptionGate(guildId, command) {
   };
 }
 
-function slashUpgradeMessage(command, gate) {
-  return [
-    `🔒 **/${command.name} is locked on the ${gate.planName} tier.**`,
-    'This command belongs to a module that is not included with this server’s current Kryndexa subscription.',
-    'Purchase or upgrade the server tier to unlock this command and its dashboard module:',
-    'https://kryndexabot.xyz/products',
-  ].join('\n');
+function upgradeRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel('View Plans / Upgrade Server')
+      .setEmoji('💎')
+      .setStyle(ButtonStyle.Link)
+      .setURL('https://kryndexabot.xyz/products'),
+  );
+}
+
+function slashUpgradePayload(command, gate) {
+  return {
+    content: [
+      `🔒 **/${command.name} is locked on the ${gate.planName} tier.**`,
+      'This command belongs to a module that is not included with this server’s current Kryndexa Bot subscription.',
+      'Upgrade this Discord server to Premium or Diamond to unlock the module and its commands.',
+    ].join('\n'),
+    components: [upgradeRow()],
+    flags: MessageFlags.Ephemeral,
+  };
 }
 
 function prefixUpgradeMessage(settings, command, gate) {
   return [
     `🔒 **${settings.prefix}${command.name} is locked on the ${gate.planName} tier.**`,
-    'This command belongs to a module that is not included with this server’s current Kryndexa subscription.',
-    'Purchase or upgrade the server tier to unlock it: https://kryndexabot.xyz/products',
+    'This module is not included with this server’s current Kryndexa Bot subscription.',
+    'Upgrade this server to Premium or Diamond to unlock it:',
+    'https://kryndexabot.xyz/products',
   ].join('\n');
 }
 
@@ -66,12 +81,7 @@ async function executeSlash(interaction) {
 
   if (interaction.guildId) {
     const gate = await subscriptionGate(interaction.guildId, command);
-    if (gate) {
-      return interaction.reply({
-        content: slashUpgradeMessage(command, gate),
-        flags: MessageFlags.Ephemeral,
-      });
-    }
+    if (gate) return interaction.reply(slashUpgradePayload(command, gate));
   }
 
   if (interaction.guildId && !(await isCommandEnabled(interaction.guildId, command.name))) {
