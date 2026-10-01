@@ -15,7 +15,7 @@ const TIERS = ['free', 'premium', 'pro'];
 const DEFAULTS = {
   free: { name: 'Free', monthlyPrice: 0, yearlyPrice: 0, features: ['tickets','logging','welcome','button_roles','suggestions','reminders'], streamerLimit: 3 },
   premium: { name: 'Premium', monthlyPrice: 4.99, yearlyPrice: 49.99, features: ['tickets','logging','welcome','button_roles','suggestions','reminders','automod','leveling','applications','giveaways','analytics','stream_alerts','music','starboard','invite_tracking'], streamerLimit: 15 },
-  pro: { name: 'Pro', monthlyPrice: 8.99, yearlyPrice: 89.99, features: ['*'], streamerLimit: 50 },
+  pro: { name: 'Diamond', monthlyPrice: 8.99, yearlyPrice: 89.99, features: ['*'], streamerLimit: 50 },
 };
 
 function normalizeTier(value) {
@@ -121,46 +121,20 @@ async function listSubscriptions() {
 }
 
 async function canUseFeature(guildId, featureKey) {
-  const subscription = await getGuildSubscription(guildId);
-  const plan = await getPlan(subscription.tier);
-  return plan.features.includes('*') || plan.features.includes(String(featureKey));
+  const sub = await getGuildSubscription(guildId);
+  const plan = await getPlan(sub.tier);
+  return plan.features.includes('*') || plan.features.includes(featureKey);
 }
 
-async function logInvoice(guildId, invoice = {}) {
-  const id = String(guildId);
-  const key = String(invoice.id || ('manual-' + Date.now())).slice(0, 128);
-  await putSecureRecord(id, INVOICE_NS, key, {
-    amount: Number(invoice.amount || 0),
-    currency: String(invoice.currency || 'USD').toUpperCase().slice(0, 8),
-    status: String(invoice.status || 'paid').slice(0, 32),
-    provider: String(invoice.provider || 'manual').slice(0, 32),
-    customerId: String(invoice.customerId || '').slice(0, 128),
-    createdAt: invoice.createdAt || new Date().toISOString(),
-  });
+async function logInvoice(invoice) {
+  const id = String(invoice.id || Date.now());
+  await putSecureRecord(CONFIG_GUILD, INVOICE_NS, id, { ...invoice, id, createdAt: invoice.createdAt || new Date().toISOString() });
 }
-
-async function listInvoices() {
-  return listSecureNamespace(INVOICE_NS);
+async function listInvoices() { return (await listSecureNamespace(INVOICE_NS)).map(r => r.payload).filter(Boolean); }
+async function logUsage(event) {
+  const id = String(Date.now()) + '-' + Math.random().toString(36).slice(2,8);
+  await putSecureRecord(CONFIG_GUILD, USAGE_NS, id, { ...event, id, createdAt: new Date().toISOString() });
 }
+async function listUsage() { return (await listSecureNamespace(USAGE_NS)).map(r => r.payload).filter(Boolean); }
 
-async function recordUsage(guildId, featureKey, amount = 1) {
-  const date = new Date().toISOString().slice(0, 10);
-  const key = date + ':' + String(featureKey).slice(0, 64);
-  const current = await getSecureRecord(String(guildId), USAGE_NS, key);
-  await putSecureRecord(String(guildId), USAGE_NS, key, {
-    featureKey: String(featureKey).slice(0, 64),
-    date,
-    amount: Number(current?.payload?.amount || 0) + Math.max(0, Number(amount) || 0),
-  });
-}
-
-async function listUsage() {
-  return listSecureNamespace(USAGE_NS);
-}
-
-module.exports = {
-  TIERS, DEFAULTS, getPlan, listPlans, savePlan,
-  getGuildSubscription, setGuildSubscription, listSubscriptions,
-  getUserSubscription, setUserSubscription, listUserSubscriptions,
-  canUseFeature, logInvoice, listInvoices, recordUsage, listUsage,
-};
+module.exports = { TIERS, getPlan, listPlans, savePlan, getGuildSubscription, setGuildSubscription, getUserSubscription, setUserSubscription, listUserSubscriptions, listSubscriptions, canUseFeature, logInvoice, listInvoices, logUsage, listUsage };
