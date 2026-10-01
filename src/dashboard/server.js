@@ -42,6 +42,7 @@ const {
   setStreamAlertPaidAccess,
 } = require('../streamAccessStore');
 const { getAnalytics } = require('../features/dataStore');
+const { listDiscordProducts } = require('../dashboardCommerce');
 const {
   listPlans, savePlan, getGuildSubscription, setGuildSubscription,
   listSubscriptions, getUserSubscription, setUserSubscription, listUserSubscriptions, canUseFeature, listInvoices, listUsage,
@@ -300,6 +301,7 @@ function page(title, body, user, meta = {}) {
     ${user ? `
     <a href="/">Home</a>
     <a href="/features">Features</a>
+    <a href="/products">Products</a>
     <a href="/dashboard">Dashboard</a>
     <details class="nav-dropdown">
       <summary>Status &amp; Statistics <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
@@ -315,6 +317,7 @@ function page(title, body, user, meta = {}) {
     </details>` : `
       <a href="/">Home</a>
       <a href="/features">Features</a>
+      <a href="/products">Products</a>
       <a href="/status">Bot &amp; Panel Status</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
@@ -324,7 +327,7 @@ function page(title, body, user, meta = {}) {
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
-<footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
+<footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/products">Products</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
 ${cookieNotice}
 <script>(() => {
   const root=document.documentElement;
@@ -996,6 +999,20 @@ function startDashboard(client) {
       path: '/',
       description: 'Kryndexa Bot is your Discord server command center for moderation, advanced tickets, logging, music, streaming alerts, automations, analytics and server configuration.',
     }));
+  });
+
+  app.get('/products', (req, res) => {
+    const products = listDiscordProducts();
+    const cards = products.map((product) => {
+      const scopeLabel = product.scope === 'guild' ? 'Server subscription' : 'User subscription';
+      const priceLabel = product.price ? `${escapeHtml(product.price)} / month` : 'Price shown by Discord';
+      const checkout = product.checkoutUrl ? `<a class="btn" href="${escapeHtml(product.checkoutUrl)}" target="_blank" rel="noopener noreferrer">Purchase with Discord</a>` : '<span class="btn secondary" aria-disabled="true">SKU not configured</span>';
+      return `<article class="product-card ${product.configured ? '' : 'product-unavailable'}"><div class="product-card-head"><div><span class="eyebrow">${escapeHtml(scopeLabel.toUpperCase())}</span><h2>${escapeHtml(product.name)}</h2></div><div class="product-price">${priceLabel}</div></div><p class="product-description">${escapeHtml(product.description)}</p><div class="product-details"><div class="product-detail"><span>Discord SKU ID</span><strong>${product.skuId ? escapeHtml(product.skuId) : 'Not configured'}</strong></div><div class="product-detail"><span>Entitlement Scope</span><strong>${escapeHtml(product.scope === 'guild' ? 'Discord Server' : 'Discord User')}</strong></div><div class="product-detail"><span>Kryndexa Tier</span><strong>${escapeHtml(product.tier.toUpperCase())}</strong></div><div class="product-detail"><span>Checkout Provider</span><strong>Discord</strong></div></div><div class="product-actions">${checkout}</div></article>`;
+    }).join('');
+    const appId = String(process.env.DISCORD_APPLICATION_ID || process.env.DISCORD_CLIENT_ID || '').trim();
+    const storeUrl = appId ? `https://discord.com/application-directory/${encodeURIComponent(appId)}/store` : '';
+    const body = `<div class="products-page"><section class="products-hero"><div class="products-hero-copy"><span class="eyebrow">KRYNDEXA PREMIUM</span><h1>Products &amp; Discord Checkout</h1><p>Compare Kryndexa user and server subscriptions, review the configured SKU details, and complete purchases securely through Discord.</p></div>${storeUrl ? `<a class="btn secondary" href="${escapeHtml(storeUrl)}" target="_blank" rel="noopener noreferrer">Open Discord Store</a>` : ''}</section><section class="product-grid">${cards}</section><aside class="products-note"><strong>Discord-managed checkout</strong><p>Purchases open Discord's Application Directory store. Final localized price, taxes, payment methods, renewals, receipts, refunds, and subscription management are handled by Discord.</p></aside></div>`;
+    return res.send(page('Products • Kryndexa Bot', body, req.session.user, { path: '/products', description: 'View Kryndexa Bot Premium and Pro Discord SKU products, pricing, subscription scope and Discord checkout links.' }));
   });
 
   app.get('/status', async (req, res) => {
