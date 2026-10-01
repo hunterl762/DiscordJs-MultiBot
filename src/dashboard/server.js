@@ -42,6 +42,7 @@ const {
   setStreamAlertPaidAccess,
 } = require('../streamAccessStore');
 const { getAnalytics } = require('../features/dataStore');
+const { listDiscordProducts } = require('../dashboardCommerce');
 const {
   listPlans, savePlan, getGuildSubscription, setGuildSubscription,
   listSubscriptions, getUserSubscription, setUserSubscription, listUserSubscriptions, canUseFeature, listInvoices, listUsage,
@@ -237,6 +238,7 @@ function page(title, body, user, meta = {}) {
               <button class="account-menu-item theme-choice" type="button" data-theme-choice="dark">Dark</button>
             </div>
           </details>
+          ${renderAddBotButton().replace('class="btn add-bot-button compact"', 'class="account-menu-item account-add-bot"')}
           <a class="account-menu-item" href="/dashboard/user-settings">User Settings</a>
           <a class="account-menu-item account-logout" href="/logout">Log out</a>
         </div>
@@ -299,6 +301,7 @@ function page(title, body, user, meta = {}) {
     ${user ? `
     <a href="/">Home</a>
     <a href="/features">Features</a>
+    <a href="/products">Products</a>
     <a href="/dashboard">Dashboard</a>
     <details class="nav-dropdown">
       <summary>Status &amp; Statistics <span class="nav-dropdown-chevron" aria-hidden="true">▾</span></summary>
@@ -314,16 +317,17 @@ function page(title, body, user, meta = {}) {
     </details>` : `
       <a href="/">Home</a>
       <a href="/features">Features</a>
+      <a href="/products">Products</a>
       <a href="/status">Bot &amp; Panel Status</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
     `}
   </nav>
-  <div class="header-actions">${addBotButton}<div class="header-auth">${auth}</div></div>
+  <div class="header-actions">${user ? '' : addBotButton}<div class="header-auth">${auth}</div></div>
 </div></header>
 <main>${body}</main>
 <div id="dashboardToast" class="dashboard-toast" role="status" aria-live="polite"></div>
-<footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
+<footer><div class="footer-inner"><div class="footer-brand-block"><strong>Kryndexa Bot</strong><span>One Bot. Every Tool. Total Control.</span></div><nav class="footer-nav"><a href="/features">Features</a><span aria-hidden="true">•</span><a href="/products">Products</a><span aria-hidden="true">•</span><a href="/privacy">Privacy</a><span aria-hidden="true">•</span><a href="/terms">Terms</a></nav></div></footer>
 ${cookieNotice}
 <script>(() => {
   const root=document.documentElement;
@@ -997,6 +1001,20 @@ function startDashboard(client) {
     }));
   });
 
+  app.get('/products', (req, res) => {
+    const products = listDiscordProducts();
+    const cards = products.map((product) => {
+      const scopeLabel = product.scope === 'guild' ? 'Server subscription' : 'User subscription';
+      const priceLabel = product.price ? `${escapeHtml(product.price)} / month` : 'Price shown by Discord';
+      const checkout = product.checkoutUrl ? `<a class="btn" href="${escapeHtml(product.checkoutUrl)}" target="_blank" rel="noopener noreferrer">Purchase with Discord</a>` : '<span class="btn secondary" aria-disabled="true">SKU not configured</span>';
+      return `<article class="product-card ${product.configured ? '' : 'product-unavailable'}"><div class="product-card-head"><div><span class="eyebrow">${escapeHtml(scopeLabel.toUpperCase())}</span><h2>${escapeHtml(product.name)}</h2></div><div class="product-price">${priceLabel}</div></div><p class="product-description">${escapeHtml(product.description)}</p><div class="product-details"><div class="product-detail"><span>Discord SKU ID</span><strong>${product.skuId ? escapeHtml(product.skuId) : 'Not configured'}</strong></div><div class="product-detail"><span>Entitlement Scope</span><strong>${escapeHtml(product.scope === 'guild' ? 'Discord Server' : 'Discord User')}</strong></div><div class="product-detail"><span>Kryndexa Tier</span><strong>${escapeHtml(product.tier.toUpperCase())}</strong></div><div class="product-detail"><span>Checkout Provider</span><strong>Discord</strong></div></div><div class="product-actions">${checkout}</div></article>`;
+    }).join('');
+    const appId = String(process.env.DISCORD_APPLICATION_ID || process.env.DISCORD_CLIENT_ID || '').trim();
+    const storeUrl = appId ? `https://discord.com/application-directory/${encodeURIComponent(appId)}/store` : '';
+    const body = `<div class="products-page"><section class="products-hero"><div class="products-hero-copy"><span class="eyebrow">KRYNDEXA PREMIUM</span><h1>Products &amp; Discord Checkout</h1><p>Compare Kryndexa user and server subscriptions, review the configured SKU details, and complete purchases securely through Discord.</p></div>${storeUrl ? `<a class="btn secondary" href="${escapeHtml(storeUrl)}" target="_blank" rel="noopener noreferrer">Open Discord Store</a>` : ''}</section><section class="product-grid">${cards}</section><aside class="products-note"><strong>Discord-managed checkout</strong><p>Purchases open Discord's Application Directory store. Final localized price, taxes, payment methods, renewals, receipts, refunds, and subscription management are handled by Discord.</p></aside></div>`;
+    return res.send(page('Products • Kryndexa Bot', body, req.session.user, { path: '/products', description: 'View Kryndexa Bot Premium and Pro Discord SKU products, pricing, subscription scope and Discord checkout links.' }));
+  });
+
   app.get('/status', async (req, res) => {
     const checkedAt = new Date();
     let healthRows = [];
@@ -1117,14 +1135,14 @@ function startDashboard(client) {
     const policyPath = path.join(process.cwd(), 'PRIVACY_POLICY.md');
     const policy = fs.existsSync(policyPath)
       ? fs.readFileSync(policyPath, 'utf8')
-      : 'MultiBot Privacy Policy is unavailable.';
+      : 'Kryndexa Bot Privacy Policy is unavailable.';
 
     const body = `<div class="privacy-page">
       <div class="privacy-hero">
-        <a href="/">← Back to MultiBot</a>
+        <a href="/">← Back to Kryndexa Bot</a>
         <span class="eyebrow">LEGAL & PRIVACY</span>
         <h1>Privacy Policy</h1>
-        <p>How MultiBot handles Discord data, dashboard sessions, tickets, Twitch configuration, and essential cookies.</p>
+        <p>How Kryndexa Bot handles Discord data, dashboard sessions, tickets, Twitch configuration, and essential cookies.</p>
         <div class="privacy-updated">Effective September 25, 2026</div>
       </div>
       <aside class="privacy-summary panel">
@@ -1139,7 +1157,7 @@ function startDashboard(client) {
       <article class="privacy-content panel">${renderPrivacyPolicy(policy)}</article>
       <div class="legal-crosslink panel">
         <strong>Terms of Service</strong>
-        <p>Review the rules and conditions that apply when using MultiBot and its dashboard.</p>
+        <p>Review the rules and conditions that apply when using Kryndexa Bot and its dashboard.</p>
         <a class="btn secondary" href="/terms">View Terms of Service</a>
       </div>
     </div>`;
@@ -1154,14 +1172,14 @@ function startDashboard(client) {
     const termsPath = path.join(process.cwd(), 'TERMS_OF_SERVICE.md');
     const terms = fs.existsSync(termsPath)
       ? fs.readFileSync(termsPath, 'utf8')
-      : 'MultiBot Terms of Service are unavailable.';
+      : 'Kryndexa Bot Terms of Service are unavailable.';
 
     const body = `<div class="privacy-page">
       <div class="privacy-hero">
-        <a href="/">← Back to MultiBot</a>
+        <a href="/">← Back to Kryndexa Bot</a>
         <span class="eyebrow">LEGAL & TERMS</span>
         <h1>Terms of Service</h1>
-        <p>The rules and conditions for using MultiBot, its Discord commands, dashboard, tickets, Twitch integration, and related services.</p>
+        <p>The rules and conditions for using Kryndexa Bot, its Discord commands, dashboard, tickets, Twitch integration, and related services.</p>
         <div class="privacy-updated">Effective September 25, 2026</div>
       </div>
       <aside class="privacy-summary panel">
@@ -1176,7 +1194,7 @@ function startDashboard(client) {
       <article class="privacy-content panel">${renderPrivacyPolicy(terms)}</article>
       <div class="legal-crosslink panel">
         <strong>Privacy matters too</strong>
-        <p>Review how MultiBot handles data, sessions, tickets, Twitch configuration, and cookies.</p>
+        <p>Review how Kryndexa Bot handles data, sessions, tickets, Twitch configuration, and cookies.</p>
         <a class="btn secondary" href="/privacy">View Privacy Policy</a>
       </div>
     </div>`;
@@ -2082,7 +2100,7 @@ function startDashboard(client) {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
       const [settings, tickets, streamAnnouncements, ticketTypes, featureStates, automationRules, embedConfigs, streamAccess] = await Promise.all([
         getGuildSettings(guild.id),
         listGuildTickets(guild.id),
@@ -2335,7 +2353,7 @@ function startDashboard(client) {
           <div>
             <span class="eyebrow">MULTIBOT FEATURE CENTER</span>
             <h2>Advanced Server Features</h2>
-            <p>Enable and configure MultiBot's security, engagement, utility, voice, analytics and integration modules from one place.</p>
+            <p>Enable and configure Kryndexa Bot's security, engagement, utility, voice, analytics and integration modules from one place.</p>
           </div>
           <span class="command-total">${featureStates.filter((feature) => feature.enabled).length}/${featureStates.length} enabled</span>
         </div>
@@ -2492,7 +2510,7 @@ function startDashboard(client) {
           <div>
             <span class="eyebrow">COMMAND CENTER</span>
             <h2>Command Modules</h2>
-            <p>All loaded command modules, grouped by category directly from MultiBot's command registry.</p>
+            <p>All loaded command modules, grouped by category directly from Kryndexa Bot's command registry.</p>
           </div>
           <span class="command-total">${catalog.length} loaded</span>
         </div>
@@ -2548,7 +2566,7 @@ function startDashboard(client) {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
 
       const triggerType = String(req.body.triggerType || '');
       const actionType = String(req.body.actionType || '');
@@ -2688,7 +2706,7 @@ function startDashboard(client) {
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
 
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
 
       const definition = getFeatureDefinition(req.params.featureKey);
       if (!definition) return res.status(400).send('Unknown feature.');
@@ -2755,7 +2773,7 @@ function startDashboard(client) {
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
 
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
 
       const allowedTypes = new Set(DEFAULT_TICKET_TYPES.map((type) => type.key));
       if (!allowedTypes.has(req.params.typeKey)) return res.status(400).send('Unknown ticket type.');
@@ -2794,7 +2812,7 @@ function startDashboard(client) {
       const guilds = await getManagedGuilds(req, client);
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
 
       const transcriptChannelId = String(req.body.transcriptChannelId || '');
       if (transcriptChannelId) {
@@ -2820,7 +2838,7 @@ function startDashboard(client) {
       if (!guilds.some((g) => g.id === req.params.guildId)) return res.status(403).send('You cannot manage this server.');
 
       const guild = client.guilds.cache.get(req.params.guildId);
-      if (!guild) return res.status(404).send('MultiBot is no longer connected to this server.');
+      if (!guild) return res.status(404).send('Kryndexa Bot is no longer connected to this server.');
 
       const channelId = String(req.body.ticketPanelChannelId || '');
       const channel = guild.channels.cache.get(channelId);

@@ -1,4 +1,4 @@
--- MultiBot MySQL schema
+-- Kryndexa Bot MySQL schema
 CREATE DATABASE IF NOT EXISTS `multibot`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;

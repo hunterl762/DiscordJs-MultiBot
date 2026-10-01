@@ -39,7 +39,7 @@ function serverListEmbeds(client) {
     const entry = [
       `**${index + 1}. ${guild.name.slice(0, 100)}**`,
       `ID: \`${guild.id}\` • Members: **${guild.memberCount.toLocaleString()}** • Owner: <@${guild.ownerId}>`,
-      `Joined MultiBot: <t:${joined}:F> • <t:${joined}:R>`,
+      `Joined Kryndexa Bot: <t:${joined}:F> • <t:${joined}:R>`,
     ].join('\n');
 
     if (entries.length && length + entry.length + 2 > MAX_SERVER_LIST_DESCRIPTION_CHARS) {
@@ -69,7 +69,7 @@ function buildPages(client) {
 
   const summary = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle('📈 MultiBot Analytics Overview')
+    .setTitle('📈 Kryndexa Bot Analytics Overview')
     .setThumbnail(client.user.displayAvatarURL({ size: 256 }))
     .addFields(
       { name: 'Servers', value: guilds.length.toLocaleString(), inline: true },
