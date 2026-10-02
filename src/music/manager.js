@@ -1,27 +1,356 @@
-const { Player, QueueRepeatMode, QueryType } = require('discord-player');
-const { YoutubeExtractor } = require('discord-player-youtubei');
-const { SoundCloudExtractor } = require('@discord-player/extractor');
+const { Player, QueueRepeatMode } = require('discord-player');
+const { YoutubeSabrExtractor } = require('discord-player-googlevideo');
 
-let clientRef=null,core=null,initialized=false;const players=new Map(),manualStopUntil=new Map(),fallbackAttempts=new Map(),fallbackRecovering=new Set();
-const envEnabled=v=>['1','true','yes','on'].includes(String(v||'').trim().toLowerCase());const musicGloballyEnabled=()=>envEnabled(process.env.MUSIC_ENABLED);
-const ANSI={reset:'\x1b[0m',cyan:'\x1b[36m',green:'\x1b[32m',yellow:'\x1b[33m',red:'\x1b[31m',gray:'\x1b[90m'};
-function musicLog(level,message){const colors={info:ANSI.cyan,success:ANSI.green,warn:ANSI.yellow,error:ANSI.red,debug:ANSI.gray},icon={info:'ℹ',success:'✓',warn:'⚠',error:'✖',debug:'•'}[level]||'•',line=`${colors[level]||ANSI.cyan}[Music] ${icon} ${message}${ANSI.reset}`,raw=console._kryndexaOriginal;if(level==='error')(raw?.error||console.error)(line);else if(level==='warn')(raw?.warn||console.warn)(line);else(raw?.log||console.log)(line);}
-function formatDuration(ms){const t=Math.max(0,Math.floor(Number(ms||0)/1000)),h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`;}
-function decorateTrack(t){if(!t)return t;try{if(!('uri'in t))Object.defineProperty(t,'uri',{configurable:true,get:()=>t.url});if(!('realUri'in t))Object.defineProperty(t,'realUri',{configurable:true,get:()=>t.url});if(!('length'in t))Object.defineProperty(t,'length',{configurable:true,get:()=>Number(t.durationMS||0)});if(!('isStream'in t))Object.defineProperty(t,'isStream',{configurable:true,get:()=>Boolean(t.live)});}catch{}return t;}
-function trackArray(q){return(q?.tracks?.toArray?.()||[]).map(decorateTrack);}function isHttp(v){return/^https?:\/\//i.test(String(v||''));}
-function trackLabel(track){const candidates=[track?.title,track?.cleanTitle,track?.raw?.title];for(const v of candidates){const s=String(v||'').trim();if(s&&!isHttp(s)&&s.toLowerCase()!=='track')return s;}return String(track?.url||'unknown track').trim();}
-function canonicalText(v){return String(v||'').toLowerCase().replace(/\([^)]*(official|video|audio|lyrics?|visualizer)[^)]*\)/g,' ').replace(/\[[^\]]*(official|video|audio|lyrics?|visualizer)[^\]]*\]/g,' ').replace(/\b(official|music|video|audio|lyrics?|visualizer|hd|hq|vevo|topic)\b/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();}
-function similarity(a,b){const A=new Set(canonicalText(a).split(' ').filter(x=>x.length>1)),B=new Set(canonicalText(b).split(' ').filter(x=>x.length>1));if(!A.size||!B.size)return 0;let common=0;for(const x of A)if(B.has(x))common++;return common/Math.max(A.size,B.size);}
-function bridgeQuery(track){const title=trackLabel(track),author=String(track?.author||track?.raw?.author||'').trim();return[title,author].filter(v=>v&&!isHttp(v)).join(' ').replace(/\s+/g,' ').trim();}
-function parseYouTubeUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)youtube\.com$|(^|\.)youtu\.be$/i.test(u.hostname))return null;const list=u.searchParams.get('list');let video='';if(/youtu\.be$/i.test(u.hostname))video=u.pathname.split('/').filter(Boolean)[0]||'';else if(u.pathname==='/watch')video=u.searchParams.get('v')||'';else if(u.pathname.startsWith('/shorts/'))video=u.pathname.split('/')[2]||'';const explicitPlaylist=u.pathname==='/playlist';const radio=Boolean(list&&/^RD/i.test(list));return{url:u,video,list,explicitPlaylist,radio,isPlaylist:Boolean(explicitPlaylist||list)};}catch{return null;}}
-function canonicalYouTubeVideo(value){const info=parseYouTubeUrl(value);return info?.video?`https://www.youtube.com/watch?v=${encodeURIComponent(info.video)}`:String(value||'');}
-class QueueAdapter{constructor(owner){this.owner=owner;}get current(){return decorateTrack(this.owner.dpQueue.currentTrack);}get length(){return Number(this.owner.dpQueue.size||trackArray(this.owner.dpQueue).length);}add(value){Array.isArray(value)?this.owner.dpQueue.addTrack(value):this.owner.dpQueue.addTrack(value);}shuffle(){this.owner.dpQueue.tracks?.shuffle?.();}[Symbol.iterator](){return trackArray(this.owner.dpQueue)[Symbol.iterator]();}}
-class PlayerAdapter{constructor(manager,dpQueue,options){this.manager=manager;this.dpQueue=dpQueue;this.guildId=String(options.guildId);this.textId=options.textId;this.voiceId=options.voiceId;this.queue=new QueueAdapter(this);this.loop='none';this.destroyed=false;}get playing(){return Boolean(this.dpQueue?.node?.isPlaying?.());}get paused(){return Boolean(this.dpQueue?.node?.isPaused?.());}get volume(){return Number(this.dpQueue?.node?.volume??100);}get position(){return Number(this.dpQueue?.node?.streamTime??this.dpQueue?.node?.estimatedPlaybackTime??0);}setTextChannel(id){this.textId=id;if(this.dpQueue?.metadata)this.dpQueue.metadata.textId=id;}async ensureVoice(){const guild=clientRef?.guilds?.cache?.get(this.guildId),channel=guild?.channels?.cache?.get(String(this.voiceId||''));if(!guild||!channel)throw new Error('The original voice channel is no longer available.');let q=core.nodes.get(this.guildId);if(!q){const pending=[...(this.dpQueue?.currentTrack?[this.dpQueue.currentTrack]:[]),...trackArray(this.dpQueue)];q=core.nodes.create(guild,{metadata:{textId:this.textId,voiceId:this.voiceId}});if(pending.length)q.addTrack(pending);this.dpQueue=q;}else if(q!==this.dpQueue)this.dpQueue=q;if(!q.connection||q.channel?.id!==channel.id)await q.connect(channel);this.destroyed=false;musicLog('debug',`Voice connection verified | guild=${this.guildId} | voice=${this.voiceId}`);return q;}async play(){const q=await this.ensureVoice();if(!q.currentTrack)await q.node.play();}skip(){return this.dpQueue.node.skip();}pause(value=true){return value?this.dpQueue.node.pause():this.dpQueue.node.resume();}async setVolume(value){return this.dpQueue.node.setVolume(Math.max(1,Math.min(200,Number(value||100))));}setLoop(mode){this.loop=['track','queue'].includes(mode)?mode:'none';this.dpQueue.setRepeatMode(this.loop==='track'?QueueRepeatMode.TRACK:this.loop==='queue'?QueueRepeatMode.QUEUE:QueueRepeatMode.OFF);}async destroy(){if(this.destroyed)return;this.destroyed=true;try{this.dpQueue.clear();}catch{}try{this.dpQueue.node.stop(true);}catch{}try{this.dpQueue.delete();}catch{}players.delete(this.guildId);fallbackAttempts.delete(this.guildId);fallbackRecovering.delete(this.guildId);}}
-async function enrichDirectTrack(track,url,requester){if(!track||!url)return track;const info=parseYouTubeUrl(url);const id=info?.video;if(!id)return track;const label=trackLabel(track);if(label!==url&&!isHttp(label)&&String(track?.url||'').includes(id))return track;try{const byId=await core.search(id,{requestedBy:requester,searchEngine:QueryType.YOUTUBE_SEARCH});const exact=(byId?.tracks||[]).find(t=>parseYouTubeUrl(t?.url)?.video===id);if(exact){musicLog('debug',`Direct URL metadata enriched: ${trackLabel(exact)} | ${url}`);return decorateTrack(exact);}musicLog('warn',`Exact metadata lookup did not return video ${id}; keeping the direct YouTube track without substituting another video.`);}catch(error){musicLog('debug',`Direct URL metadata enrichment skipped: ${error?.message||error}`);}return track;}
-async function searchYouTubeUrl(value,requester){const info=parseYouTubeUrl(value);if(!info)return null;if(info.radio){musicLog('info',`YouTube radio/mix detected; preserving seed video=${info.video||'none'} and list=${info.list||'none'}.`);const mix=await core.search(value,{requestedBy:requester,searchEngine:`ext:${YoutubeExtractor.identifier}`});if(mix?.playlist&&mix?.tracks?.length>1){const tracks=mix.tracks.map(decorateTrack);musicLog('success',`YouTube mix expanded with YouTubeI: ${tracks.length} track(s).`);return{tracks,type:'PLAYLIST',playlist:mix.playlist};}if(info.video){musicLog('warn','YouTube mix is not enumerable through the active extractor; queueing only the exact seed video.');const exact=canonicalYouTubeVideo(value);const single=await core.search(exact,{requestedBy:requester,searchEngine:`ext:${YoutubeExtractor.identifier}`});let tracks=(single?.tracks||[]).filter(t=>parseYouTubeUrl(t?.url)?.video===info.video).map(decorateTrack);if(tracks.length===1)tracks=[await enrichDirectTrack(tracks[0],exact,requester)];return{tracks,type:tracks.length?'TRACK':'SEARCH',playlist:null};}return{tracks:[],type:'SEARCH',playlist:null};}if(info.isPlaylist){musicLog('info',`YouTube playlist detected; preserving list=${info.list||'playlist'}.`);const playlistResult=await core.search(value,{requestedBy:requester,searchEngine:`ext:${YoutubeExtractor.identifier}`});if(playlistResult?.tracks?.length){const tracks=playlistResult.tracks.map(decorateTrack);musicLog('success',`Playlist resolved with YouTubeI: ${tracks.length} track(s).`);return{tracks,type:'PLAYLIST',playlist:playlistResult.playlist||{title:'YouTube Playlist'}};}if(info.video){musicLog('warn','Playlist could not be expanded; queueing only the exact video from the supplied URL.');const exact=canonicalYouTubeVideo(value);const single=await core.search(exact,{requestedBy:requester,searchEngine:`ext:${YoutubeExtractor.identifier}`});let tracks=(single?.tracks||[]).filter(t=>parseYouTubeUrl(t?.url)?.video===info.video).map(decorateTrack);if(tracks.length===1)tracks=[await enrichDirectTrack(tracks[0],exact,requester)];return{tracks,type:tracks.length?'TRACK':'SEARCH',playlist:null};}return{tracks:[],type:'SEARCH',playlist:null};}if(info.video){const exact=canonicalYouTubeVideo(value);if(exact!==value)musicLog('info',`Normalized YouTube video URL: ${exact}`);const result=await core.search(exact,{requestedBy:requester,searchEngine:`ext:${YoutubeExtractor.identifier}`});let tracks=(result?.tracks||[]).filter(t=>parseYouTubeUrl(t?.url)?.video===info.video).map(decorateTrack);if(tracks.length===1)tracks=[await enrichDirectTrack(tracks[0],exact,requester)];return{tracks,type:tracks.length?'TRACK':'SEARCH',playlist:null};}return null;}
-const manager={players,async search(query,options={}){if(!core)throw new Error('Discord Player is not initialized.');const value=String(query||'').trim(),isUrl=isHttp(value);if(isUrl){const yt=await searchYouTubeUrl(value,options.requester);if(yt){musicLog('success',`Search resolved with YouTubeI: ${yt.tracks.length} track(s).`);return yt;}}const result=await core.search(value,{requestedBy:options.requester,searchEngine:isUrl?QueryType.AUTO:QueryType.YOUTUBE_SEARCH});const tracks=(result?.tracks||[]).map(decorateTrack);musicLog('success',`Search resolved with ${isUrl?'direct provider':'YouTubeI'}: ${tracks.length} track(s).`);return{tracks,type:result?.playlist?'PLAYLIST':(isUrl&&tracks.length===1?'TRACK':'SEARCH'),playlist:result?.playlist||null};},async createPlayer(options){const guildId=String(options.guildId),old=players.get(guildId);if(old&&!old.destroyed){old.voiceId=options.voiceId||old.voiceId;old.textId=options.textId||old.textId;await old.ensureVoice();return old;}const guild=clientRef.guilds.cache.get(guildId),channel=guild?.channels?.cache?.get(String(options.voiceId));if(!guild||!channel)throw new Error('Voice channel is unavailable.');let q=core.nodes.get(guildId);if(!q)q=core.nodes.create(guild,{metadata:{textId:options.textId,voiceId:options.voiceId}});await q.connect(channel);q.node.setVolume(Math.max(1,Math.min(200,Number(options.volume||75))));const adapter=new PlayerAdapter(manager,q,options);players.set(guildId,adapter);return adapter;}};
-async function recoverQueue(guildId,oldQueue){const adapter=players.get(guildId),guild=clientRef?.guilds?.cache?.get(guildId),voiceId=adapter?.voiceId||oldQueue?.metadata?.voiceId,textId=adapter?.textId||oldQueue?.metadata?.textId,channel=guild?.channels?.cache?.get(String(voiceId||''));if(!guild||!channel)throw new Error('Fallback could not recover the original voice channel.');let q=core.nodes.get(guildId);if(!q||q===oldQueue){try{if(q===oldQueue)q.delete();}catch{}q=core.nodes.create(guild,{metadata:{textId,voiceId}});}await q.connect(channel);if(adapter){adapter.dpQueue=q;adapter.destroyed=false;}else players.set(guildId,new PlayerAdapter(manager,q,{guildId,textId,voiceId,volume:75}));return q;}
-async function trySoundCloudFallback(q,failedTrack){const guildId=String(q?.guild?.id||'');if(!guildId||!failedTrack||fallbackAttempts.get(guildId))return false;fallbackAttempts.set(guildId,'soundcloud');fallbackRecovering.add(guildId);try{const query=bridgeQuery(failedTrack);if(!query||isHttp(query)){musicLog('warn',`SoundCloud fallback cancelled because Kryndexa could not determine the requested song identity for ${failedTrack?.url||'the failed track'}.`);return false;}musicLog('warn',`YouTube stream failed for ${trackLabel(failedTrack)}; looking for a high-confidence same-song SoundCloud stream.`);musicLog('debug',`Provider fallback query: ${query}`);const result=await core.search(query,{requestedBy:failedTrack.requestedBy,searchEngine:`ext:${SoundCloudExtractor.identifier}`});const targetDuration=Number(failedTrack?.durationMS||0);const candidates=(result?.tracks||[]).slice(0,10),scored=candidates.map(t=>{const textScore=similarity(query,`${trackLabel(t)} ${t?.author||''}`);const candidateDuration=Number(t?.durationMS||0);const durationDelta=targetDuration&&candidateDuration?Math.abs(targetDuration-candidateDuration):0;const durationOK=!targetDuration||!candidateDuration||durationDelta<=Math.max(12000,targetDuration*0.08);return{track:t,textScore,durationOK,durationDelta,score:durationOK?textScore:textScore*0.65};}).sort((a,b)=>b.score-a.score),best=scored[0];if(!best||best.score<0.75||!best.durationOK){musicLog('warn',`SoundCloud fallback rejected: no high-confidence same-song match for ${trackLabel(failedTrack)}${best?` (similarity ${best.textScore.toFixed(2)}, duration delta ${Math.round(best.durationDelta/1000)}s)`:''}.`);return false;}musicLog('info',`SoundCloud fallback selected same-song match (${best.score.toFixed(2)}): ${trackLabel(best.track)} | ${best.track.url||'no-url'}`);const recovered=await recoverQueue(guildId,q);recovered.addTrack(best.track);await recovered.node.play();return true;}catch(error){musicLog('error',`SoundCloud fallback failed: ${error?.message||error}`);return false;}finally{fallbackRecovering.delete(guildId);}}
-function bindEvents(){core.events.on('playerStart',(q,track)=>{const id=String(q.guild.id),p=players.get(id);if(p){p.dpQueue=q;p.voiceId=q.channel?.id||p.voiceId;}fallbackAttempts.delete(id);fallbackRecovering.delete(id);musicLog('success',`Audio resource started: ${trackLabel(track)} | source=${track?.source||'unknown'} | extractor=${track?.extractor?.identifier||'unknown'} | ${track?.url||'no-url'}`);});core.events.on('playerError',async(q,error,track)=>{musicLog('error',`Playback failed for ${trackLabel(track)}: ${error?.message||error}`);musicLog('debug',`Track source=${track?.source||'unknown'} extractor=${track?.extractor?.identifier||'unknown'} url=${track?.url||'unknown'}`);if(String(track?.source||'').toLowerCase()==='youtube'||String(track?.url||'').includes('youtu'))await trySoundCloudFallback(q,track);});core.events.on('error',(q,error)=>musicLog('error',`Queue error guild=${q?.guild?.id||'unknown'}: ${error?.message||error}`));core.events.on('playerPause',q=>musicLog('info',`Paused guild=${q.guild.id}`));core.events.on('playerResume',q=>musicLog('info',`Resumed guild=${q.guild.id}`));core.events.on('playerSkip',(q,track)=>musicLog('warn',`Skipped: ${trackLabel(track)} | guild=${q.guild.id}`));core.events.on('queueDelete',q=>{const id=String(q.guild.id);if(fallbackRecovering.has(id)){musicLog('debug',`Old queue removed during provider fallback guild=${id}; preserving player state.`);return;}const p=players.get(id);if(p?.dpQueue===q)players.delete(id);fallbackAttempts.delete(id);musicLog('debug',`Queue removed guild=${id}`);});core.events.on('debug',(q,message)=>{if(envEnabled(process.env.MUSIC_DEBUG))musicLog('debug',`${q?.guild?.id||'player'} | ${message}`);});}
-async function initMusic(client){clientRef=client;if(!musicGloballyEnabled()){initialized=false;musicLog('warn','MUSIC_ENABLED is false; Discord Player runtime disabled.');return null;}try{core=new Player(client,{skipFFmpeg:false});if(!YoutubeExtractor?.identifier)throw new Error('discord-player-youtubei did not export YoutubeExtractor. Run npm install to refresh dependencies.');await core.extractors.register(YoutubeExtractor,{generateWithPoToken:true,innertubeConfigRaw:{player_id:'0004de42'},streamOptions:{useClient:'WEB'}});await core.extractors.register(SoundCloudExtractor,{});bindEvents();initialized=true;musicLog('info','Backend: Discord Player v7 + YouTubeI + guarded SoundCloud fallback');musicLog('info','YouTube handling: exact video IDs preserved; standard playlists expanded; radio/mixes use the exact seed when they cannot be enumerated');musicLog('info','Fallback policy: failed YouTube stream -> high-confidence same-song SoundCloud only');musicLog('info','Voice guard: queue connection is verified/reconnected before playback starts');musicLog('info','GoogleVideo SABR, yt-dlp, and exported cookie files: not used by Kryndexa music manager');musicLog('success','Music runtime initialized with strict track identity and playlist handling.');return manager;}catch(error){initialized=false;musicLog('error',`Music initialization failed: ${error?.stack||error}`);return null;}}
-function getMusicManager(){return initialized?manager:null;}function getMusicStatus(){return{state:initialized?'ready':(musicGloballyEnabled()?'idle':'disabled'),ready:initialized&&musicGloballyEnabled(),backend:'Discord Player v7 + YouTubeI + guarded SoundCloud fallback',sourceManagers:['youtubei','soundcloud'],plugins:['discord-player-youtubei','@discord-player/extractor']};}function isMusicReady(){return initialized&&musicGloballyEnabled();}function musicUnavailableMessage(){return musicGloballyEnabled()?'The Discord Player music runtime has not finished initializing.':'The Music module is disabled by MUSIC_ENABLED.';}function lavalinkConfigured(){return false;}async function waitForMusicConnection(){return isMusicReady();}function markManualStop(id,ms=2500){manualStopUntil.set(String(id),Date.now()+Math.max(500,Number(ms||2500)));}async function waitForManualStopCooldown(id){const k=String(id),remaining=Number(manualStopUntil.get(k)||0)-Date.now();if(remaining>0)await new Promise(r=>setTimeout(r,remaining));manualStopUntil.delete(k);}async function probeLavalinkInfo(){return null;}function stopMusic(){for(const p of [...players.values()])p.destroy().catch(()=>null);players.clear();manualStopUntil.clear();fallbackAttempts.clear();fallbackRecovering.clear();try{core?.destroy?.();}catch{}core=null;initialized=false;}module.exports={initMusic,waitForMusicConnection,stopMusic,getMusicManager,getMusicStatus,probeLavalinkInfo,markManualStop,waitForManualStopCooldown,isMusicReady,musicUnavailableMessage,musicGloballyEnabled,lavalinkConfigured,formatDuration};
+let clientRef = null;
+let core = null;
+let initialized = false;
+const players = new Map();
+const manualStopUntil = new Map();
+
+const envEnabled = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+const musicGloballyEnabled = () => envEnabled(process.env.MUSIC_ENABLED);
+
+const ANSI = {
+  reset: '\x1b[0m',
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  gray: '\x1b[90m',
+};
+
+function musicLog(level, message) {
+  const colors = { info: ANSI.cyan, success: ANSI.green, warn: ANSI.yellow, error: ANSI.red, debug: ANSI.gray };
+  const icons = { info: 'ℹ', success: '✓', warn: '⚠', error: '✖', debug: '•' };
+  const line = `${colors[level] || ANSI.cyan}[Music] ${icons[level] || '•'} ${message}${ANSI.reset}`;
+  const raw = console._kryndexaOriginal;
+  if (level === 'error') (raw?.error || console.error)(line);
+  else if (level === 'warn') (raw?.warn || console.warn)(line);
+  else (raw?.log || console.log)(line);
+}
+
+function formatDuration(ms) {
+  const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function decorateTrack(track) {
+  if (!track) return track;
+  try {
+    if (!('uri' in track)) Object.defineProperty(track, 'uri', { configurable: true, get: () => track.url });
+    if (!('realUri' in track)) Object.defineProperty(track, 'realUri', { configurable: true, get: () => track.url });
+    if (!('length' in track)) Object.defineProperty(track, 'length', { configurable: true, get: () => Number(track.durationMS || 0) });
+    if (!('isStream' in track)) Object.defineProperty(track, 'isStream', { configurable: true, get: () => Boolean(track.live) });
+  } catch {}
+  return track;
+}
+
+function trackArray(queue) {
+  return (queue?.tracks?.toArray?.() || []).map(decorateTrack);
+}
+
+function isHttp(value) {
+  return /^https?:\/\//i.test(String(value || ''));
+}
+
+function trackLabel(track) {
+  const candidates = [track?.title, track?.cleanTitle, track?.raw?.title];
+  for (const value of candidates) {
+    const text = String(value || '').trim();
+    if (text && !isHttp(text) && text.toLowerCase() !== 'track') return text;
+  }
+  return String(track?.url || 'unknown track').trim();
+}
+
+function parseYouTubeUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (!/(^|\.)youtube\.com$|(^|\.)youtu\.be$/i.test(url.hostname)) return null;
+    const list = url.searchParams.get('list');
+    let video = '';
+    if (/youtu\.be$/i.test(url.hostname)) video = url.pathname.split('/').filter(Boolean)[0] || '';
+    else if (url.pathname === '/watch') video = url.searchParams.get('v') || '';
+    else if (url.pathname.startsWith('/shorts/')) video = url.pathname.split('/')[2] || '';
+    const explicitPlaylist = url.pathname === '/playlist';
+    const radio = Boolean(list && /^RD/i.test(list));
+    return { url, video, list, explicitPlaylist, radio, isPlaylist: Boolean(explicitPlaylist || list) };
+  } catch {
+    return null;
+  }
+}
+
+function canonicalYouTubeVideo(value) {
+  const info = parseYouTubeUrl(value);
+  return info?.video ? `https://www.youtube.com/watch?v=${encodeURIComponent(info.video)}` : String(value || '');
+}
+
+class QueueAdapter {
+  constructor(owner) { this.owner = owner; }
+  get current() { return decorateTrack(this.owner.dpQueue.currentTrack); }
+  get length() { return Number(this.owner.dpQueue.size || trackArray(this.owner.dpQueue).length); }
+  add(value) { Array.isArray(value) ? this.owner.dpQueue.addTrack(value) : this.owner.dpQueue.addTrack(value); }
+  shuffle() { this.owner.dpQueue.tracks?.shuffle?.(); }
+  [Symbol.iterator]() { return trackArray(this.owner.dpQueue)[Symbol.iterator](); }
+}
+
+class PlayerAdapter {
+  constructor(managerRef, dpQueue, options) {
+    this.manager = managerRef;
+    this.dpQueue = dpQueue;
+    this.guildId = String(options.guildId);
+    this.textId = options.textId;
+    this.voiceId = options.voiceId;
+    this.queue = new QueueAdapter(this);
+    this.loop = 'none';
+    this.destroyed = false;
+  }
+
+  get playing() { return Boolean(this.dpQueue?.node?.isPlaying?.()); }
+  get paused() { return Boolean(this.dpQueue?.node?.isPaused?.()); }
+  get volume() { return Number(this.dpQueue?.node?.volume ?? 100); }
+  get position() { return Number(this.dpQueue?.node?.streamTime ?? this.dpQueue?.node?.estimatedPlaybackTime ?? 0); }
+
+  setTextChannel(id) {
+    this.textId = id;
+    if (this.dpQueue?.metadata) this.dpQueue.metadata.textId = id;
+  }
+
+  async ensureVoice() {
+    const guild = clientRef?.guilds?.cache?.get(this.guildId);
+    const channel = guild?.channels?.cache?.get(String(this.voiceId || ''));
+    if (!guild || !channel) throw new Error('The original voice channel is no longer available.');
+
+    let queue = core.nodes.get(this.guildId);
+    if (!queue) {
+      const pending = [...(this.dpQueue?.currentTrack ? [this.dpQueue.currentTrack] : []), ...trackArray(this.dpQueue)];
+      queue = core.nodes.create(guild, { metadata: { textId: this.textId, voiceId: this.voiceId } });
+      if (pending.length) queue.addTrack(pending);
+      this.dpQueue = queue;
+    } else if (queue !== this.dpQueue) {
+      this.dpQueue = queue;
+    }
+
+    if (!queue.connection || queue.channel?.id !== channel.id) await queue.connect(channel);
+    this.destroyed = false;
+    musicLog('debug', `Voice connection verified | guild=${this.guildId} | voice=${this.voiceId}`);
+    return queue;
+  }
+
+  async play() {
+    const queue = await this.ensureVoice();
+    if (!queue.currentTrack) await queue.node.play();
+  }
+
+  skip() { return this.dpQueue.node.skip(); }
+  pause(value = true) { return value ? this.dpQueue.node.pause() : this.dpQueue.node.resume(); }
+  async setVolume(value) { return this.dpQueue.node.setVolume(Math.max(1, Math.min(200, Number(value || 100)))); }
+
+  setLoop(mode) {
+    this.loop = ['track', 'queue'].includes(mode) ? mode : 'none';
+    this.dpQueue.setRepeatMode(
+      this.loop === 'track' ? QueueRepeatMode.TRACK : this.loop === 'queue' ? QueueRepeatMode.QUEUE : QueueRepeatMode.OFF,
+    );
+  }
+
+  async destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try { this.dpQueue.clear(); } catch {}
+    try { this.dpQueue.node.stop(true); } catch {}
+    try { this.dpQueue.delete(); } catch {}
+    players.delete(this.guildId);
+  }
+}
+
+async function searchYouTube(value, requester) {
+  const info = parseYouTubeUrl(value);
+
+  // YouTube radio/mix URLs are dynamic and do not behave like normal playlists.
+  // Preserve the exact seed video rather than silently substituting a different track.
+  if (info?.radio && info.video) {
+    const exact = canonicalYouTubeVideo(value);
+    musicLog('info', `YouTube radio/mix detected; playing exact seed video=${info.video}.`);
+    const result = await core.search(exact, {
+      requestedBy: requester,
+      searchEngine: `ext:${YoutubeSabrExtractor.identifier}`,
+    });
+    return { tracks: (result?.tracks || []).map(decorateTrack), type: 'TRACK', playlist: null };
+  }
+
+  if (info?.isPlaylist) {
+    musicLog('info', `YouTube playlist detected; preserving list=${info.list || 'playlist'}.`);
+  } else if (info?.video) {
+    musicLog('info', `YouTube video detected; preserving video=${info.video}.`);
+  }
+
+  const query = info ? value : `ytsearch:${value}`;
+  const result = await core.search(query, {
+    requestedBy: requester,
+    searchEngine: `ext:${YoutubeSabrExtractor.identifier}`,
+  });
+  const tracks = (result?.tracks || []).map(decorateTrack);
+  return {
+    tracks,
+    type: result?.playlist ? 'PLAYLIST' : (info?.video && tracks.length === 1 ? 'TRACK' : 'SEARCH'),
+    playlist: result?.playlist || null,
+  };
+}
+
+const manager = {
+  players,
+
+  async search(query, options = {}) {
+    if (!core) throw new Error('Discord Player is not initialized.');
+    const value = String(query || '').trim();
+    if (!value) return { tracks: [], type: 'SEARCH', playlist: null };
+
+    // Kryndexa music is intentionally YouTube-only. Non-YouTube URLs are rejected
+    // instead of being handed to SoundCloud or another provider.
+    if (isHttp(value) && !parseYouTubeUrl(value)) {
+      musicLog('warn', `Rejected non-YouTube URL: ${value}`);
+      return { tracks: [], type: 'SEARCH', playlist: null };
+    }
+
+    const result = await searchYouTube(value, options.requester);
+    musicLog('success', `Search resolved with YouTube SABR: ${result.tracks.length} track(s).`);
+    return result;
+  },
+
+  async createPlayer(options) {
+    const guildId = String(options.guildId);
+    const old = players.get(guildId);
+    if (old && !old.destroyed) {
+      old.voiceId = options.voiceId || old.voiceId;
+      old.textId = options.textId || old.textId;
+      await old.ensureVoice();
+      return old;
+    }
+
+    const guild = clientRef.guilds.cache.get(guildId);
+    const channel = guild?.channels?.cache?.get(String(options.voiceId));
+    if (!guild || !channel) throw new Error('Voice channel is unavailable.');
+
+    let queue = core.nodes.get(guildId);
+    if (!queue) queue = core.nodes.create(guild, { metadata: { textId: options.textId, voiceId: options.voiceId } });
+    await queue.connect(channel);
+    queue.node.setVolume(Math.max(1, Math.min(200, Number(options.volume || 75))));
+
+    const adapter = new PlayerAdapter(manager, queue, options);
+    players.set(guildId, adapter);
+    return adapter;
+  },
+};
+
+function bindEvents() {
+  core.events.on('playerStart', (queue, track) => {
+    const id = String(queue.guild.id);
+    const player = players.get(id);
+    if (player) {
+      player.dpQueue = queue;
+      player.voiceId = queue.channel?.id || player.voiceId;
+    }
+    musicLog('success', `Audio resource started: ${trackLabel(track)} | source=youtube | extractor=${track?.extractor?.identifier || YoutubeSabrExtractor.identifier} | ${track?.url || 'no-url'}`);
+  });
+
+  core.events.on('playerError', (queue, error, track) => {
+    musicLog('error', `YouTube playback failed for ${trackLabel(track)}: ${error?.message || error}`);
+    musicLog('debug', `Track source=${track?.source || 'youtube'} extractor=${track?.extractor?.identifier || YoutubeSabrExtractor.identifier} url=${track?.url || 'unknown'}`);
+    musicLog('warn', 'Exact YouTube track could not be streamed; Kryndexa will not substitute SoundCloud or another provider.');
+  });
+
+  core.events.on('error', (queue, error) => musicLog('error', `Queue error guild=${queue?.guild?.id || 'unknown'}: ${error?.message || error}`));
+  core.events.on('playerPause', (queue) => musicLog('info', `Paused guild=${queue.guild.id}`));
+  core.events.on('playerResume', (queue) => musicLog('info', `Resumed guild=${queue.guild.id}`));
+  core.events.on('playerSkip', (queue, track) => musicLog('warn', `Skipped: ${trackLabel(track)} | guild=${queue.guild.id}`));
+  core.events.on('queueDelete', (queue) => {
+    const id = String(queue.guild.id);
+    const player = players.get(id);
+    if (player?.dpQueue === queue) players.delete(id);
+    musicLog('debug', `Queue removed guild=${id}`);
+  });
+  core.events.on('debug', (queue, message) => {
+    if (envEnabled(process.env.MUSIC_DEBUG)) musicLog('debug', `${queue?.guild?.id || 'player'} | ${message}`);
+  });
+}
+
+async function initMusic(client) {
+  clientRef = client;
+  if (!musicGloballyEnabled()) {
+    initialized = false;
+    musicLog('warn', 'MUSIC_ENABLED is false; Discord Player runtime disabled.');
+    return null;
+  }
+
+  try {
+    core = new Player(client, { skipFFmpeg: false });
+    if (!YoutubeSabrExtractor?.identifier) {
+      throw new Error('discord-player-googlevideo did not export YoutubeSabrExtractor. Run npm install to refresh dependencies.');
+    }
+
+    await core.extractors.register(YoutubeSabrExtractor, {});
+    bindEvents();
+    initialized = true;
+
+    musicLog('info', 'Backend: Discord Player v7 + GoogleVideo YouTube SABR');
+    musicLog('info', 'Provider policy: YouTube only; SoundCloud and alternate-provider fallback are disabled');
+    musicLog('info', 'YouTube handling: exact video IDs preserved; standard playlists expanded; radio/mixes preserve the exact seed video');
+    musicLog('info', 'Streaming: GoogleVideo SABR audio-only -> FFmpeg -> Discord voice');
+    musicLog('info', 'yt-dlp and exported YouTube cookie files: not used by Kryndexa music manager');
+    musicLog('success', 'YouTube-only SABR music runtime initialized.');
+    return manager;
+  } catch (error) {
+    initialized = false;
+    musicLog('error', `Music initialization failed: ${error?.stack || error}`);
+    return null;
+  }
+}
+
+function getMusicManager() { return initialized ? manager : null; }
+function getMusicStatus() {
+  return {
+    state: initialized ? 'ready' : (musicGloballyEnabled() ? 'idle' : 'disabled'),
+    ready: initialized && musicGloballyEnabled(),
+    backend: 'Discord Player v7 + GoogleVideo YouTube SABR',
+    sourceManagers: ['youtube-sabr'],
+    plugins: ['discord-player-googlevideo'],
+  };
+}
+function isMusicReady() { return initialized && musicGloballyEnabled(); }
+function musicUnavailableMessage() { return musicGloballyEnabled() ? 'The Discord Player music runtime has not finished initializing.' : 'The Music module is disabled by MUSIC_ENABLED.'; }
+function lavalinkConfigured() { return false; }
+async function waitForMusicConnection() { return isMusicReady(); }
+function markManualStop(id, ms = 2500) { manualStopUntil.set(String(id), Date.now() + Math.max(500, Number(ms || 2500))); }
+async function waitForManualStopCooldown(id) {
+  const key = String(id);
+  const remaining = Number(manualStopUntil.get(key) || 0) - Date.now();
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  manualStopUntil.delete(key);
+}
+async function probeLavalinkInfo() { return null; }
+function stopMusic() {
+  for (const player of [...players.values()]) player.destroy().catch(() => null);
+  players.clear();
+  manualStopUntil.clear();
+  try { core?.destroy?.(); } catch {}
+  core = null;
+  initialized = false;
+}
+
+module.exports = {
+  initMusic,
+  waitForMusicConnection,
+  stopMusic,
+  getMusicManager,
+  getMusicStatus,
+  probeLavalinkInfo,
+  markManualStop,
+  waitForManualStopCooldown,
+  isMusicReady,
+  musicUnavailableMessage,
+  musicGloballyEnabled,
+  lavalinkConfigured,
+  formatDuration,
+};
