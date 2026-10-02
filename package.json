@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "check": "node scripts/check.js",
-    "check:music": "node scripts/check-music.js"
+    "check:music": "node scripts/check-music.js",
+    "test:music": "node scripts/music-smoke-test.js"
   },
   "engines": {
     "node": ">=22.12.0"
