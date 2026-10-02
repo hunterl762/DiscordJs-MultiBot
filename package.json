@@ -21,6 +21,7 @@
     "discord-player": "^7.2.0",
     "discord-player-youtubei": "^3.1.0",
     "youtubei.js": "^18.0.0",
+    "simple-ytdl-core": "^1.0.7",
     "bgutils-js": "^4.0.0",
     "googlevideo": "^4.0.0",
     "ffmpeg-static": "^5.2.0",
