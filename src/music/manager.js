@@ -1,5 +1,5 @@
 const { Player, QueueRepeatMode, QueryType } = require('discord-player');
-const { YoutubeiExtractor } = require('discord-player-youtubei');
+const { YoutubeExtractor } = require('discord-player-youtubei');
 
 let clientRef = null;
 let core = null;
@@ -35,7 +35,6 @@ function decorateTrack(t) {
   return t;
 }
 function trackArray(q) { return (q?.tracks?.toArray?.() || []).map(decorateTrack); }
-
 class QueueAdapter {
   constructor(owner) { this.owner = owner; }
   get current() { return decorateTrack(this.owner.dpQueue.currentTrack); }
@@ -44,115 +43,15 @@ class QueueAdapter {
   shuffle() { this.owner.dpQueue.tracks?.shuffle?.(); }
   [Symbol.iterator]() { return trackArray(this.owner.dpQueue)[Symbol.iterator](); }
 }
-
 class PlayerAdapter {
-  constructor(manager, dpQueue, options) {
-    this.manager = manager;
-    this.dpQueue = dpQueue;
-    this.guildId = String(options.guildId);
-    this.textId = options.textId;
-    this.voiceId = options.voiceId;
-    this.queue = new QueueAdapter(this);
-    this.loop = 'none';
-    this.destroyed = false;
-  }
-  get playing() { return Boolean(this.dpQueue?.node?.isPlaying?.()); }
-  get paused() { return Boolean(this.dpQueue?.node?.isPaused?.()); }
-  get volume() { return Number(this.dpQueue?.node?.volume ?? 100); }
-  get position() { return Number(this.dpQueue?.node?.streamTime ?? this.dpQueue?.node?.estimatedPlaybackTime ?? 0); }
-  setTextChannel(id) { this.textId = id; if (this.dpQueue?.metadata) this.dpQueue.metadata.textId = id; }
-  async play() { if (!this.dpQueue.currentTrack) await this.dpQueue.node.play(); }
-  skip() { return this.dpQueue.node.skip(); }
-  pause(value = true) { return value ? this.dpQueue.node.pause() : this.dpQueue.node.resume(); }
-  async setVolume(value) { return this.dpQueue.node.setVolume(Math.max(1, Math.min(200, Number(value || 100)))); }
-  setLoop(mode) {
-    this.loop = ['track', 'queue'].includes(mode) ? mode : 'none';
-    const repeat = this.loop === 'track' ? QueueRepeatMode.TRACK : this.loop === 'queue' ? QueueRepeatMode.QUEUE : QueueRepeatMode.OFF;
-    this.dpQueue.setRepeatMode(repeat);
-  }
-  async destroy() {
-    if (this.destroyed) return;
-    this.destroyed = true;
-    try { this.dpQueue.clear(); } catch {}
-    try { this.dpQueue.node.stop(true); } catch {}
-    try { this.dpQueue.delete(); } catch {}
-    players.delete(this.guildId);
-  }
+  constructor(manager, dpQueue, options) { this.manager=manager;this.dpQueue=dpQueue;this.guildId=String(options.guildId);this.textId=options.textId;this.voiceId=options.voiceId;this.queue=new QueueAdapter(this);this.loop='none';this.destroyed=false; }
+  get playing(){return Boolean(this.dpQueue?.node?.isPlaying?.());} get paused(){return Boolean(this.dpQueue?.node?.isPaused?.());} get volume(){return Number(this.dpQueue?.node?.volume??100);} get position(){return Number(this.dpQueue?.node?.streamTime??this.dpQueue?.node?.estimatedPlaybackTime??0);}
+  setTextChannel(id){this.textId=id;if(this.dpQueue?.metadata)this.dpQueue.metadata.textId=id;} async play(){if(!this.dpQueue.currentTrack)await this.dpQueue.node.play();} skip(){return this.dpQueue.node.skip();} pause(value=true){return value?this.dpQueue.node.pause():this.dpQueue.node.resume();}
+  async setVolume(value){return this.dpQueue.node.setVolume(Math.max(1,Math.min(200,Number(value||100))));}
+  setLoop(mode){this.loop=['track','queue'].includes(mode)?mode:'none';const repeat=this.loop==='track'?QueueRepeatMode.TRACK:this.loop==='queue'?QueueRepeatMode.QUEUE:QueueRepeatMode.OFF;this.dpQueue.setRepeatMode(repeat);}
+  async destroy(){if(this.destroyed)return;this.destroyed=true;try{this.dpQueue.clear();}catch{}try{this.dpQueue.node.stop(true);}catch{}try{this.dpQueue.delete();}catch{}players.delete(this.guildId);}
 }
-
-const manager = {
-  players,
-  async search(query, options = {}) {
-    if (!core) throw new Error('Discord Player is not initialized.');
-    const value = String(query || '').trim();
-    const isUrl = /^https?:\/\//i.test(value);
-    const result = await core.search(value, {
-      requestedBy: options.requester,
-      searchEngine: isUrl ? QueryType.AUTO : QueryType.YOUTUBE_SEARCH,
-    });
-    const tracks = (result?.tracks || []).map(decorateTrack);
-    musicLog('success', `Search resolved with YouTubeI: ${tracks.length} track(s).`);
-    return { tracks, type: result?.playlist ? 'PLAYLIST' : (isUrl && tracks.length === 1 ? 'TRACK' : 'SEARCH'), playlist: result?.playlist || null };
-  },
-  async createPlayer(options) {
-    const guildId = String(options.guildId);
-    const old = players.get(guildId);
-    if (old && !old.destroyed) return old;
-    const guild = clientRef.guilds.cache.get(guildId);
-    const channel = guild?.channels?.cache?.get(String(options.voiceId));
-    if (!guild || !channel) throw new Error('Voice channel is unavailable.');
-    let q = core.nodes.get(guildId);
-    if (!q) q = core.nodes.create(guild, { metadata: { textId: options.textId, voiceId: options.voiceId } });
-    await q.connect(channel);
-    q.node.setVolume(Math.max(1, Math.min(200, Number(options.volume || 75))));
-    const adapter = new PlayerAdapter(manager, q, options);
-    players.set(guildId, adapter);
-    return adapter;
-  },
-};
-
-function bindEvents() {
-  core.events.on('playerStart', (q, track) => {
-    const p = players.get(String(q.guild.id));
-    if (p) p.voiceId = q.channel?.id || p.voiceId;
-    musicLog('success', `Now playing: ${track.title} | YouTubeI/Discord Player`);
-  });
-  core.events.on('playerError', (q, error, track) => musicLog('error', `Playback failed for ${track?.title || 'track'}: ${error?.message || error}`));
-  core.events.on('error', (q, error) => musicLog('error', `Queue error guild=${q?.guild?.id || 'unknown'}: ${error?.message || error}`));
-  core.events.on('playerPause', (q) => musicLog('info', `Paused guild=${q.guild.id}`));
-  core.events.on('playerResume', (q) => musicLog('info', `Resumed guild=${q.guild.id}`));
-  core.events.on('playerSkip', (q, track) => musicLog('warn', `Skipped: ${track?.title || 'track'} | guild=${q.guild.id}`));
-  core.events.on('queueDelete', (q) => { players.delete(String(q.guild.id)); musicLog('debug', `Queue removed guild=${q.guild.id}`); });
-  core.events.on('debug', (q, message) => { if (envEnabled(process.env.MUSIC_DEBUG)) musicLog('debug', `${q?.guild?.id || 'player'} | ${message}`); });
-}
-
-async function initMusic(client) {
-  clientRef = client;
-  if (!musicGloballyEnabled()) { initialized = false; musicLog('warn', 'MUSIC_ENABLED is false; Discord Player runtime disabled.'); return null; }
-  try {
-    core = new Player(client, { skipFFmpeg: false });
-    await core.extractors.register(YoutubeiExtractor, {});
-    bindEvents();
-    initialized = true;
-    musicLog('info', 'Backend: Discord Player v7 + YouTubeI/InnerTube');
-    musicLog('info', 'yt-dlp: disabled and not used');
-    musicLog('info', 'YouTube cookie authentication: disabled and not used');
-    musicLog('success', 'Music runtime initialized without yt-dlp or exported cookie files.');
-    return manager;
-  } catch (error) {
-    initialized = false;
-    musicLog('error', `Music initialization failed: ${error?.stack || error}`);
-    return null;
-  }
-}
-function getMusicManager() { return initialized ? manager : null; }
-function getMusicStatus() { return { state: initialized ? 'ready' : (musicGloballyEnabled() ? 'idle' : 'disabled'), ready: initialized && musicGloballyEnabled(), backend: 'Discord Player v7 + discord-player-youtubei', sourceManagers: ['youtubei'], plugins: ['discord-player-youtubei'] }; }
-function isMusicReady() { return initialized && musicGloballyEnabled(); }
-function musicUnavailableMessage() { return musicGloballyEnabled() ? 'The Discord Player music runtime has not finished initializing.' : 'The Music module is disabled by MUSIC_ENABLED.'; }
-function lavalinkConfigured() { return false; }
-async function waitForMusicConnection() { return isMusicReady(); }
-function markManualStop(id, ms = 2500) { manualStopUntil.set(String(id), Date.now() + Math.max(500, Number(ms || 2500))); }
-async function waitForManualStopCooldown(id) { const k = String(id), remaining = Number(manualStopUntil.get(k) || 0) - Date.now(); if (remaining > 0) await new Promise(r => setTimeout(r, remaining)); manualStopUntil.delete(k); }
-async function probeLavalinkInfo() { return null; }
-function stopMusic() { for (const p of [...players.values()]) p.destroy().catch(() => null); players.clear(); manualStopUntil.clear(); try { core?.destroy?.(); } catch {} core = null; initialized = false; }
-module.exports = { initMusic, waitForMusicConnection, stopMusic, getMusicManager, getMusicStatus, probeLavalinkInfo, markManualStop, waitForManualStopCooldown, isMusicReady, musicUnavailableMessage, musicGloballyEnabled, lavalinkConfigured, formatDuration };
+const manager={players,async search(query,options={}){if(!core)throw new Error('Discord Player is not initialized.');const value=String(query||'').trim(),isUrl=/^https?:\/\//i.test(value);const result=await core.search(value,{requestedBy:options.requester,searchEngine:isUrl?QueryType.AUTO:QueryType.YOUTUBE_SEARCH});const tracks=(result?.tracks||[]).map(decorateTrack);musicLog('success',`Search resolved with YouTubeI: ${tracks.length} track(s).`);return{tracks,type:result?.playlist?'PLAYLIST':(isUrl&&tracks.length===1?'TRACK':'SEARCH'),playlist:result?.playlist||null};},async createPlayer(options){const guildId=String(options.guildId),old=players.get(guildId);if(old&&!old.destroyed)return old;const guild=clientRef.guilds.cache.get(guildId),channel=guild?.channels?.cache?.get(String(options.voiceId));if(!guild||!channel)throw new Error('Voice channel is unavailable.');let q=core.nodes.get(guildId);if(!q)q=core.nodes.create(guild,{metadata:{textId:options.textId,voiceId:options.voiceId}});await q.connect(channel);q.node.setVolume(Math.max(1,Math.min(200,Number(options.volume||75))));const adapter=new PlayerAdapter(manager,q,options);players.set(guildId,adapter);return adapter;}};
+function bindEvents(){core.events.on('playerStart',(q,track)=>{const p=players.get(String(q.guild.id));if(p)p.voiceId=q.channel?.id||p.voiceId;musicLog('success',`Now playing: ${track.title} | YouTubeI/Discord Player`);});core.events.on('playerError',(q,error,track)=>musicLog('error',`Playback failed for ${track?.title||'track'}: ${error?.message||error}`));core.events.on('error',(q,error)=>musicLog('error',`Queue error guild=${q?.guild?.id||'unknown'}: ${error?.message||error}`));core.events.on('playerPause',q=>musicLog('info',`Paused guild=${q.guild.id}`));core.events.on('playerResume',q=>musicLog('info',`Resumed guild=${q.guild.id}`));core.events.on('playerSkip',(q,track)=>musicLog('warn',`Skipped: ${track?.title||'track'} | guild=${q.guild.id}`));core.events.on('queueDelete',q=>{players.delete(String(q.guild.id));musicLog('debug',`Queue removed guild=${q.guild.id}`);});core.events.on('debug',(q,message)=>{if(envEnabled(process.env.MUSIC_DEBUG))musicLog('debug',`${q?.guild?.id||'player'} | ${message}`);});}
+async function initMusic(client){clientRef=client;if(!musicGloballyEnabled()){initialized=false;musicLog('warn','MUSIC_ENABLED is false; Discord Player runtime disabled.');return null;}try{core=new Player(client,{skipFFmpeg:false});if(!YoutubeExtractor?.identifier)throw new Error('discord-player-youtubei did not export YoutubeExtractor. Run npm install to refresh dependencies.');await core.extractors.register(YoutubeExtractor,{});bindEvents();initialized=true;musicLog('info','Backend: Discord Player v7 + YouTubeI/InnerTube');musicLog('info','yt-dlp: disabled in Kryndexa music manager');musicLog('success','Music runtime initialized with YoutubeExtractor.');return manager;}catch(error){initialized=false;musicLog('error',`Music initialization failed: ${error?.stack||error}`);return null;}}
+function getMusicManager(){return initialized?manager:null;}function getMusicStatus(){return{state:initialized?'ready':(musicGloballyEnabled()?'idle':'disabled'),ready:initialized&&musicGloballyEnabled(),backend:'Discord Player v7 + discord-player-youtubei',sourceManagers:['youtubei'],plugins:['discord-player-youtubei']};}function isMusicReady(){return initialized&&musicGloballyEnabled();}function musicUnavailableMessage(){return musicGloballyEnabled()?'The Discord Player music runtime has not finished initializing.':'The Music module is disabled by MUSIC_ENABLED.';}function lavalinkConfigured(){return false;}async function waitForMusicConnection(){return isMusicReady();}function markManualStop(id,ms=2500){manualStopUntil.set(String(id),Date.now()+Math.max(500,Number(ms||2500)));}async function waitForManualStopCooldown(id){const k=String(id),remaining=Number(manualStopUntil.get(k)||0)-Date.now();if(remaining>0)await new Promise(r=>setTimeout(r,remaining));manualStopUntil.delete(k);}async function probeLavalinkInfo(){return null;}function stopMusic(){for(const p of [...players.values()])p.destroy().catch(()=>null);players.clear();manualStopUntil.clear();try{core?.destroy?.();}catch{}core=null;initialized=false;}module.exports={initMusic,waitForMusicConnection,stopMusic,getMusicManager,getMusicStatus,probeLavalinkInfo,markManualStop,waitForManualStopCooldown,isMusicReady,musicUnavailableMessage,musicGloballyEnabled,lavalinkConfigured,formatDuration};
