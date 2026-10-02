@@ -12,6 +12,7 @@ const {
 const play = require('@iamtraction/play-dl');
 const ffmpegPath = require('ffmpeg-static');
 const prism = require('prism-media');
+const { createYouTubeAudioStream } = require('./ytdlp');
 
 // prism-media looks for FFMPEG_PATH before falling back to a system PATH lookup.
 // Bundling ffmpeg-static keeps local Windows installs self-contained.
@@ -140,6 +141,7 @@ class LocalMusicPlayer {
     this.paused = false;
     this.destroyed = false;
     this.skipping = false;
+    this.sourceProcess = null;
 
     const guild = clientRef.guilds.cache.get(this.guildId);
     if (!guild) throw new Error('Guild is unavailable.');
@@ -194,9 +196,13 @@ class LocalMusicPlayer {
     this.paused = false;
 
     try {
-      // Normalize every source into a known PCM format. This avoids silent playback
-      // caused by an incorrectly inferred WebM/Ogg/Opus stream type.
-      const stream = await play.stream(track.uri, { discordPlayerCompatibility: false });
+      // play-dl is still used for YouTube search/metadata, but yt-dlp now handles
+      // media extraction. play-dl's extractor is what generated YouTube's
+      // "Sign in to confirm you're not a bot" failures during playback.
+      this.sourceProcess?.destroy?.();
+      this.sourceProcess = createYouTubeAudioStream(track.uri);
+
+      // Normalize every source into PCM before handing it to Discord voice.
       const ffmpeg = new prism.FFmpeg({
         args: [
           '-analyzeduration', '0',
@@ -207,8 +213,8 @@ class LocalMusicPlayer {
         ],
       });
 
-      stream.stream.on('error', (error) => ffmpeg.destroy(error));
-      stream.stream.pipe(ffmpeg);
+      this.sourceProcess.stream.on('error', (error) => ffmpeg.destroy(error));
+      this.sourceProcess.stream.pipe(ffmpeg);
 
       this.resource = createAudioResource(ffmpeg, {
         inputType: StreamType.Raw,
@@ -232,6 +238,8 @@ class LocalMusicPlayer {
       }
     } catch (error) {
       console.error(`[Music] Stream failed for "${track.title}":`, error);
+      this.sourceProcess?.destroy?.();
+      this.sourceProcess = null;
       const channel = clientRef.channels.cache.get(this.textId);
       if (channel?.isTextBased()) {
         await channel.send(`⚠️ Unable to stream **${track.title}**: ${String(error?.message || error).slice(0, 800)}`).catch(() => null);
@@ -244,6 +252,8 @@ class LocalMusicPlayer {
 
   async onIdle() {
     if (this.destroyed || !this.queue.current) return;
+    this.sourceProcess?.destroy?.();
+    this.sourceProcess = null;
     const finished = this.queue.current;
     this.queue.previous.unshift(finished);
     if (this.queue.previous.length > 20) this.queue.previous.length = 20;
@@ -262,6 +272,8 @@ class LocalMusicPlayer {
   skip() {
     if (!this.queue.current) return false;
     this.skipping = true;
+    this.sourceProcess?.destroy?.();
+    this.sourceProcess = null;
     return this.audioPlayer.stop(true);
   }
 
@@ -281,6 +293,8 @@ class LocalMusicPlayer {
     this.destroyed = true;
     this.queue.items.length = 0;
     this.queue.current = null;
+    this.sourceProcess?.destroy?.();
+    this.sourceProcess = null;
     try { this.audioPlayer.stop(true); } catch {}
     try { this.connection.destroy(); } catch {}
     players.delete(this.guildId);
@@ -288,6 +302,8 @@ class LocalMusicPlayer {
 
   async fail(error) {
     console.error(`[Music] Local audio player error in guild ${this.guildId}:`, error);
+    this.sourceProcess?.destroy?.();
+    this.sourceProcess = null;
     this.queue.current = null;
     this.playing = false;
     await this.playNext();
@@ -313,7 +329,7 @@ function getMusicStatus() {
   return {
     state: initialized ? 'ready' : (musicGloballyEnabled() ? 'idle' : 'disabled'),
     ready: initialized && musicGloballyEnabled(),
-    backend: '@discordjs/voice',
+    backend: '@discordjs/voice + yt-dlp',
     sourceManagers: ['youtube'],
     plugins: [],
   };
@@ -334,7 +350,7 @@ async function initMusic(client) {
     return null;
   }
   initialized = true;
-  console.log('[Music] Local @discordjs/voice runtime initialized; Lavalink is not required.');
+  console.log('[Music] Local @discordjs/voice + yt-dlp runtime initialized; Lavalink is not required.');
   return manager;
 }
 
