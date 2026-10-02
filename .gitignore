@@ -8,3 +8,8 @@ data/settings.json
 data/tickets.json
 data/transcripts/*.html
 
+# Music authentication files - NEVER commit browser/YouTube cookies
+data/youtube-cookies.txt
+data/*cookies*.txt
+cookies.txt
+*.cookies.txt
