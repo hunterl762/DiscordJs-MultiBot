@@ -6,7 +6,6 @@ const {
   waitForManualStopCooldown,
   existingPlayer,
   sameVoiceChannel,
-  replySlash,
   replyPrefix,
 } = require('../../src/music/helpers');
 
@@ -18,19 +17,19 @@ module.exports = {
     .addStringOption((o) => o.setName('query').setDescription('Song name or URL').setRequired(true)),
   guildOnly: true,
   async executeSlash(interaction) {
-    const ctx = await musicContext(interaction);
-    if (ctx.error) return replySlash(interaction, ctx.error, true);
-    let player = existingPlayer(ctx.manager, ctx.guild.id);
-    if (player && !sameVoiceChannel(player, interaction.member)) return replySlash(interaction, 'Join the same voice channel as the bot.', true);
+    // Discord requires the initial interaction acknowledgement within roughly
+    // three seconds. Defer immediately, before database/feature/member lookups.
     await interaction.deferReply();
+    const ctx = await musicContext(interaction);
+    if (ctx.error) return interaction.editReply({ content: ctx.error });
+    let player = existingPlayer(ctx.manager, ctx.guild.id);
+    if (player && !sameVoiceChannel(player, interaction.member)) return interaction.editReply({ content: 'Join the same voice channel as the bot.' });
 
-    // Resolve a playable track before joining voice. This prevents connect/leave
-    // churn when a source returns no result or fails during lookup.
     const query = interaction.options.getString('query', true);
     const { result, engine, attempts } = await searchMusic(ctx.manager, query, interaction.user);
     if (!result.tracks?.length) {
       console.warn(
-        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.lavalinkStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
+        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.musicStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
       );
       return interaction.editReply(noTracksMessage(query));
     }
@@ -63,7 +62,7 @@ module.exports = {
     const { result, engine, attempts } = await searchMusic(ctx.manager, query, message.author);
     if (!result.tracks?.length) {
       console.warn(
-        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.lavalinkStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
+        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.musicStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
       );
       return replyPrefix(message, noTracksMessage(query));
     }
