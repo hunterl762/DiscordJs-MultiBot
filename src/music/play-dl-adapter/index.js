@@ -2,8 +2,7 @@ const metadata = require('@vookav2/play-dl');
 const path = require('node:path');
 
 function loadSource() {
-  // Resolve from the application tree rather than this npm file dependency folder.
-  return require(path.resolve(__dirname, '..', 'youtubeSource.js'));
+  return require(path.resolve(process.cwd(), 'src', 'music', 'youtubeSource.js'));
 }
 
 async function stream(url) {
