@@ -1,39 +1,158 @@
-const { EmbedBuilder } = require('discord.js');
-const { spawn } = require('node:child_process');
-const { existsSync } = require('node:fs');
-const { AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, StreamType, createAudioPlayer, createAudioResource, entersState, joinVoiceChannel } = require('@discordjs/voice');
-const play = require('@iamtraction/play-dl');
-const ffmpegStatic = require('ffmpeg-static');
-let clientRef=null,initialized=false;const players=new Map(),manualStopUntil=new Map();
-const envEnabled=v=>['1','true','yes','on'].includes(String(v||'').trim().toLowerCase());const musicGloballyEnabled=()=>envEnabled(process.env.MUSIC_ENABLED);
-const ANSI={reset:'\x1b[0m',cyan:'\x1b[36m',green:'\x1b[32m',yellow:'\x1b[33m',red:'\x1b[31m',gray:'\x1b[90m'};
-function musicLog(level,message){const colors={info:ANSI.cyan,success:ANSI.green,warn:ANSI.yellow,error:ANSI.red,debug:ANSI.gray};const color=colors[level]||ANSI.cyan,icon={info:'ℹ',success:'✓',warn:'⚠',error:'✖',debug:'•'}[level]||'•',line=`${color}[Music] ${icon} ${message}${ANSI.reset}`,raw=console._kryndexaOriginal;if(level==='error')(raw?.error||console.error)(line);else if(level==='warn')(raw?.warn||console.warn)(line);else(raw?.log||console.log)(line);}
-function formatDuration(ms){const t=Math.max(0,Math.floor(Number(ms||0)/1000)),h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`;}
-function toTrack(v,requester){const sec=Number(v?.durationInSec||v?.duration||0),id=String(v?.id||v?.videoId||'').trim(),url=String(v?.url||(id?`https://www.youtube.com/watch?v=${id}`:'')).trim();return{title:String(v?.title||'Unknown track'),author:String(v?.channel?.name||v?.channel?.title||'Unknown'),uri:url,realUri:url,length:sec*1000,isStream:Boolean(v?.live),requester};}
-async function resolvePlaylist(id,requester){const key=String(process.env.YOUTUBE_API_KEY||'').trim();if(!key)throw new Error('YOUTUBE_API_KEY is required for YouTube playlist playback.');const tracks=[];let token='';do{const p=new URLSearchParams({part:'snippet,contentDetails',playlistId:id,maxResults:'50',key});if(token)p.set('pageToken',token);const r=await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?${p}`),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(`YouTube Data API returned ${r.status}: ${d?.error?.message||'playlist request failed'}`);for(const i of d.items||[]){const vid=i?.contentDetails?.videoId||i?.snippet?.resourceId?.videoId;if(!vid||['Private video','Deleted video'].includes(i?.snippet?.title))continue;tracks.push(toTrack({id:vid,title:i?.snippet?.title,channel:{name:i?.snippet?.videoOwnerChannelTitle||i?.snippet?.channelTitle}},requester));}token=String(d.nextPageToken||'');}while(token);return tracks.filter(t=>t.uri);}
-async function resolveTracks(query,requester){const value=String(query||'').trim();if(!value)return{tracks:[],type:'SEARCH'};if(/^https?:\/\//i.test(value)){let u;try{u=new URL(value);}catch{}const host=u?.hostname?.replace(/^www\./,'').toLowerCase(),list=u?.searchParams?.get('list'),yt=['youtube.com','m.youtube.com','music.youtube.com','youtu.be'].includes(host);if(yt&&list)return{tracks:await resolvePlaylist(list,requester),type:'PLAYLIST',playlist:{id:list}};if(play.yt_validate(value)==='video'){const info=await play.video_basic_info(value);return{tracks:[toTrack(info.video_details,requester)],type:'TRACK'};}return{tracks:[],type:'SEARCH'};}const videos=await play.search(value,{limit:10,source:{youtube:'video'}});return{tracks:videos.map(v=>toTrack(v,requester)),type:'SEARCH'};}
-function authArgs(){const args=[],cookies=String(process.env.MUSIC_YTDLP_COOKIES||'').trim(),browser=String(process.env.MUSIC_YTDLP_BROWSER||'').trim();if(cookies)args.push('--cookies',cookies);else if(browser)args.push('--cookies-from-browser',browser);if(envEnabled(process.env.MUSIC_YTDLP_FORCE_IPV4))args.push('-4');return args;}
-function baseYtArgs(){const args=['--ignore-config','--no-playlist','--no-progress',...authArgs()];if(envEnabled(process.env.MUSIC_YTDLP_VERBOSE))args.push('--verbose');else args.push('--no-warnings');return args;}
-function discoveryArgs(url){return[...baseYtArgs(),'--dump-single-json','--skip-download',url];}
-function streamArgs(url,formatId){return[...baseYtArgs(),'-f',String(formatId),'-o','-',url];}
-function ffmpegArgs(){return['-hide_banner','-loglevel','warning','-analyzeduration','10M','-probesize','10M','-i','pipe:0','-vn','-acodec','pcm_s16le','-f','s16le','-ar','48000','-ac','2','pipe:1'];}
-function friendlyPlaybackError(error){const raw=String(error?.message||error||'Playback failed');if(/No downloadable audio-only formats/i.test(raw))return 'YouTube returned metadata but no downloadable audio-only formats for this video/session.';if(/sign in to confirm|not a bot|LOGIN_REQUIRED/i.test(raw))return 'YouTube rejected the configured session. Refresh MUSIC_YTDLP_COOKIES and restart Kryndexa.';if(/DPAPI|decrypt|cookie database/i.test(raw))return 'Browser cookies could not be decrypted. Use an exported Netscape-format cookie file.';if(/yt-dlp.*ENOENT|Unable to start yt-dlp/i.test(raw))return 'yt-dlp is not installed or YTDLP_PATH is incorrect.';if(/FFmpeg.*ENOENT|Unable to start FFmpeg/i.test(raw))return 'FFmpeg is not installed or FFMPEG_PATH is incorrect.';return raw.slice(0,900);}
-function runDiscovery(url){return new Promise(resolve=>{const bin=String(process.env.YTDLP_PATH||'yt-dlp').trim(),p=spawn(bin,discoveryArgs(url),{windowsHide:true,stdio:['ignore','pipe','pipe']});let stdout='',stderr='',spawnError=null;p.stdout.on('data',d=>stdout+=d.toString());p.stderr.on('data',d=>stderr=(stderr+d.toString()).slice(-16000));p.on('error',e=>spawnError=e);p.on('close',code=>resolve({code,stdout,stderr,error:spawnError}));});}
-function selectAudioFormat(info){const formats=Array.isArray(info?.formats)?info.formats:[];const usable=formats.filter(f=>f&&f.format_id&&f.acodec&&f.acodec!=='none'&&(!f.vcodec||f.vcodec==='none')&&/^https?:$/i.test(new URL(String(f.url||'http://invalid')).protocol));if(!usable.length)return null;const score=f=>{const abr=Number(f.abr||f.tbr||0),asr=Number(f.asr||0),proto=/^https$/i.test(String(f.protocol||''))?10:0,opus=/opus/i.test(String(f.acodec||''))?20:0;return abr*1000+asr+proto+opus;};usable.sort((a,b)=>score(b)-score(a));return usable[0];}
-async function discoverAudio(track){musicLog('debug',`Discovering formats with yt-dlp JSON: ${track.title}`);const r=await runDiscovery(track.uri);if(r.error)throw new Error(`Unable to start yt-dlp: ${r.error.message}`);if(r.code!==0)throw new Error(`yt-dlp format discovery exited with code ${r.code}: ${r.stderr.trim().slice(-2500)}`);let info;try{info=JSON.parse(r.stdout);}catch(e){throw new Error(`yt-dlp returned invalid JSON during format discovery: ${e.message}`);}const selected=selectAudioFormat(info);if(!selected)throw new Error('No downloadable audio-only formats were returned by yt-dlp.');musicLog('success',`Audio format selected dynamically | id=${selected.format_id} | codec=${selected.acodec||'unknown'} | abr=${selected.abr||selected.tbr||'?'}k | ${selected.ext||'unknown'}`);return selected;}
-class Queue{constructor(){this.current=null;this.items=[];this.previous=[];}get length(){return this.items.length;}add(v){Array.isArray(v)?this.items.push(...v):this.items.push(v);}shift(){return this.items.shift();}shuffle(){for(let i=this.items.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[this.items[i],this.items[j]]=[this.items[j],this.items[i]];}}[Symbol.iterator](){return this.items[Symbol.iterator]();}}
-class Player{constructor(manager,o){this.manager=manager;this.guildId=o.guildId;this.textId=o.textId;this.voiceId=o.voiceId;this.volume=Math.max(1,Math.min(200,Number(o.volume||75)));this.loop='none';this.queue=new Queue();this.playing=false;this.paused=false;this.destroyed=false;this.skipping=false;this.hadSuccessfulPlayback=false;this.failedTracks=0;this.trackStartedAt=0;this.pipeline=null;this.handlingTrack=false;const guild=clientRef.guilds.cache.get(this.guildId);if(!guild)throw new Error('Guild is unavailable.');this.connection=joinVoiceChannel({channelId:this.voiceId,guildId:this.guildId,adapterCreator:guild.voiceAdapterCreator,selfDeaf:true,selfMute:false});this.audioPlayer=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Pause}});this.subscription=this.connection.subscribe(this.audioPlayer);if(!this.subscription)throw new Error('Failed to subscribe audio player to Discord voice.');this.connection.on(VoiceConnectionStatus.Disconnected,()=>this.recover());this.audioPlayer.on(AudioPlayerStatus.Playing,()=>{if(!this.trackStartedAt)this.trackStartedAt=Date.now();musicLog('success',`Discord audio active | guild=${this.guildId} | voice=${this.voiceId}`);});this.audioPlayer.on(AudioPlayerStatus.Idle,()=>this.onIdle().catch(e=>this.fail(e)));this.audioPlayer.on('error',e=>this.fail(e));}
-setTextChannel(id){this.textId=id;}async setVolume(v){this.volume=Math.max(1,Math.min(200,Number(v||100)));this.resource?.volume?.setVolume(this.volume/100);}setLoop(v){this.loop=['none','track','queue'].includes(v)?v:'none';}async recover(){if(this.destroyed)return;try{await Promise.race([entersState(this.connection,VoiceConnectionStatus.Signalling,5000),entersState(this.connection,VoiceConnectionStatus.Connecting,5000)]);}catch{await this.destroy();}}async play(){if(this.destroyed||this.playing)return;await entersState(this.connection,VoiceConnectionStatus.Ready,20000);await this.playNext();}
-killPipeline(){const p=this.pipeline;this.pipeline=null;if(!p)return;try{p.ytdlp?.stdout?.unpipe(p.ffmpeg?.stdin);}catch{}for(const proc of[p.ytdlp,p.ffmpeg])try{if(proc&&!proc.killed)proc.kill();}catch{}}
-async createPipeline(track){const selected=await discoverAudio(track),ytdlpBin=String(process.env.YTDLP_PATH||'yt-dlp').trim(),ffmpegBin=String(process.env.FFMPEG_PATH||ffmpegStatic||'ffmpeg').trim();musicLog('info',`Starting stream: ${track.title}`);musicLog('debug',`Playback format: ${selected.format_id}`);const ytdlp=spawn(ytdlpBin,streamArgs(track.uri,selected.format_id),{windowsHide:true,stdio:['ignore','pipe','pipe']}),ffmpeg=spawn(ffmpegBin,ffmpegArgs(),{windowsHide:true,stdio:['pipe','pipe','pipe']});const state={selected,ytdlp,ffmpeg,ytdlpBytes:0,pcmBytes:0,ytdlpStderr:'',ffmpegStderr:'',ytdlpExit:null,ffmpegExit:null,error:null};const cap=(s,d)=>(s+d.toString()).slice(-12000);ytdlp.stdout.on('data',d=>state.ytdlpBytes+=d.length);ffmpeg.stdout.on('data',d=>state.pcmBytes+=d.length);ytdlp.stderr.on('data',d=>state.ytdlpStderr=cap(state.ytdlpStderr,d));ffmpeg.stderr.on('data',d=>state.ffmpegStderr=cap(state.ffmpegStderr,d));ytdlp.on('error',e=>state.error=new Error(`Unable to start yt-dlp (${ytdlpBin}): ${e.message}`));ffmpeg.on('error',e=>state.error=new Error(`Unable to start FFmpeg (${ffmpegBin}): ${e.message}`));ytdlp.on('close',c=>state.ytdlpExit=c);ffmpeg.on('close',c=>state.ffmpegExit=c);ytdlp.stdout.pipe(ffmpeg.stdin);ffmpeg.stdin.on('error',e=>{if(e.code!=='EPIPE'&&!state.error)state.error=e;});this.pipeline=state;return state;}
-pipelineFailure(p){if(!p)return new Error('Music pipeline was not created.');if(p.error)return p.error;if(p.ytdlpExit!==null&&p.ytdlpExit!==0)return new Error(`yt-dlp exited with code ${p.ytdlpExit} (format ${p.selected?.format_id||'?'}): ${p.ytdlpStderr.trim().slice(-2500)}`);if(p.ffmpegExit!==null&&p.ffmpegExit!==0)return new Error(`FFmpeg exited with code ${p.ffmpegExit}: ${p.ffmpegStderr.trim().slice(-1500)}`);if(p.ytdlpBytes===0)return new Error('yt-dlp produced 0 bytes of source audio.');if(p.pcmBytes===0)return new Error(`FFmpeg produced 0 bytes of PCM audio. ${p.ffmpegStderr.trim().slice(-1000)}`);return null;}
-async resourceFor(track){const p=await this.createPipeline(track);this.resource=createAudioResource(p.ffmpeg.stdout,{inputType:StreamType.Raw,inlineVolume:true,metadata:track});this.resource.volume?.setVolume(this.volume/100);return this.resource;}
-async finishQueue(){this.queue.current=null;this.playing=false;this.paused=false;musicLog(this.hadSuccessfulPlayback?'success':'warn',this.hadSuccessfulPlayback?'Queue finished; leaving voice.':'No tracks in queue could be played; leaving voice.');const c=clientRef.channels.cache.get(this.textId);if(c?.isTextBased()&&!manualStopActive(this.guildId)){if(this.hadSuccessfulPlayback)await c.send('🎵 Music queue finished. Leaving voice.').catch(()=>null);else if(this.failedTracks)await c.send('⚠️ No tracks in the queue could be played. Leaving voice.').catch(()=>null);}await this.destroy();}
-async reportFailure(track,error){this.failedTracks++;musicLog('error',`Playback failed for ${track?.title||'track'}: ${String(error?.message||error)}`);const c=clientRef.channels.cache.get(this.textId);if(c?.isTextBased())await c.send(`⚠️ Unable to stream **${track?.title||'this track'}**\nReason: ${friendlyPlaybackError(error)}`).catch(()=>null);}
-async playNext(){if(this.destroyed||this.handlingTrack)return;const track=this.queue.shift();if(!track)return this.finishQueue();this.handlingTrack=true;this.killPipeline();this.queue.current=track;this.playing=true;this.paused=false;this.trackStartedAt=0;try{const resource=await this.resourceFor(track);this.audioPlayer.play(resource);await entersState(this.audioPlayer,AudioPlayerStatus.Playing,20000);await new Promise(r=>setTimeout(r,1500));const failed=this.pipelineFailure(this.pipeline);if(failed)throw failed;if(this.audioPlayer.state.status!==AudioPlayerStatus.Playing)throw new Error('Discord audio player stopped before playback was established.');if(this.pipeline.pcmBytes<3840)throw new Error(`FFmpeg produced too little PCM audio (${this.pipeline.pcmBytes} bytes).`);this.hadSuccessfulPlayback=true;musicLog('success',`Now playing: ${track.title} | format=${this.pipeline.selected?.format_id} | source=${this.pipeline.ytdlpBytes} bytes | pcm=${this.pipeline.pcmBytes} bytes`);const c=clientRef.channels.cache.get(this.textId);if(c?.isTextBased())await c.send({embeds:[new EmbedBuilder().setColor(0x5865f2).setTitle('🎵 Now Playing').setDescription(`**[${track.title}](${track.uri||'https://discord.com'})**`).addFields({name:'Artist',value:String(track.author||'Unknown').slice(0,1024),inline:true},{name:'Duration',value:track.isStream?'Live stream':formatDuration(track.length),inline:true},{name:'Volume',value:`${this.volume}%`,inline:true}).setTimestamp()]}).catch(()=>null);}catch(e){this.handlingTrack=false;await this.reportFailure(track,e);this.killPipeline();this.queue.current=null;this.playing=false;if(!this.destroyed)await this.playNext();return;}this.handlingTrack=false;}
-async onIdle(){if(this.destroyed||!this.queue.current||this.handlingTrack)return;this.handlingTrack=true;const done=this.queue.current,p=this.pipeline,elapsed=this.trackStartedAt?Date.now()-this.trackStartedAt:0;if(this.skipping){this.skipping=false;this.killPipeline();this.queue.current=null;this.playing=false;this.paused=false;this.handlingTrack=false;return this.playNext();}const failed=this.pipelineFailure(p);if(failed||elapsed<2500){await this.reportFailure(done,failed||new Error(`Discord playback ended prematurely after ${elapsed}ms. yt-dlp=${p?.ytdlpBytes||0} bytes, PCM=${p?.pcmBytes||0} bytes.`));this.killPipeline();this.queue.current=null;this.playing=false;this.paused=false;this.handlingTrack=false;return this.playNext();}this.hadSuccessfulPlayback=true;this.queue.previous.unshift(done);if(this.queue.previous.length>20)this.queue.previous.length=20;if(this.loop==='track')this.queue.items.unshift(done);else if(this.loop==='queue')this.queue.items.push(done);this.killPipeline();this.queue.current=null;this.playing=false;this.paused=false;this.handlingTrack=false;await this.playNext();}
-skip(){if(!this.queue.current)return false;this.skipping=true;return this.audioPlayer.stop(true);}pause(v=true){const changed=v?this.audioPlayer.pause():this.audioPlayer.unpause();if(changed){this.paused=v;this.playing=!v;}return changed;}async destroy(){if(this.destroyed)return;this.destroyed=true;this.killPipeline();this.queue.items.length=0;this.queue.current=null;try{this.audioPlayer.stop(true);}catch{}try{this.connection.destroy();}catch{}players.delete(this.guildId);}async fail(e){if(this.destroyed||this.handlingTrack)return;this.handlingTrack=true;const track=this.queue.current;await this.reportFailure(track,e);this.killPipeline();this.queue.current=null;this.playing=false;this.handlingTrack=false;if(!this.destroyed)await this.playNext();}}
-const manager={players,async search(q,o={}){const r=await resolveTracks(q,o.requester);musicLog('success',`Search resolved with youtube: ${r.tracks.length} track(s).`);return r;},async createPlayer(o){const old=players.get(o.guildId);if(old){if(old.voiceId!==o.voiceId&&!old.queue.current)await old.destroy();else return old;}const p=new Player(manager,o);players.set(o.guildId,p);return p;}};
-function getMusicManager(){return initialized?manager:null;}function getMusicStatus(){return{state:initialized?'ready':(musicGloballyEnabled()?'idle':'disabled'),ready:initialized&&musicGloballyEnabled(),backend:'@discordjs/voice + yt-dlp JSON discovery + FFmpeg PCM',sourceManagers:['youtube'],plugins:[]};}function isMusicReady(){return initialized&&musicGloballyEnabled();}function musicUnavailableMessage(){return musicGloballyEnabled()?'The native Discord voice music runtime has not finished initializing.':'The Music module is disabled by MUSIC_ENABLED.';}function lavalinkConfigured(){return false;}
-function logMusicConfig(){const ytdlp=String(process.env.YTDLP_PATH||'yt-dlp').trim(),ffmpeg=String(process.env.FFMPEG_PATH||ffmpegStatic||'ffmpeg').trim(),cookies=String(process.env.MUSIC_YTDLP_COOKIES||'').trim(),browser=String(process.env.MUSIC_YTDLP_BROWSER||'').trim();musicLog('info',`yt-dlp: ${ytdlp}`);musicLog('info',`FFmpeg: ${ffmpeg}`);musicLog('info','YouTube extraction: authenticated JSON format discovery -> dynamic audio format -> FFmpeg PCM');if(cookies){musicLog('info',`Cookies: ${cookies}`);musicLog(existsSync(cookies)?'success':'error',`Cookie file exists: ${existsSync(cookies)?'yes':'NO'}`);}else if(browser)musicLog('info',`Cookies: browser=${browser}`);else musicLog('warn','Cookies: not configured');}
-async function initMusic(client){clientRef=client;if(!musicGloballyEnabled()){initialized=false;musicLog('warn','MUSIC_ENABLED is false; native voice runtime disabled.');return null;}logMusicConfig();initialized=true;musicLog('success','Native music runtime initialized: yt-dlp JSON discovery -> FFmpeg PCM -> @discordjs/voice.');return manager;}async function waitForMusicConnection(){return isMusicReady();}function markManualStop(id,ms=2500){manualStopUntil.set(String(id),Date.now()+Math.max(500,Number(ms||2500)));}function manualStopActive(id){const k=String(id),u=Number(manualStopUntil.get(k)||0);if(u<=Date.now()){manualStopUntil.delete(k);return false;}return true;}async function waitForManualStopCooldown(id){const k=String(id),r=Number(manualStopUntil.get(k)||0)-Date.now();if(r>0)await new Promise(x=>setTimeout(x,r));manualStopUntil.delete(k);}async function probeLavalinkInfo(){return null;}function stopMusic(){for(const p of [...players.values()])p.destroy().catch(()=>null);players.clear();manualStopUntil.clear();initialized=false;}module.exports={initMusic,waitForMusicConnection,stopMusic,getMusicManager,getMusicStatus,probeLavalinkInfo,markManualStop,waitForManualStopCooldown,isMusicReady,musicUnavailableMessage,musicGloballyEnabled,lavalinkConfigured,formatDuration};
+const { Player, QueueRepeatMode, QueryType } = require('discord-player');
+const { YoutubeiExtractor } = require('discord-player-youtubei');
+
+let clientRef = null;
+let core = null;
+let initialized = false;
+const players = new Map();
+const manualStopUntil = new Map();
+
+const envEnabled = (v) => ['1', 'true', 'yes', 'on'].includes(String(v || '').trim().toLowerCase());
+const musicGloballyEnabled = () => envEnabled(process.env.MUSIC_ENABLED);
+const ANSI = { reset: '\x1b[0m', cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m', gray: '\x1b[90m' };
+function musicLog(level, message) {
+  const colors = { info: ANSI.cyan, success: ANSI.green, warn: ANSI.yellow, error: ANSI.red, debug: ANSI.gray };
+  const icon = { info: 'ℹ', success: '✓', warn: '⚠', error: '✖', debug: '•' }[level] || '•';
+  const line = `${colors[level] || ANSI.cyan}[Music] ${icon} ${message}${ANSI.reset}`;
+  const raw = console._kryndexaOriginal;
+  if (level === 'error') (raw?.error || console.error)(line);
+  else if (level === 'warn') (raw?.warn || console.warn)(line);
+  else (raw?.log || console.log)(line);
+}
+function formatDuration(ms) {
+  const t = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+function decorateTrack(t) {
+  if (!t) return t;
+  try {
+    if (!('uri' in t)) Object.defineProperty(t, 'uri', { configurable: true, get: () => t.url });
+    if (!('realUri' in t)) Object.defineProperty(t, 'realUri', { configurable: true, get: () => t.url });
+    if (!('length' in t)) Object.defineProperty(t, 'length', { configurable: true, get: () => Number(t.durationMS || 0) });
+    if (!('isStream' in t)) Object.defineProperty(t, 'isStream', { configurable: true, get: () => Boolean(t.live) });
+  } catch {}
+  return t;
+}
+function trackArray(q) { return (q?.tracks?.toArray?.() || []).map(decorateTrack); }
+
+class QueueAdapter {
+  constructor(owner) { this.owner = owner; }
+  get current() { return decorateTrack(this.owner.dpQueue.currentTrack); }
+  get length() { return Number(this.owner.dpQueue.size || trackArray(this.owner.dpQueue).length); }
+  add(value) { this.owner.dpQueue.addTrack(Array.isArray(value) ? value : value); }
+  shuffle() { this.owner.dpQueue.tracks?.shuffle?.(); }
+  [Symbol.iterator]() { return trackArray(this.owner.dpQueue)[Symbol.iterator](); }
+}
+
+class PlayerAdapter {
+  constructor(manager, dpQueue, options) {
+    this.manager = manager;
+    this.dpQueue = dpQueue;
+    this.guildId = String(options.guildId);
+    this.textId = options.textId;
+    this.voiceId = options.voiceId;
+    this.queue = new QueueAdapter(this);
+    this.loop = 'none';
+    this.destroyed = false;
+  }
+  get playing() { return Boolean(this.dpQueue?.node?.isPlaying?.()); }
+  get paused() { return Boolean(this.dpQueue?.node?.isPaused?.()); }
+  get volume() { return Number(this.dpQueue?.node?.volume ?? 100); }
+  get position() { return Number(this.dpQueue?.node?.streamTime ?? this.dpQueue?.node?.estimatedPlaybackTime ?? 0); }
+  setTextChannel(id) { this.textId = id; if (this.dpQueue?.metadata) this.dpQueue.metadata.textId = id; }
+  async play() { if (!this.dpQueue.currentTrack) await this.dpQueue.node.play(); }
+  skip() { return this.dpQueue.node.skip(); }
+  pause(value = true) { return value ? this.dpQueue.node.pause() : this.dpQueue.node.resume(); }
+  async setVolume(value) { return this.dpQueue.node.setVolume(Math.max(1, Math.min(200, Number(value || 100)))); }
+  setLoop(mode) {
+    this.loop = ['track', 'queue'].includes(mode) ? mode : 'none';
+    const repeat = this.loop === 'track' ? QueueRepeatMode.TRACK : this.loop === 'queue' ? QueueRepeatMode.QUEUE : QueueRepeatMode.OFF;
+    this.dpQueue.setRepeatMode(repeat);
+  }
+  async destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try { this.dpQueue.clear(); } catch {}
+    try { this.dpQueue.node.stop(true); } catch {}
+    try { this.dpQueue.delete(); } catch {}
+    players.delete(this.guildId);
+  }
+}
+
+const manager = {
+  players,
+  async search(query, options = {}) {
+    if (!core) throw new Error('Discord Player is not initialized.');
+    const value = String(query || '').trim();
+    const isUrl = /^https?:\/\//i.test(value);
+    const result = await core.search(value, {
+      requestedBy: options.requester,
+      searchEngine: isUrl ? QueryType.AUTO : QueryType.YOUTUBE_SEARCH,
+    });
+    const tracks = (result?.tracks || []).map(decorateTrack);
+    musicLog('success', `Search resolved with YouTubeI: ${tracks.length} track(s).`);
+    return { tracks, type: result?.playlist ? 'PLAYLIST' : (isUrl && tracks.length === 1 ? 'TRACK' : 'SEARCH'), playlist: result?.playlist || null };
+  },
+  async createPlayer(options) {
+    const guildId = String(options.guildId);
+    const old = players.get(guildId);
+    if (old && !old.destroyed) return old;
+    const guild = clientRef.guilds.cache.get(guildId);
+    const channel = guild?.channels?.cache?.get(String(options.voiceId));
+    if (!guild || !channel) throw new Error('Voice channel is unavailable.');
+    let q = core.nodes.get(guildId);
+    if (!q) q = core.nodes.create(guild, { metadata: { textId: options.textId, voiceId: options.voiceId } });
+    await q.connect(channel);
+    q.node.setVolume(Math.max(1, Math.min(200, Number(options.volume || 75))));
+    const adapter = new PlayerAdapter(manager, q, options);
+    players.set(guildId, adapter);
+    return adapter;
+  },
+};
+
+function bindEvents() {
+  core.events.on('playerStart', (q, track) => {
+    const p = players.get(String(q.guild.id));
+    if (p) p.voiceId = q.channel?.id || p.voiceId;
+    musicLog('success', `Now playing: ${track.title} | YouTubeI/Discord Player`);
+  });
+  core.events.on('playerError', (q, error, track) => musicLog('error', `Playback failed for ${track?.title || 'track'}: ${error?.message || error}`));
+  core.events.on('error', (q, error) => musicLog('error', `Queue error guild=${q?.guild?.id || 'unknown'}: ${error?.message || error}`));
+  core.events.on('playerPause', (q) => musicLog('info', `Paused guild=${q.guild.id}`));
+  core.events.on('playerResume', (q) => musicLog('info', `Resumed guild=${q.guild.id}`));
+  core.events.on('playerSkip', (q, track) => musicLog('warn', `Skipped: ${track?.title || 'track'} | guild=${q.guild.id}`));
+  core.events.on('queueDelete', (q) => { players.delete(String(q.guild.id)); musicLog('debug', `Queue removed guild=${q.guild.id}`); });
+  core.events.on('debug', (q, message) => { if (envEnabled(process.env.MUSIC_DEBUG)) musicLog('debug', `${q?.guild?.id || 'player'} | ${message}`); });
+}
+
+async function initMusic(client) {
+  clientRef = client;
+  if (!musicGloballyEnabled()) { initialized = false; musicLog('warn', 'MUSIC_ENABLED is false; Discord Player runtime disabled.'); return null; }
+  try {
+    core = new Player(client, { skipFFmpeg: false });
+    await core.extractors.register(YoutubeiExtractor, {});
+    bindEvents();
+    initialized = true;
+    musicLog('info', 'Backend: Discord Player v7 + YouTubeI/InnerTube');
+    musicLog('info', 'yt-dlp: disabled and not used');
+    musicLog('info', 'YouTube cookie authentication: disabled and not used');
+    musicLog('success', 'Music runtime initialized without yt-dlp or exported cookie files.');
+    return manager;
+  } catch (error) {
+    initialized = false;
+    musicLog('error', `Music initialization failed: ${error?.stack || error}`);
+    return null;
+  }
+}
+function getMusicManager() { return initialized ? manager : null; }
+function getMusicStatus() { return { state: initialized ? 'ready' : (musicGloballyEnabled() ? 'idle' : 'disabled'), ready: initialized && musicGloballyEnabled(), backend: 'Discord Player v7 + discord-player-youtubei', sourceManagers: ['youtubei'], plugins: ['discord-player-youtubei'] }; }
+function isMusicReady() { return initialized && musicGloballyEnabled(); }
+function musicUnavailableMessage() { return musicGloballyEnabled() ? 'The Discord Player music runtime has not finished initializing.' : 'The Music module is disabled by MUSIC_ENABLED.'; }
+function lavalinkConfigured() { return false; }
+async function waitForMusicConnection() { return isMusicReady(); }
+function markManualStop(id, ms = 2500) { manualStopUntil.set(String(id), Date.now() + Math.max(500, Number(ms || 2500))); }
+async function waitForManualStopCooldown(id) { const k = String(id), remaining = Number(manualStopUntil.get(k) || 0) - Date.now(); if (remaining > 0) await new Promise(r => setTimeout(r, remaining)); manualStopUntil.delete(k); }
+async function probeLavalinkInfo() { return null; }
+function stopMusic() { for (const p of [...players.values()]) p.destroy().catch(() => null); players.clear(); manualStopUntil.clear(); try { core?.destroy?.(); } catch {} core = null; initialized = false; }
+module.exports = { initMusic, waitForMusicConnection, stopMusic, getMusicManager, getMusicStatus, probeLavalinkInfo, markManualStop, waitForManualStopCooldown, isMusicReady, musicUnavailableMessage, musicGloballyEnabled, lavalinkConfigured, formatDuration };
