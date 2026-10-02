@@ -1,0 +1,1 @@
+Run `npm run check:music` to verify installed voice/audio dependencies. Run `npm run test:music -- "song name"` to verify that the source can search YouTube and open an audio stream before testing the Discord voice channel.
