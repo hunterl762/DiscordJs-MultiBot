@@ -4,6 +4,7 @@ const {Client,Events,GatewayIntentBits,Partials}=require('discord.js');
 const {slashCommands}=require('./bot/commandRegistry');
 const {registerSlashCommands,registerGuildJoinSlashSync}=require('./bot/slashCommandSync');
 const {registerEvents}=require('./bot/events');const {registerInteractions}=require('./bot/interactions');
+require('./dashboard/aboutNavigation');
 const dashboardModulePath=require.resolve('./dashboard/server');let {startDashboard}=require(dashboardModulePath);
 const {initDatabase}=require('./database');const {startUptimeMonitor,stopUptimeMonitor}=require('./serviceUptimeStore');const {startTwitchMonitor,stopTwitchMonitor}=require('./services/twitchMonitor');const {registerFeatureRuntime,stopFeatureRuntime}=require('./features/runtime');const {initMusic,waitForMusicConnection,stopMusic}=require('./music/manager');
 const required=['DISCORD_TOKEN','DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DISCORD_REDIRECT_URI','SESSION_SECRET','MYSQL_HOST','MYSQL_USER','MYSQL_PASSWORD','MYSQL_DATABASE'];const missing=required.filter(key=>!process.env[key]);if(missing.length){console.error(`Missing environment variables: ${missing.join(', ')}`);process.exitCode=1;return;}
