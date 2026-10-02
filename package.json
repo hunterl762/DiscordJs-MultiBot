@@ -24,7 +24,7 @@
     "@discordjs/voice": "^0.19.2",
     "@iamtraction/play-dl": "file:src/music/play-dl-adapter",
     "simple-ytdl-core": "1.1.1",
-    "bgutils-js": "^3.2.1",
+    "bgutils-js": "3.2.0",
     "googlevideo": "^4.1.1",
     "youtubei.js": "^18.1.0",
     "ffmpeg-static": "5.3.0",
