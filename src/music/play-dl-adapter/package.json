@@ -1,0 +1,9 @@
+{
+  "name": "@iamtraction/play-dl",
+  "version": "3.0.0-kryndexa",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "@vookav2/play-dl": "latest"
+  }
+}
