@@ -1,4 +1,15 @@
 require('dotenv').config();
+// Discord Player resolves FFmpeg while loading the music stack. Point it at the
+// bundled binary before requiring ./music/manager so Windows does not depend on PATH.
+try {
+  const ffmpegStatic = require('ffmpeg-static');
+  if (ffmpegStatic) {
+    process.env.FFMPEG_PATH = process.env.FFMPEG_PATH || ffmpegStatic;
+    process.env.FFMPEG_EXECUTABLE = process.env.FFMPEG_EXECUTABLE || ffmpegStatic;
+  }
+} catch (error) {
+  console.warn('[Music] ffmpeg-static could not be resolved during startup:', error?.message || error);
+}
 const {installConsoleColors}=require('./utils/consoleColors');installConsoleColors();
 const readline=require('node:readline');
 const {Client,Events,GatewayIntentBits,Partials}=require('discord.js');
