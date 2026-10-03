@@ -9,6 +9,11 @@ const {
   replyPrefix,
 } = require('../../src/music/helpers');
 
+function configuredVolume(ctx) {
+  const raw = Number(ctx?.feature?.config?.defaultVolume ?? 75);
+  return Math.max(1, Math.min(200, Number.isFinite(raw) ? raw : 75));
+}
+
 module.exports = {
   name: 'play',
   aliases: ['p'],
@@ -35,17 +40,23 @@ module.exports = {
     }
     console.log(`[Music] Search resolved with ${engine || 'unknown'}: ${result.tracks.length} track(s).`);
 
+    const volume = configuredVolume(ctx);
     if (!player) {
       await waitForManualStopCooldown(ctx.guild.id);
       player = await ctx.manager.createPlayer({
         guildId: ctx.guild.id,
         textId: interaction.channelId,
         voiceId: ctx.channel.id,
-        volume: Number(ctx.feature.config.defaultVolume || 75),
+        volume,
       });
     } else {
       player.setTextChannel(interaction.channelId);
     }
+
+    // Always re-apply the dashboard-configured volume before playback. This
+    // covers both newly-created queues and Discord Player queues reused after
+    // a reconnect, which otherwise retain Discord Player's 100% default.
+    await player.setVolume(volume);
 
     if (result.type === 'PLAYLIST') player.queue.add(result.tracks); else player.queue.add(result.tracks[0]);
     if (!player.playing && !player.paused) await player.play();
@@ -68,17 +79,21 @@ module.exports = {
     }
     console.log(`[Music] Search resolved with ${engine || 'unknown'}: ${result.tracks.length} track(s).`);
 
+    const volume = configuredVolume(ctx);
     if (!player) {
       await waitForManualStopCooldown(ctx.guild.id);
       player = await ctx.manager.createPlayer({
         guildId: ctx.guild.id,
         textId: message.channelId,
         voiceId: ctx.channel.id,
-        volume: Number(ctx.feature.config.defaultVolume || 75),
+        volume,
       });
     } else {
       player.setTextChannel(message.channelId);
     }
+
+    // Keep prefix playback consistent with slash playback and the dashboard.
+    await player.setVolume(volume);
 
     if (result.type === 'PLAYLIST') player.queue.add(result.tracks); else player.queue.add(result.tracks[0]);
     if (!player.playing && !player.paused) await player.play();
