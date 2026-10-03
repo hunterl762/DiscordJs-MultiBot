@@ -1,12 +1,1 @@
-const { SlashCommandBuilder } = require('discord.js');
-const {
-  musicContext,
-  markManualStop,
-  existingPlayer,
-  sameVoiceChannel,
-  replySlash,
-  replyPrefix,
-} = require('../../src/music/helpers');
-module.exports={name:'stop',aliases:['leave','disconnect'],category:'Music',data:new SlashCommandBuilder().setName('stop').setDescription('Stop music and leave voice.'),guildOnly:true,
-async executeSlash(i){const c=await musicContext(i);if(c.error)return replySlash(i,c.error,true);const p=existingPlayer(c.manager,c.guild.id);if(!p)return replySlash(i,'No active music player.',true);if(!sameVoiceChannel(p,i.member))return replySlash(i,'Join the same voice channel as the bot.',true);markManualStop(c.guild.id);await p.destroy();return replySlash(i,'⏹️ Stopped and disconnected.');},
-async executePrefix(m){const c=await musicContext(m);if(c.error)return replyPrefix(m,c.error);const p=existingPlayer(c.manager,c.guild.id);if(!p)return replyPrefix(m,'No active music player.');if(!sameVoiceChannel(p,m.member))return replyPrefix(m,'Join the same voice channel as the bot.');markManualStop(c.guild.id);await p.destroy();return replyPrefix(m,'⏹️ Stopped and disconnected.');}};
+const { SlashCommandBuilder }=require('discord.js');const { musicContext,markManualStop,existingPlayer,sameVoiceChannel,replySlash,replyPrefix,musicEmbed }=require('../../src/music/helpers');function stopped(count){return musicEmbed({title:'⏹️ Playback Stopped',description:'Kryndexa cleared the music session and disconnected from voice.',fields:[{name:'Tracks Cleared',value:`**${count}**`,inline:true},{name:'Connection',value:'**Disconnected**',inline:true}],footer:'Kryndexa Music • Session ended'});}module.exports={name:'stop',aliases:['leave','disconnect'],category:'Music',data:new SlashCommandBuilder().setName('stop').setDescription('Stop music and leave voice.'),guildOnly:true,async executeSlash(i){const c=await musicContext(i);if(c.error)return replySlash(i,c.error,true);const p=existingPlayer(c.manager,c.guild.id);if(!p)return replySlash(i,'No active music player.',true);if(!sameVoiceChannel(p,i.member))return replySlash(i,'Join the same voice channel as the bot.',true);const count=(p.queue?.length||0)+(p.queue?.current?1:0);markManualStop(c.guild.id);await p.destroy();return replySlash(i,{embeds:[stopped(count)]});},async executePrefix(m){const c=await musicContext(m);if(c.error)return replyPrefix(m,c.error);const p=existingPlayer(c.manager,c.guild.id);if(!p)return replyPrefix(m,'No active music player.');if(!sameVoiceChannel(p,m.member))return replyPrefix(m,'Join the same voice channel as the bot.');const count=(p.queue?.length||0)+(p.queue?.current?1:0);markManualStop(c.guild.id);await p.destroy();return replyPrefix(m,{embeds:[stopped(count)]});}};

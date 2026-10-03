@@ -6,9 +6,13 @@ const {
   waitForManualStopCooldown,
   existingPlayer,
   sameVoiceChannel,
-  replySlash,
   replyPrefix,
 } = require('../../src/music/helpers');
+
+function configuredVolume(ctx) {
+  const raw = Number(ctx?.feature?.config?.defaultVolume ?? 75);
+  return Math.max(1, Math.min(200, Number.isFinite(raw) ? raw : 75));
+}
 
 module.exports = {
   name: 'play',
@@ -18,35 +22,41 @@ module.exports = {
     .addStringOption((o) => o.setName('query').setDescription('Song name or URL').setRequired(true)),
   guildOnly: true,
   async executeSlash(interaction) {
-    const ctx = await musicContext(interaction);
-    if (ctx.error) return replySlash(interaction, ctx.error, true);
-    let player = existingPlayer(ctx.manager, ctx.guild.id);
-    if (player && !sameVoiceChannel(player, interaction.member)) return replySlash(interaction, 'Join the same voice channel as the bot.', true);
+    // Discord requires the initial interaction acknowledgement within roughly
+    // three seconds. Defer immediately, before database/feature/member lookups.
     await interaction.deferReply();
+    const ctx = await musicContext(interaction);
+    if (ctx.error) return interaction.editReply({ content: ctx.error });
+    let player = existingPlayer(ctx.manager, ctx.guild.id);
+    if (player && !sameVoiceChannel(player, interaction.member)) return interaction.editReply({ content: 'Join the same voice channel as the bot.' });
 
-    // Resolve a playable track before joining voice. This prevents connect/leave
-    // churn when a source returns no result or fails during lookup.
     const query = interaction.options.getString('query', true);
     const { result, engine, attempts } = await searchMusic(ctx.manager, query, interaction.user);
     if (!result.tracks?.length) {
       console.warn(
-        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.lavalinkStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
+        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.musicStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
       );
       return interaction.editReply(noTracksMessage(query));
     }
     console.log(`[Music] Search resolved with ${engine || 'unknown'}: ${result.tracks.length} track(s).`);
 
+    const volume = configuredVolume(ctx);
     if (!player) {
       await waitForManualStopCooldown(ctx.guild.id);
       player = await ctx.manager.createPlayer({
         guildId: ctx.guild.id,
         textId: interaction.channelId,
         voiceId: ctx.channel.id,
-        volume: Number(ctx.feature.config.defaultVolume || 75),
+        volume,
       });
     } else {
       player.setTextChannel(interaction.channelId);
     }
+
+    // Always re-apply the dashboard-configured volume before playback. This
+    // covers both newly-created queues and Discord Player queues reused after
+    // a reconnect, which otherwise retain Discord Player's 100% default.
+    await player.setVolume(volume);
 
     if (result.type === 'PLAYLIST') player.queue.add(result.tracks); else player.queue.add(result.tracks[0]);
     if (!player.playing && !player.paused) await player.play();
@@ -63,23 +73,27 @@ module.exports = {
     const { result, engine, attempts } = await searchMusic(ctx.manager, query, message.author);
     if (!result.tracks?.length) {
       console.warn(
-        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.lavalinkStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
+        `[Music] No tracks for "${query}". Attempts=${attempts.join(', ') || 'none'}; sources=${(ctx.musicStatus?.sourceManagers || []).join(', ') || 'unknown'}.`,
       );
       return replyPrefix(message, noTracksMessage(query));
     }
     console.log(`[Music] Search resolved with ${engine || 'unknown'}: ${result.tracks.length} track(s).`);
 
+    const volume = configuredVolume(ctx);
     if (!player) {
       await waitForManualStopCooldown(ctx.guild.id);
       player = await ctx.manager.createPlayer({
         guildId: ctx.guild.id,
         textId: message.channelId,
         voiceId: ctx.channel.id,
-        volume: Number(ctx.feature.config.defaultVolume || 75),
+        volume,
       });
     } else {
       player.setTextChannel(message.channelId);
     }
+
+    // Keep prefix playback consistent with slash playback and the dashboard.
+    await player.setVolume(volume);
 
     if (result.type === 'PLAYLIST') player.queue.add(result.tracks); else player.queue.add(result.tracks[0]);
     if (!player.playing && !player.paused) await player.play();
